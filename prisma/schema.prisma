@@ -1,0 +1,486 @@
+// ============================================================================
+// XENON INSTITUTE — Attendance / Payment / Payroll System
+// Prisma schema (PostgreSQL / Neon)
+//
+// This is the FOUNDATION CONTRACT. Every feature (tag) builds against it.
+// Design rules baked in:
+//   1. Anything the institute can reword / re-price / add later = a real table
+//      (Stream, Subject, Grade, ClassType, FeeTier, ExpenseType, Setting),
+//      NOT a hardcoded enum. Only structural, never-changing things are enums.
+//   2. Every table carries updatedAt -> makes the future cloud->on-prem sync
+//      possible. Do not remove these.
+//   3. Money = Decimal (never Float). Percentages = Decimal(5,2).
+//   4. Times of day stored as "HH:mm" strings; attendance windows stored as
+//      minute offsets so they're trivial to compute against "now".
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 no longer accepts `url` / `directUrl` here. Connection URLs live in
+// `prisma.config.ts` (migrations, via DIRECT_URL) and in the driver adapter
+// passed to PrismaClient (runtime, via the pooled DATABASE_URL).
+// See src/lib/db.ts. This is the ONLY change made to the provided schema.
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS — structural only. These never change with institute policy.
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  STAFF
+  TEACHER
+}
+
+enum DayOfWeek {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  DROPPED
+}
+
+// Payment KIND is structural (the app treats each shape differently).
+// Do not confuse with editable business values like FeeTier / ExpenseType.
+enum PaymentKind {
+  ADMISSION // one-time, ever
+  SMART_CARD // charged each time a card is issued (incl. lost-card reissue)
+  CLASS // monthly per-course fee (tiers + combos apply here)
+}
+
+enum AttendanceMethod {
+  NFC
+  QR
+  SEARCH
+}
+
+// ----------------------------------------------------------------------------
+// REFERENCE TABLES — institute-configurable. Add/edit rows without code changes.
+// `code` gives app logic a stable handle; `label` is what staff see/edit.
+// ----------------------------------------------------------------------------
+
+model Stream {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique // Science, Maths, Tech, Commerce, Art, 6-11, Primary, A/L, Other
+  active    Boolean  @default(true)
+  courses   Course[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subject {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique // ICT, Chemistry, BTECH, ETECH, ...
+  active    Boolean  @default(true)
+  courses   Course[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Grade {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique // "A/L 2027", "A/L 2026", "Grade 11", "Primary", ...
+  active    Boolean  @default(true)
+  courses   Course[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClassType {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique // THEORY | PAPER | REVISION (extensible)
+  label     String
+  active    Boolean  @default(true)
+  courses   Course[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Full / Half / 25% / Free — multiplier applied to the payable base fee.
+// e.g. FULL=1.000, HALF=0.500, QUARTER=0.250, FREE=0.000
+model FeeTier {
+  id          Int          @id @default(autoincrement())
+  code        String       @unique // FULL | HALF | QUARTER | FREE
+  label       String
+  multiplier  Decimal      @db.Decimal(4, 3)
+  active      Boolean      @default(true)
+  enrollments Enrollment[]
+  payments    Payment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+// Two types today: TEACHER_ADVANCE and XENON. Addable later.
+// affectsTeacherPayslip = true only for TEACHER_ADVANCE (deducts from that
+// teacher's salary in THIS system). XENON only reduces institute profit;
+// staff advances live inside XENON (flagged on the Expense row).
+model ExpenseType {
+  id                    Int       @id @default(autoincrement())
+  code                  String    @unique // TEACHER_ADVANCE | XENON
+  label                 String
+  affectsTeacherPayslip Boolean   @default(false)
+  active                Boolean   @default(true)
+  expenses              Expense[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+// Editable global values so nothing money-related is hardcoded:
+//   admission_fee, smart_card_fee, default_institute_fee,
+//   institute_share_presets ("20,25,30"), etc.
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  label     String?
+  updatedAt DateTime @updatedAt
+}
+
+// ----------------------------------------------------------------------------
+// PEOPLE & AUTH
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         UserRole
+  active       Boolean  @default(true)
+
+  // A login may belong to one Teacher (to view own payslip) or one Staff.
+  teacher   Teacher? @relation(fields: [teacherId], references: [id])
+  teacherId Int?     @unique
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+  staffId   Int?     @unique
+
+  // Audit back-references (who did what)
+  paymentsTaken     Payment[]    @relation("PaymentTakenBy")
+  paymentsCancelled Payment[]    @relation("PaymentCancelledBy")
+  attendanceMarked  Attendance[] @relation("AttendanceMarkedBy")
+  expensesRecorded  Expense[]    @relation("ExpenseRecordedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Teacher {
+  id       Int       @id @default(autoincrement())
+  name     String
+  nic      String?
+  phone    String?
+  joinDate DateTime? @db.Date
+  active   Boolean   @default(true)
+
+  user     User?
+  courses  Course[]
+  combos   Combo[]
+  advances Expense[] // TEACHER_ADVANCE rows pointing at this teacher
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Staff = name only, for tagging advances (staff payroll is handled by a
+// SEPARATE system — no salary, no payslip here). May optionally have a login.
+model Staff {
+  id     Int     @id @default(autoincrement())
+  name   String
+  nic    String?
+  phone  String?
+  active Boolean @default(true)
+
+  user     User?
+  advances Expense[] // XENON rows flagged isStaffAdvance, pointing here
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Student {
+  id            Int     @id @default(autoincrement())
+  name          String
+  address       String?
+  school        String?
+  phone         String?
+  nic           String?
+  photoUrl      String? // S3-compatible object key/URL, compressed ~400px
+  cardUid       String? @unique // current active NFC UID; overwritten on reissue
+  admissionPaid Boolean @default(false) // one-time admission fee flag
+
+  enrollments Enrollment[]
+  attendances Attendance[]
+  payments    Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cardUid])
+}
+
+// ----------------------------------------------------------------------------
+// COURSES / SCHEDULES
+// A Course is the ENROLLABLE unit: one teacher + subject + grade + class-type.
+// So "A/L 2027 ICT Theory (Mr.X)" and "...Paper (Mr.X)" are two Courses.
+// ----------------------------------------------------------------------------
+
+model Course {
+  id   Int     @id @default(autoincrement())
+  name String? // optional display label; can be composed
+
+  teacher     Teacher   @relation(fields: [teacherId], references: [id])
+  teacherId   Int
+  subject     Subject   @relation(fields: [subjectId], references: [id])
+  subjectId   Int
+  grade       Grade     @relation(fields: [gradeId], references: [id])
+  gradeId     Int
+  stream      Stream    @relation(fields: [streamId], references: [id])
+  streamId    Int
+  classType   ClassType @relation(fields: [classTypeId], references: [id])
+  classTypeId Int
+
+  defaultFee            Decimal @db.Decimal(10, 2)
+  // Institute's cut of collected money for THIS course (20/25/30... custom).
+  instituteSharePercent Decimal @db.Decimal(5, 2)
+  // Optional flat institute fee (present but may be 0 / unused for now).
+  instituteFee          Decimal @default(0) @db.Decimal(10, 2)
+  active                Boolean @default(true)
+
+  schedules         Schedule[]
+  additionalClasses AdditionalClass[]
+  enrollments       Enrollment[]
+  comboItems        ComboItem[]
+  attendances       Attendance[]
+  payments          Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teacherId])
+}
+
+// Recurring weekly timetable entry. A course can have several (Tue AND Fri).
+model Schedule {
+  id        Int       @id @default(autoincrement())
+  course    Course    @relation(fields: [courseId], references: [id])
+  courseId  Int
+  dayOfWeek DayOfWeek
+  startTime String // "HH:mm"
+  endTime   String // "HH:mm"
+  // Attendance opens (start - openBefore) and closes (end - closeBefore).
+  attendanceOpensBeforeMin  Int     @default(30) // e.g. 30 -> opens 2:30 for a 3:00 class
+  attendanceClosesBeforeMin Int     @default(30) // e.g. 30 -> closes 4:30 for a 5:00 end
+  active                    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId, dayOfWeek])
+}
+
+// One-off dated session (e.g. Poya 8-10 PM). Never recurs. Always tied to a
+// Course (inherits its roster). Not billed — attendance + summary only.
+model AdditionalClass {
+  id                        Int      @id @default(autoincrement())
+  course                    Course   @relation(fields: [courseId], references: [id])
+  courseId                  Int
+  date                      DateTime @db.Date
+  startTime                 String // "HH:mm"
+  endTime                   String // "HH:mm"
+  attendanceOpensBeforeMin  Int      @default(30)
+  attendanceClosesBeforeMin Int      @default(30)
+  note                      String?
+
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId, date])
+}
+
+// ----------------------------------------------------------------------------
+// ENROLLMENT — Student x Course, with per-enrollment fee tier (forward-only).
+// ----------------------------------------------------------------------------
+
+model Enrollment {
+  id        Int              @id @default(autoincrement())
+  student   Student          @relation(fields: [studentId], references: [id])
+  studentId Int
+  course    Course           @relation(fields: [courseId], references: [id])
+  courseId  Int
+  feeTier   FeeTier          @relation(fields: [feeTierId], references: [id])
+  feeTierId Int
+  status    EnrollmentStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, courseId]) // enroll in a given course once
+  @@index([courseId])
+}
+
+// ----------------------------------------------------------------------------
+// ATTENDANCE — one row per student per class session.
+// additionalClassId set => it was the one-off session (else recurring class).
+// ----------------------------------------------------------------------------
+
+model Attendance {
+  id                Int              @id @default(autoincrement())
+  student           Student          @relation(fields: [studentId], references: [id])
+  studentId         Int
+  course            Course           @relation(fields: [courseId], references: [id])
+  courseId          Int
+  additionalClass   AdditionalClass? @relation(fields: [additionalClassId], references: [id])
+  additionalClassId Int?
+  date              DateTime         @db.Date
+  method            AttendanceMethod
+  markedBy          User             @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
+  markedById        String
+  markedAt          DateTime         @default(now())
+
+  // No @@unique here: Postgres treats NULLs as DISTINCT, so a unique across a
+  // nullable additionalClassId would NOT block duplicate marks on regular
+  // classes. "Already marked?" is enforced in app logic before insert.
+  @@index([courseId, date])
+  @@index([studentId, date])
+  @@index([studentId, courseId, date])
+}
+
+// ----------------------------------------------------------------------------
+// COMBOS — staff-created. A student QUALIFIES by being enrolled in EVERY course
+// of the combo (same teacher). At payment the system uses the combo matching
+// the student's full enrolled set for that teacher and OFFERS it (pop-up).
+// ----------------------------------------------------------------------------
+
+model Combo {
+  id        Int     @id @default(autoincrement())
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+  teacherId Int
+  name      String // "2027 Chemistry Theory+Paper"
+  active    Boolean @default(true)
+
+  items    ComboItem[]
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teacherId])
+}
+
+model ComboItem {
+  id       Int     @id @default(autoincrement())
+  combo    Combo   @relation(fields: [comboId], references: [id])
+  comboId  Int
+  course   Course  @relation(fields: [courseId], references: [id])
+  courseId Int
+  comboFee Decimal @db.Decimal(10, 2) // discounted per-course fee inside this combo
+
+  @@unique([comboId, courseId])
+}
+
+// ----------------------------------------------------------------------------
+// PAYMENTS — one table for all money in (easy daily-cash summation).
+// kind = ADMISSION | SMART_CARD | CLASS.
+//   ADMISSION  : one-time; amount only.
+//   SMART_CARD : per issuance; cardUidIssued records the new UID.
+//   CLASS      : course + billing month; tier + combo audit fields apply.
+// amount is the FINAL charged figure (snapshotted; past payments never change).
+// ----------------------------------------------------------------------------
+
+model Payment {
+  id        Int         @id @default(autoincrement())
+  kind      PaymentKind
+  student   Student     @relation(fields: [studentId], references: [id])
+  studentId Int
+  amount    Decimal     @db.Decimal(10, 2)
+
+  // CLASS-only fields
+  course       Course?  @relation(fields: [courseId], references: [id])
+  courseId     Int?
+  billingYear  Int? // e.g. 2026
+  billingMonth Int? // 1..12
+  feeTier      FeeTier? @relation(fields: [feeTierId], references: [id])
+  feeTierId    Int?
+
+  // Combined-payment audit (CLASS only). If combo applied, comboId set +
+  // comboApplied true. If refused, comboApplied false + reason REQUIRED.
+  combo              Combo?  @relation(fields: [comboId], references: [id])
+  comboId            Int?
+  comboApplied       Boolean @default(false)
+  comboRefusedReason String?
+
+  // SMART_CARD-only
+  cardUidIssued String?
+
+  // Cancellation (admin-only feature)
+  cancelled     Boolean   @default(false)
+  cancelledBy   User?     @relation("PaymentCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  takenBy   User     @relation("PaymentTakenBy", fields: [takenById], references: [id])
+  takenById String
+  paidAt    DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // NOTE: no unique on (student, course, month) — a cancelled payment must be
+  // re-payable. "Already paid this month?" is checked in app logic over
+  // non-cancelled rows.
+  @@index([studentId])
+  @@index([courseId, billingYear, billingMonth])
+  @@index([paidAt])
+  @@index([kind])
+}
+
+// ----------------------------------------------------------------------------
+// EXPENSES — reduce daily cash. Two types via ExpenseType:
+//   TEACHER_ADVANCE : linked to a teacher; deducted from that teacher's payslip
+//                     for the month it was taken. NOT part of institute profit.
+//   XENON           : reduces institute profit. Staff advances live here,
+//                     flagged isStaffAdvance + staffId (for the manual-deduct
+//                     report in the separate staff-payroll system). Counted
+//                     once, as a normal Xenon expense — no double counting.
+// ----------------------------------------------------------------------------
+
+model Expense {
+  id            Int         @id @default(autoincrement())
+  type          ExpenseType @relation(fields: [expenseTypeId], references: [id])
+  expenseTypeId Int
+  amount        Decimal     @db.Decimal(10, 2)
+  reason        String
+  date          DateTime    @db.Date
+
+  // TEACHER_ADVANCE
+  teacher   Teacher? @relation(fields: [teacherId], references: [id])
+  teacherId Int?
+
+  // XENON that is a staff advance
+  isStaffAdvance Boolean @default(false)
+  staff          Staff?  @relation(fields: [staffId], references: [id])
+  staffId        Int?
+
+  recordedBy   User   @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+  recordedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([expenseTypeId])
+  @@index([teacherId])
+}
