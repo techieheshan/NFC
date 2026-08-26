@@ -142,6 +142,41 @@ computes it for display. Evaluating it against "now" belongs to Attendance.
 Times are `"HH:mm"` strings. Because they're zero-padded 24h, `endTime > startTime`
 is a plain string comparison — which is exactly how it's validated.
 
+### Payment (`/payment`)
+
+Counter payments, ADMIN + STAFF. Identify by NFC / QR / search (the same shared
+scan components as Attendance), then charge admission, smart card and monthly
+class fees, and print a receipt.
+
+**No pricing is inlined.** `admission_fee` and `smart_card_fee` come from
+`Setting`; a monthly class fee is `Course.defaultFee × FeeTier.multiplier`. The
+client sends only *what* to charge — `takePayment` recomputes every amount from
+the database before writing.
+
+| Item | Rule |
+| --- | --- |
+| Admission | One-time. Chargeable only while `admissionPaid` is false; the flag flips inside the same transaction |
+| Smart card | **Not** locked — a lost-card reissue is a legitimate re-charge. Shows "charged N× · last …" so staff don't double-charge by accident, and records `cardUidIssued` |
+| Class fees | Per ACTIVE enrolment. A **FREE** tier shows "no charge" and writes no row at all |
+
+Months run from the enrolment's own start month up to the current Colombo month,
+capped at 6. Paid months are ticked and unselectable; several unpaid months can
+be settled at once, which is the real catch-up case. Billing month and `paidAt`
+are **Asia/Colombo**, so a payment taken after 6:30 PM Colombo on the last day of
+a month still bills that month rather than rolling into the next.
+
+Idempotency is server-side: a stale tab cannot re-charge a month that already has
+a non-cancelled CLASS payment, nor re-charge admission. Cancelled payments are
+excluded, so a cancelled month becomes payable again.
+
+The receipt is 58mm-wide and prints through the browser. The schema has no
+receipt-grouping column and this tag must not add one, so the reference is
+derived from the ids just written — meaning **receipts cannot be reprinted
+later**; a reprint feature needs that column.
+
+Combo discounts are deliberately absent — a combo-eligible student pays each
+course at its normal `defaultFee × tier` here. That is Payment Tag B.
+
 ### Attendance (`/attendance`)
 
 Scan-driven marking, ADMIN + STAFF. Three ways in — NFC tap (UID), QR scan (card
@@ -182,6 +217,69 @@ Cues are synthesised with Web Audio (no asset files): rising two-tone for a
 fresh mark, flat double blip for already-marked, low buzz for rejects. The
 context is unlocked on the first tap, since browsers refuse to start one without
 a gesture.
+
+### Combined payment (`/admin/combos` + the till)
+
+A combo is a discounted bundle of two or more courses **from one teacher**.
+Staff build each combination they want to offer separately — Theory+Paper and
+Theory+Paper+Revision are two combos, not one with options.
+
+**Eligibility is enrolment-based**, not selection-based: a student qualifies by
+being actively enrolled in *every* course of a combo. So they can pay a single
+combo course on its own and still get its combo rate. Where several combos
+qualify for the same teacher, the **fullest set wins** — a student in all three
+Chemistry courses is offered the 3-way, not the 2-way — with ties broken on the
+lower combo id purely for determinism.
+
+**The fraud check.** Qualifying says nothing about whether a student actually
+attends both classes, so before any discount is granted a pop-up shows **last
+completed month's attendance across every course in the combo**. A lopsided
+count (Theory 5 days, Paper 1) is the tell.
+
+- **Yes** → each combo course bills at `comboFee × tierMultiplier`;
+  `comboApplied = true`, `comboId` set.
+- **No** → a reason is **mandatory**; bills at `defaultFee × tierMultiplier`;
+  `comboApplied = false`, `comboRefusedReason` stored, and `comboId` still
+  recorded so staff can later justify why the discount was withheld.
+
+Asked fresh every transaction — nothing is remembered for next month. One
+decision covers every month of that combo in the same transaction, and combos
+from different teachers each get their own pop-up.
+
+Eligibility and every price are **recomputed server-side**. The client says
+which combo was decided, never whether the student qualifies or what it costs —
+verified by forging a decision for a non-qualifying student and confirming the
+normal rate was still charged.
+
+Combos are soft-deleted only: past payments carry `comboId`, so a combo has to
+survive as the audit trail for a discount applied or refused.
+
+### Expenses (`/expenses`)
+
+Two types, read from `ExpenseType` by **code** — ids are never inlined.
+
+- **Teacher advance** (`TEACHER_ADVANCE`, `affectsTeacherPayslip = true`) — tied
+  to a teacher. Later tags deduct it from that teacher's payslip for the month
+  of its `date`.
+- **Xenon expense** (`XENON`) — an institute cost, optionally flagged
+  `isStaffAdvance` with a `staffId`.
+
+A staff advance is **not a third category**. It is an ordinary Xenon expense and
+is counted once in every total; the flag exists only so the staff-advance report
+can tell whoever runs the separate staff-payroll system how much to deduct there
+by hand. Getting this wrong would double-count it.
+
+**Roles split within the screen:** recording and viewing are ADMIN + STAFF, but
+editing and deleting are **ADMIN only** — staff shouldn't silently alter money
+records. STAFF sees the list without those controls, and `updateExpense` /
+`deleteExpense` reject a staff session server-side, not just in the UI.
+
+Deleting is a real delete. `Expense` carries no cancellation columns and the
+brief ruled out adding any, so a mistaken entry is removed rather than voided;
+cancel-with-audit arrives with the Cancel Payment tag.
+
+Dates are Colombo days via `colomboDateValue`, so an evening entry at 19:10 UTC
+records as the 29th — the day the office was actually working — not the 28th.
 
 ### Registration (`/registration`)
 

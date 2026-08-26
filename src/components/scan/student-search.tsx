@@ -6,7 +6,7 @@ import { Loader2, Search, UserRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import type { StudentBrief } from "./actions";
+import type { StudentBrief } from "@/lib/students";
 
 /**
  * Typeahead fallback for when a card can't be read at all.

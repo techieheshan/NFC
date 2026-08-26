@@ -1,7 +1,7 @@
 // prisma/seed-testdata.ts
 // -----------------------------------------------------------------------------
 // REALISTIC TEST DATA for clicking around the app (dev only).
-// Fills: Subjects, Grades, Teachers (+ logins), Courses, and a few Students
+// Fills: Subjects, Grades, Teachers, Courses, and a few Students
 // with enrollments + typeable card UIDs (use these in the manual UID field).
 //
 // Run:  npx tsx prisma/seed-testdata.ts
@@ -14,7 +14,6 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import bcrypt from "bcryptjs";
 
 // Prisma 7 has no `url` in the datasource block, so the client is constructed
 // with a driver adapter (same pattern as prisma/seed.ts and src/lib/db.ts).
@@ -49,7 +48,8 @@ async function wipe() {
   // Teacher has no `userId` column — the relation runs the other way
   // (User.teacherId), which is how the logins are deleted just below.
   const teachers = await db.teacher.findMany({ where: { name: { in: teacherNames } }, select: { id: true } });
-  // remove teacher logins then teachers
+  // This seed no longer creates logins, but an earlier version did — clear any
+  // it left behind so a wipe fully undoes that too.
   const tIds = teachers.map((t) => t.id);
   await db.user.deleteMany({ where: { teacherId: { in: tIds } } });
   await db.teacher.deleteMany({ where: { id: { in: tIds } } });
@@ -84,29 +84,22 @@ async function seed() {
   const tierFull = await db.feeTier.findUniqueOrThrow({ where: { code: "FULL" } });
   const tierHalf = await db.feeTier.findUniqueOrThrow({ where: { code: "HALF" } });
 
-  // --- Teachers (+ logins) ---
+  // --- Teachers ---
+  // Entities only — this seed creates NO logins.
+  // A committed seed cannot hold a password without publishing it, and this
+  // repo is public. Real teacher logins are created through Setup → Teachers,
+  // which hashes a password the operator chooses.
   const teacherDefs = [
-    { name: "Mr. A. Gunawardena", nic: "197812300456", phone: "0771111111", username: "gunawardena" },
-    { name: "Ms. R. Wickramasinghe", nic: "198534500678", phone: "0772222222", username: "wickrama" },
-    { name: "Mr. S. Rathnayake", nic: "198045600789", phone: "0773333333", username: "rathnayake" },
+    { name: "Mr. A. Gunawardena", nic: "197812300456", phone: "0771111111" },
+    { name: "Ms. R. Wickramasinghe", nic: "198534500678", phone: "0772222222" },
+    { name: "Mr. S. Rathnayake", nic: "198045600789", phone: "0773333333" },
   ];
   const teachers: Record<string, number> = {};
   for (const t of teacherDefs) {
     let teacher = await db.teacher.findFirst({ where: { name: t.name } });
     if (!teacher) {
-      teacher = await db.$transaction(async (tx) => {
-        const created = await tx.teacher.create({
-          data: { name: t.name, nic: t.nic, phone: t.phone, joinDate: new Date("2024-01-15") },
-        });
-        await tx.user.create({
-          data: {
-            username: t.username,
-            passwordHash: await bcrypt.hash("teach1234", 10),
-            role: "TEACHER",
-            teacherId: created.id,
-          },
-        });
-        return created;
+      teacher = await db.teacher.create({
+        data: { name: t.name, nic: t.nic, phone: t.phone, joinDate: new Date("2024-01-15") },
       });
     }
     teachers[t.name] = teacher.id;
@@ -171,7 +164,10 @@ async function seed() {
   console.log("Test data seeded:", counts);
   console.log("\nType these UIDs into the manual field on /registration:");
   for (const s of STUDENTS) console.log(`  ${s.cardUid}  -> ${s.name}`);
-  console.log("\nTeacher logins (password: teach1234): gunawardena, wickrama, rathnayake");
+  console.log(
+    "\nTeachers are entities only — no logins are seeded. Create one through" +
+      "\nSetup → Teachers to get a teacher login with a password you choose.",
+  );
 }
 
 async function main() {

@@ -8,17 +8,16 @@ import { colomboDateValue, colomboNow, to12Hour } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { isUniqueViolation } from "@/lib/prisma-errors";
+import {
+  searchStudentsQuery,
+  studentBriefSelect,
+  type StudentBrief,
+} from "@/lib/students";
 import { attendanceWindow } from "@/lib/schedule-time";
 
 export type Method = "NFC" | "QR" | "SEARCH";
 
-export type StudentBrief = {
-  id: number;
-  name: string;
-  school: string | null;
-  cardNumber: string | null;
-  photoUrl: string | null;
-};
+export type { StudentBrief };
 
 export type Candidate = {
   key: string;
@@ -59,13 +58,7 @@ const id = z.coerce.number().int().positive();
 const clientRefSchema = z.string().trim().min(8).max(64);
 const method = z.enum(["NFC", "QR", "SEARCH"]);
 
-const studentSelect = {
-  id: true,
-  name: true,
-  school: true,
-  cardNumber: true,
-  photoUrl: true,
-} as const;
+const studentSelect = studentBriefSelect;
 
 const courseSelect = {
   name: true,
@@ -260,21 +253,7 @@ async function writeMark(args: {
 export async function searchStudents(query: string): Promise<StudentBrief[]> {
   await requireOperationalAccess();
 
-  const q = query.trim();
-  if (q.length < 2) return [];
-
-  return db.student.findMany({
-    where: {
-      OR: [
-        { cardNumber: { contains: q, mode: "insensitive" } },
-        { name: { contains: q, mode: "insensitive" } },
-        { school: { contains: q, mode: "insensitive" } },
-      ],
-    },
-    select: studentSelect,
-    orderBy: { name: "asc" },
-    take: 10,
-  });
+  return searchStudentsQuery(query);
 }
 
 /**

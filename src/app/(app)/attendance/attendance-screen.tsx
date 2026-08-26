@@ -19,9 +19,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { to12Hour } from "@/lib/colombo-time";
 
-import type { Candidate, Method, ScanResult, StudentBrief } from "./actions";
+import type { StudentBrief } from "@/lib/students";
+import type { Candidate, Method, ScanResult } from "./actions";
 import { playAlreadyMarked, playReject, playSuccess, primeAudio } from "./sounds";
-import { StudentSearch } from "./student-search";
+import { StudentSearch } from "@/components/scan/student-search";
 
 type RecentMark = {
   attendanceId: number;

@@ -61,7 +61,10 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
 15. **All attendance/"now" logic is `Asia/Colombo`** via `src/lib/colombo-time.ts`,
     never the server clock or `new Date()` parts. Production is UTC; verify with
     `TZ=UTC npm run start`, because a dev box on `+0530` hides the bug.
-16. **Never sync props into state with an effect.** Filters are searchParams, so
+16. **Prices are recomputed server-side, always.** The client may say what to
+    charge and which combo was decided; it never sends an amount or asserts
+    eligibility. See `payment/actions.ts`.
+17. **Never sync props into state with an effect.** Filters are searchParams, so
     a filter change is a fresh server render; key the component on the filter
     signature and let it remount instead.
 
