@@ -14,3 +14,17 @@ export function normalizeCardUid(raw: string): string {
 export function formatCardUid(uid: string): string {
   return uid.match(/.{1,2}/g)?.join(":") ?? uid;
 }
+
+/**
+ * Card numbers are printed on the card AND encoded in its QR (plain string,
+ * e.g. "0186-0001-2000" — no URL, no prefix).
+ *
+ * `Student.cardNumber` is UNIQUE, so a typed number and a scanned one must
+ * normalise identically or the same card would look like two different ones.
+ * All whitespace is stripped rather than merely collapsed: staff commonly type
+ * "0186 - 0001 - 2000", and collapsing to single spaces would still not match
+ * the QR. Dashes and case are left exactly as printed — the value is opaque.
+ */
+export function normalizeCardNumber(raw: string): string {
+  return raw.replace(/\s+/g, "");
+}

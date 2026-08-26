@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 
 import {
   addEnrolment,
+  attachIdentifier,
   createStudent,
   lookupCard,
   refreshStudent,
@@ -52,6 +53,7 @@ export default async function RegistrationPage() {
       addEnrolment={addEnrolment}
       updateStudent={updateStudent}
       updatePhoto={updateStudentPhoto}
+      attachIdentifier={attachIdentifier}
     />
   );
 }

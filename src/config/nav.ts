@@ -68,7 +68,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/attendance",
     icon: ScanLine,
     roles: OPERATIONAL,
-    surfaces: ["terminal"],
+    surfaces: ["terminal", "desktop"],
   },
   {
     key: "payment",
@@ -149,6 +149,15 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["desktop"],
     group: "Setup",
   },
+  {
+    key: "schedules",
+    label: "Schedules",
+    href: "/admin/schedules",
+    icon: CalendarClock,
+    roles: OPERATIONAL,
+    surfaces: ["desktop"],
+    group: "Setup",
+  },
 
   // --- Back-office / desktop modules --------------------------------------
   {
@@ -156,14 +165,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "User Roles",
     href: "/user-roles",
     icon: ShieldCheck,
-    roles: ADMIN_ONLY,
-    surfaces: ["desktop"],
-  },
-  {
-    key: "schedules",
-    label: "Schedules",
-    href: "/schedules",
-    icon: CalendarClock,
     roles: ADMIN_ONLY,
     surfaces: ["desktop"],
   },

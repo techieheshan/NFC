@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCardUid } from "@/lib/card-uid";
 
-import type { ActionState } from "./actions";
+import type { ActionState, Identifier } from "./actions";
 import {
   EnrolmentPicker,
   type CourseOption,
@@ -19,14 +19,14 @@ import { PhotoCapture } from "./photo-capture";
 const EMPTY: ActionState = { ok: false };
 
 export function NewStudentForm({
-  cardUid,
+  captured,
   courses,
   feeTiers,
   action,
   onSaved,
   onBack,
 }: {
-  cardUid: string;
+  captured: Identifier;
   courses: CourseOption[];
   feeTiers: FeeTierOption[];
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -34,6 +34,10 @@ export function NewStudentForm({
   onBack: () => void;
 }) {
   const [state, formAction, pending] = useActionState(action, EMPTY);
+  // React resets the form once the action resolves, so defaults must reflect a
+  // rejected submission — otherwise "at least one identifier" or a card clash
+  // would clear the whole registration. See AGENTS.md rule 14.
+  const v = state.values;
 
   useEffect(() => {
     if (state.ok) onSaved();
@@ -44,9 +48,14 @@ export function NewStudentForm({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">New student</h1>
-          <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-sm">
+          <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <CreditCard className="size-4" aria-hidden />
-            <span className="font-mono">{formatCardUid(cardUid)}</span>
+            {captured.cardNumber && (
+              <span className="font-mono">{captured.cardNumber}</span>
+            )}
+            {captured.cardUid && (
+              <span className="font-mono">{formatCardUid(captured.cardUid)}</span>
+            )}
           </p>
         </div>
         <Button type="button" variant="ghost" onClick={onBack} className="gap-1.5">
@@ -55,7 +64,6 @@ export function NewStudentForm({
         </Button>
       </div>
 
-      <input type="hidden" name="cardUid" value={cardUid} />
 
       {courses.length === 0 ? (
         <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
@@ -65,26 +73,60 @@ export function NewStudentForm({
       ) : (
         <>
           <div className="space-y-4 rounded-xl border p-4">
+            {/*
+              Both identifiers are shown and editable, pre-filled from whatever
+              the scan captured. Only one is required — an office with no NFC
+              phone registers by card number alone, an NFC-only flow by UID.
+            */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cardNumber">Card number</Label>
+                <Input
+                  id="cardNumber"
+                  name="cardNumber"
+                  defaultValue={v?.cardNumber ?? captured.cardNumber ?? ""}
+                  placeholder="0186-0001-2000"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cardUid">Card UID</Label>
+                <Input
+                  id="cardUid"
+                  name="cardUid"
+                  defaultValue={v?.cardUid ?? captured.cardUid ?? ""}
+                  placeholder="04A22B9C"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <p className="text-muted-foreground -mt-2 text-xs sm:col-span-2">
+                At least one is required. Capture both when the card allows it.
+              </p>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" autoComplete="off" required />
+                <Input id="name" name="name" defaultValue={v?.name ?? ""} autoComplete="off" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phone" autoComplete="off" required />
+                <Input id="phone" name="phone" defaultValue={v?.phone ?? ""} autoComplete="off" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="school">School</Label>
-                <Input id="school" name="school" autoComplete="off" required />
+                <Input id="school" name="school" defaultValue={v?.school ?? ""} autoComplete="off" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nic">NIC (optional)</Label>
-                <Input id="nic" name="nic" autoComplete="off" />
+                <Input id="nic" name="nic" defaultValue={v?.nic ?? ""} autoComplete="off" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="address">Address (optional)</Label>
-                <Input id="address" name="address" autoComplete="off" />
+                <Input id="address" name="address" defaultValue={v?.address ?? ""} autoComplete="off" />
               </div>
             </div>
 

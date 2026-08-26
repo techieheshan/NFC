@@ -1,7 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { ArrowLeft, CreditCard, Pencil, Plus, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  CreditCard,
+  Link as LinkIcon,
+  Pencil,
+  Plus,
+  UserRound,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCardUid } from "@/lib/card-uid";
 
-import type { ActionState, StudentView } from "./actions";
+import type { ActionState, Identifier, StudentView } from "./actions";
 import {
   SELECT_CLASS,
   type CourseOption,
@@ -31,10 +38,12 @@ type Actions = {
   addEnrolment: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updateStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updatePhoto: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  attachIdentifier: (prev: ActionState, formData: FormData) => Promise<ActionState>;
 };
 
 export function ExistingStudent({
   student,
+  captured,
   courses,
   feeTiers,
   actions,
@@ -42,6 +51,8 @@ export function ExistingStudent({
   onBack,
 }: {
   student: StudentView;
+  /** What this visit's scan captured, so a missing identifier can be filled. */
+  captured: Identifier;
   courses: CourseOption[];
   feeTiers: FeeTierOption[];
   actions: Actions;
@@ -51,6 +62,19 @@ export function ExistingStudent({
   const [editing, setEditing] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [changingPhoto, setChangingPhoto] = useState(false);
+  const [attaching, setAttaching] = useState<"cardUid" | "cardNumber" | null>(null);
+
+  /**
+   * The student was found by one identifier but is missing the other, and this
+   * visit captured it — e.g. registered by QR, now tapped. Offer to fill it in
+   * rather than making staff re-register the card elsewhere.
+   */
+  const missing: { kind: "cardUid" | "cardNumber"; value: string } | null =
+    !student.cardUid && captured.cardUid
+      ? { kind: "cardUid", value: captured.cardUid }
+      : !student.cardNumber && captured.cardNumber
+        ? { kind: "cardNumber", value: captured.cardNumber }
+        : null;
 
   const activeCourseIds = student.enrolments
     .filter((e) => e.status === "ACTIVE")
@@ -61,10 +85,11 @@ export function ExistingStudent({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{student.name}</h1>
-          <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-sm">
+          <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <CreditCard className="size-4" aria-hidden />
+            <span className="font-mono">{student.cardNumber ?? "no card number"}</span>
             <span className="font-mono">
-              {student.cardUid ? formatCardUid(student.cardUid) : "No card"}
+              {student.cardUid ? formatCardUid(student.cardUid) : "no UID"}
             </span>
           </p>
         </div>
@@ -73,6 +98,23 @@ export function ExistingStudent({
           Scan another
         </Button>
       </div>
+
+      {missing && (
+        <div className="border-primary/30 bg-primary/5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+          <p className="text-sm">
+            This student has no{" "}
+            {missing.kind === "cardUid" ? "card UID" : "card number"} on file.
+            Add the one just scanned:{" "}
+            <span className="font-mono font-medium">
+              {missing.kind === "cardUid" ? formatCardUid(missing.value) : missing.value}
+            </span>
+          </p>
+          <Button size="sm" onClick={() => setAttaching(missing.kind)}>
+            <LinkIcon className="size-3.5" aria-hidden />
+            Add to student
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-start gap-5 rounded-xl border p-4">
         <div className="bg-muted relative size-28 shrink-0 overflow-hidden rounded-lg border">
@@ -216,6 +258,33 @@ export function ExistingStudent({
             <Label htmlFor="edit-address">Address</Label>
             <Input id="edit-address" name="address" defaultValue={student.address ?? ""} />
           </div>
+        </div>
+      </ActionDialog>
+
+      <ActionDialog
+        key={attaching ? `attach-${attaching}` : "attach-closed"}
+        open={attaching !== null}
+        onOpenChange={(o) => !o && setAttaching(null)}
+        onDone={onChanged}
+        action={actions.attachIdentifier}
+        title={attaching === "cardUid" ? "Add card UID" : "Add card number"}
+        description={`Link this identifier to ${student.name}.`}
+        submitLabel="Add"
+      >
+        <input type="hidden" name="studentId" value={student.id} />
+        <input type="hidden" name="kind" value={attaching ?? ""} />
+        <div className="space-y-2">
+          <Label htmlFor="attach-value">
+            {attaching === "cardUid" ? "Card UID" : "Card number"}
+          </Label>
+          <Input
+            id="attach-value"
+            name="value"
+            defaultValue={missing?.value ?? ""}
+            autoComplete="off"
+            spellCheck={false}
+            required
+          />
         </div>
       </ActionDialog>
 

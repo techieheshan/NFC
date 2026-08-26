@@ -5,7 +5,7 @@ import { CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-import type { ActionState, LookupResult, StudentView } from "./actions";
+import type { ActionState, Identifier, LookupResult, StudentView } from "./actions";
 import { CardScanner } from "./card-scanner";
 import { ExistingStudent } from "./existing-student";
 import type { CourseOption, FeeTierOption } from "./enrolment-picker";
@@ -13,19 +13,20 @@ import { NewStudentForm } from "./new-student-form";
 
 type Phase =
   | { kind: "scan" }
-  | { kind: "new"; cardUid: string }
-  | { kind: "existing"; student: StudentView }
+  | { kind: "new"; captured: Identifier }
+  | { kind: "existing"; student: StudentView; captured: Identifier }
   | { kind: "saved" };
 
 type Props = {
   courses: CourseOption[];
   feeTiers: FeeTierOption[];
-  lookupCard: (uid: string) => Promise<LookupResult>;
+  lookupCard: (input: Identifier) => Promise<LookupResult>;
   refreshStudent: (studentId: number) => Promise<StudentView | null>;
   createStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   addEnrolment: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updateStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updatePhoto: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  attachIdentifier: (prev: ActionState, formData: FormData) => Promise<ActionState>;
 };
 
 /**
@@ -42,6 +43,7 @@ export function RegistrationScreen({
   addEnrolment,
   updateStudent,
   updatePhoto,
+  attachIdentifier,
 }: Props) {
   const [phase, setPhase] = useState<Phase>({ kind: "scan" });
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -54,22 +56,26 @@ export function RegistrationScreen({
    */
   const shownStudentId = useRef<number | null>(null);
 
-  const showStudent = useCallback((student: StudentView) => {
+  /** What the current visit's scan captured, kept for the refresh path. */
+  const capturedRef = useRef<Identifier>({});
+
+  const showStudent = useCallback((student: StudentView, captured: Identifier) => {
     shownStudentId.current = student.id;
-    setPhase({ kind: "existing", student });
+    capturedRef.current = captured;
+    setPhase({ kind: "existing", student, captured });
   }, []);
 
-  const handleUid = useCallback(
-    (uid: string) => {
+  const handleIdentify = useCallback(
+    (identifier: Identifier) => {
       setLookupError(null);
       startTransition(async () => {
-        const result = await lookupCard(uid);
+        const result = await lookupCard(identifier);
         if (result.status === "invalid") {
           setLookupError(result.message);
         } else if (result.status === "new") {
-          setPhase({ kind: "new", cardUid: result.cardUid });
+          setPhase({ kind: "new", captured: result.captured });
         } else {
-          showStudent(result.student);
+          showStudent(result.student, result.captured);
         }
       });
     },
@@ -78,6 +84,7 @@ export function RegistrationScreen({
 
   const backToScan = useCallback(() => {
     shownStudentId.current = null;
+    capturedRef.current = {};
     setLookupError(null);
     setPhase({ kind: "scan" });
   }, []);
@@ -90,7 +97,7 @@ export function RegistrationScreen({
 
     startTransition(async () => {
       const fresh = await refreshStudent(studentId);
-      if (fresh) showStudent(fresh);
+      if (fresh) showStudent(fresh, capturedRef.current);
     });
   }, [refreshStudent, showStudent]);
 
@@ -116,7 +123,7 @@ export function RegistrationScreen({
   if (phase.kind === "new") {
     return (
       <NewStudentForm
-        cardUid={phase.cardUid}
+        captured={phase.captured}
         courses={courses}
         feeTiers={feeTiers}
         action={createStudent}
@@ -130,9 +137,10 @@ export function RegistrationScreen({
     return (
       <ExistingStudent
         student={phase.student}
+        captured={phase.captured}
         courses={courses}
         feeTiers={feeTiers}
-        actions={{ addEnrolment, updateStudent, updatePhoto }}
+        actions={{ addEnrolment, updateStudent, updatePhoto, attachIdentifier }}
         onChanged={refresh}
         onBack={backToScan}
       />
@@ -141,7 +149,7 @@ export function RegistrationScreen({
 
   return (
     <div className="space-y-4">
-      <CardScanner onUid={handleUid} busy={pending} />
+      <CardScanner onIdentify={handleIdentify} busy={pending} />
       {lookupError && (
         <p role="alert" className="text-destructive mx-auto max-w-md text-sm">
           {lookupError}

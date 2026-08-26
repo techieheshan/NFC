@@ -1,100 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Loader2, Nfc, Search } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Nfc, QrCode, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-/**
- * Minimal Web NFC typings — `NDEFReader` is Chrome/Android only and isn't in
- * lib.dom, so we declare just the surface we use rather than pulling in a
- * polyfill's types.
- */
-type NDEFReadingEvent = Event & { serialNumber?: string };
-type NDEFReaderLike = {
-  scan: (options?: { signal?: AbortSignal }) => Promise<void>;
-  onreading: ((event: NDEFReadingEvent) => void) | null;
-  onreadingerror: (() => void) | null;
-};
-type NDEFReaderCtor = new () => NDEFReaderLike;
+import type { Identifier } from "./actions";
+import { QrScanner } from "@/components/scan/qr-scanner";
+import { useNfcScan } from "@/components/scan/use-nfc-scan";
 
 /**
- * Web NFC availability is browser state, so it's read through
- * `useSyncExternalStore` rather than an effect. The server snapshot is
- * "unknown", which is what the hydration pass renders — that keeps the markup
- * identical on both sides and avoids briefly claiming NFC is missing on a
- * phone that has it.
+ * Identify step. A card carries two identifiers and this offers all three ways
+ * to capture one:
+ *   NFC tap  -> cardUid      (Chrome/Android over HTTPS)
+ *   QR scan  -> cardNumber   (any device with a camera — the non-NFC phones)
+ *   typing   -> either       (two labelled fields, so staff know which is which)
  */
-type NfcSupport = "unknown" | "supported" | "unsupported";
-
-const subscribeToNothing = () => () => {};
-const readNfcSupport = (): NfcSupport =>
-  "NDEFReader" in window ? "supported" : "unsupported";
-const nfcSupportOnServer = (): NfcSupport => "unknown";
-
 export function CardScanner({
-  onUid,
+  onIdentify,
   busy,
 }: {
-  onUid: (uid: string) => void;
+  onIdentify: (identifier: Identifier) => void;
   busy: boolean;
 }) {
-  const nfcSupport = useSyncExternalStore(
-    subscribeToNothing,
-    readNfcSupport,
-    nfcSupportOnServer,
-  );
-  const [scanning, setScanning] = useState(false);
-  const [nfcError, setNfcError] = useState<string | null>(null);
-  const [manual, setManual] = useState("");
-  const abortRef = useRef<AbortController | null>(null);
+  const {
+    support: nfcSupport,
+    scanning,
+    error: nfcError,
+    start: startScan,
+    stop: stopScan,
+  } = useNfcScan((uid) => onIdentify({ cardUid: uid }));
 
-  // Stop an in-flight scan if the screen goes away mid-read.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [manualUid, setManualUid] = useState("");
+  const [manualNumber, setManualNumber] = useState("");
 
-  async function startScan() {
-    setNfcError(null);
-
-    const Ctor = (window as unknown as { NDEFReader?: NDEFReaderCtor }).NDEFReader;
-    if (!Ctor) return;
-
-    try {
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      const reader = new Ctor();
-      reader.onreading = (event) => {
-        const uid = event.serialNumber;
-        if (uid) {
-          controller.abort();
-          setScanning(false);
-          onUid(uid);
-        }
-      };
-      reader.onreadingerror = () => {
-        setNfcError("Couldn't read that card. Try again.");
-      };
-
-      await reader.scan({ signal: controller.signal });
-      setScanning(true);
-    } catch (error) {
-      setScanning(false);
-      const name = (error as { name?: string })?.name;
-      setNfcError(
-        name === "NotAllowedError"
-          ? "NFC permission was denied. Allow it in the browser, or type the UID below."
-          : "Couldn't start the NFC scan. Type the UID below instead.",
-      );
-    }
-  }
-
-  function stopScan() {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setScanning(false);
-  }
+  const canSubmitManual = manualUid.trim() !== "" || manualNumber.trim() !== "";
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -104,14 +47,14 @@ export function CardScanner({
         </span>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Registration</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Scan a card to begin. New cards start a registration; known cards open
-          the student.
+          Tap the card, scan its QR, or type an identifier. New cards start a
+          registration; known cards open the student.
         </p>
       </div>
 
-      {nfcSupport !== "unsupported" && (
-        <div className="space-y-3">
-          {scanning ? (
+      <div className="space-y-3">
+        {nfcSupport !== "unsupported" &&
+          (scanning ? (
             <div className="space-y-3 rounded-xl border border-dashed p-6 text-center">
               <Loader2 className="text-primary mx-auto size-6 animate-spin" aria-hidden />
               <p className="text-sm font-medium">Hold the card against the phone…</p>
@@ -126,16 +69,25 @@ export function CardScanner({
               disabled={busy || nfcSupport === "unknown"}
             >
               <Nfc className="size-5" aria-hidden />
-              Scan card
+              Tap card (NFC)
             </Button>
-          )}
-        </div>
-      )}
+          ))}
+
+        <Button
+          onClick={() => setQrOpen(true)}
+          variant={nfcSupport === "unsupported" ? "default" : "secondary"}
+          className="h-14 w-full gap-2 text-base"
+          disabled={busy}
+        >
+          <QrCode className="size-5" aria-hidden />
+          Scan QR code
+        </Button>
+      </div>
 
       {nfcSupport === "unsupported" && (
         <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
-          This browser can&apos;t read NFC. Web NFC needs Chrome on Android over
-          HTTPS. Type or paste the card UID below instead.
+          This browser can&apos;t read NFC (that needs Chrome on Android over
+          HTTPS). Use the QR scan or type an identifier below.
         </p>
       )}
 
@@ -148,33 +100,63 @@ export function CardScanner({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (manual.trim()) onUid(manual);
+          if (!canSubmitManual) return;
+          onIdentify({
+            cardUid: manualUid.trim() || undefined,
+            cardNumber: manualNumber.trim() || undefined,
+          });
         }}
-        className="space-y-2"
+        className="space-y-3 rounded-xl border p-4"
       >
-        <Label htmlFor="manual-uid">
-          {nfcSupport === "unsupported" ? "Card UID" : "…or enter the UID manually"}
-        </Label>
-        <div className="flex gap-2">
+        <p className="text-sm font-medium">Or enter manually</p>
+
+        {/* Two labelled fields rather than one guess-the-format box: the two
+            identifiers look nothing alike and are normalised differently. */}
+        <div className="space-y-2">
+          <Label htmlFor="manual-number">Card number</Label>
+          <Input
+            id="manual-number"
+            value={manualNumber}
+            onChange={(e) => setManualNumber(e.target.value)}
+            placeholder="0186-0001-2000"
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="numeric"
+          />
+          <p className="text-muted-foreground text-xs">Printed on the card.</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="manual-uid">Card UID</Label>
           <Input
             id="manual-uid"
-            value={manual}
-            onChange={(e) => setManual(e.target.value)}
+            value={manualUid}
+            onChange={(e) => setManualUid(e.target.value)}
             placeholder="04:A2:2B:9C"
             autoCapitalize="characters"
             autoComplete="off"
             spellCheck={false}
           />
-          <Button type="submit" variant="secondary" disabled={busy || !manual.trim()}>
-            {busy ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            ) : (
-              <Search className="size-4" aria-hidden />
-            )}
-            <span className="sr-only">Look up card</span>
-          </Button>
+          <p className="text-muted-foreground text-xs">
+            The NFC chip serial, for cards already tapped elsewhere.
+          </p>
         </div>
+
+        <Button type="submit" variant="secondary" className="w-full gap-2" disabled={busy || !canSubmitManual}>
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <Search className="size-4" aria-hidden />
+          )}
+          Look up
+        </Button>
       </form>
+
+      <QrScanner
+        open={qrOpen}
+        onOpenChange={setQrOpen}
+        onDecode={(value) => onIdentify({ cardNumber: value })}
+      />
     </div>
   );
 }

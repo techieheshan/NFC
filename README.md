@@ -112,16 +112,102 @@ Creating a teacher writes a `Teacher` **and** their login `User` inside one
 `$transaction`, so a duplicate username leaves neither behind. Deactivating a
 teacher disables their login in the same transaction.
 
+### Schedules (`/admin/schedules`)
+
+The timetable the Attendance tag will match against. Two sections, ADMIN + STAFF.
+
+- **Weekly timetable** (`Schedule`) — recurring sessions. A course may hold
+  several, and duplicates/overlaps are deliberately allowed. There is **no
+  delete**, only deactivate: attendance records are interpreted against the
+  timetable as it was, so it has to survive as history.
+- **Additional classes** (`AdditionalClass`) — one-off dated sessions. The
+  schema gives these no `active` flag, so removal is a real delete, permitted
+  **only while no `Attendance` row references them**. The server re-checks that
+  on every delete; the UI just shows a locked "Used" button instead.
+
+**Attendance windows** are minute offsets, both defaulting to 30 and editable
+per row. They count from *different ends* of the class, which is the easy thing
+to get wrong:
+
+```
+opens  = startTime - attendanceOpensBeforeMin
+closes = endTime   - attendanceClosesBeforeMin
+```
+
+So a 3:00–5:00 class with 30/30 accepts marks between 2:30 and 4:30 — the close
+counts back from the end, so latecomers past 4:30 aren't marked present. This
+tag only stores and displays the window; [`attendanceWindow`](src/lib/schedule-time.ts)
+computes it for display. Evaluating it against "now" belongs to Attendance.
+
+Times are `"HH:mm"` strings. Because they're zero-padded 24h, `endTime > startTime`
+is a plain string comparison — which is exactly how it's validated.
+
+### Attendance (`/attendance`)
+
+Scan-driven marking, ADMIN + STAFF. Three ways in — NFC tap (UID), QR scan (card
+number), or a typeahead search over card number / name / school — all converging
+on one matcher.
+
+**Everything "now" is Asia/Colombo**, never the server clock. Production runs
+UTC, so an 8–10 PM Colombo class would otherwise resolve against the previous
+UTC day and fall outside its own window. [`colomboNow`](src/lib/colombo-time.ts)
+derives the weekday, wall-clock time and calendar date through `Intl`, and
+`Attendance.date` stores the Colombo day. **Test the app under `TZ=UTC`** — a
+dev machine set to `+0530` will pass either way and hide the bug.
+
+The matcher collects the student's candidate classes for today — active
+schedules on today's weekday plus additional classes dated today — and keeps
+those whose window contains now. Then:
+
+| Candidates | Behaviour |
+| --- | --- |
+| 0 | Explains *why*: the next class's opens-at, the last one's closed-at, or "no class today" |
+| 1 regular | Marks immediately, success cue, one-tap Undo |
+| 1 additional | Asks first — one-off classes are unusual enough to acknowledge |
+| 2+ | Pick-list tagged regular/additional |
+| already marked | "Already marked at HH:mm", distinct cue, no second row |
+
+**Idempotency is two-layered.** An explicit check on (student, course, date
+[, additionalClass]) implements the app-level rule the schema deliberately
+leaves to code, and the unique `clientRef` — a UUID generated on the client —
+catches the concurrent double-submit that the check alone would race past.
+`clientRef` exists now so Tag B's offline outbox can dedupe replays on it.
+
+`markCandidate` re-derives the chosen class server-side rather than trusting the
+posted ids, so a stale or forged client can't mark a class that isn't actually
+open for that student. Undo is restricted to today's rows — correcting history
+is not this screen's job.
+
+Cues are synthesised with Web Audio (no asset files): rising two-tone for a
+fresh mark, flat double blip for already-marked, low buzz for rejects. The
+context is unlocked on the first tap, since browsers refuse to start one without
+a gesture.
+
 ### Registration (`/registration`)
 
 Scan-driven, ADMIN + STAFF. A card UID either opens a new-student form or loads
 the student it already belongs to. There is deliberately no student list here —
 browsing belongs to the Search tag.
 
+- **A card carries two identifiers.** `Student.cardUid` is the NFC chip serial;
+  `Student.cardNumber` is the number printed on the card and encoded in its QR
+  (a plain string like `0186-0001-2000` — no URL, no prefix). Both are unique
+  and both are optional, but **at least one is required**, enforced server-side:
+  an office with no NFC phone registers by QR alone, an NFC-only flow by UID.
+  Lookup matches on either, so tapping a card and scanning its QR find the same
+  student, and a student missing one identifier can have it filled in later.
 - **Card UIDs are normalised** by [`normalizeCardUid`](src/lib/card-uid.ts) to
   bare uppercase hex. Web NFC returns `04:a2:2b:9c` while staff may type
   `04a22b9c`; `Student.cardUid` is unique, so both must resolve to one string or
   a known card would look new.
+- **Card numbers are normalised** by `normalizeCardNumber`, which strips *all*
+  whitespace and leaves dashes/case as printed. Staff type `0186 - 0001 - 2000`;
+  merely collapsing runs of spaces would still not equal the QR's value, and the
+  column is unique, so the same card would look like two.
+- **QR scanning** prefers the native `BarcodeDetector` and falls back to `jsqr`,
+  which is behind a dynamic import so the decoder never reaches devices that
+  have the native API or never open the scanner — this screen also runs on the
+  terminal.
 - **Web NFC** (`NDEFReader`) is Chrome-on-Android-over-HTTPS only. Support is
   read with `useSyncExternalStore`, and every other browser gets the manual UID
   field instead — that fallback is the desktop path, not a degraded mode.

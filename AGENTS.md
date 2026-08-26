@@ -45,11 +45,25 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
 11. **All file uploads are server-side.** Go through `src/lib/photo.ts`. Never
     add unsigned/browser-direct uploads, and never expose a storage secret to
     the client (nothing storage-related may become `NEXT_PUBLIC_`).
-12. **Normalise card UIDs** with `normalizeCardUid` on every path that reads or
-    writes `Student.cardUid`. It is a unique column fed by both NFC and typing.
+12. **Normalise card identifiers** with `normalizeCardUid` / `normalizeCardNumber`
+    on every path that reads or writes `Student.cardUid` / `Student.cardNumber`.
+    Both are unique columns fed by scanning AND typing, so the two entry routes
+    must land on identical strings. A student needs at least one of them.
 13. **Money stays out of registration.** Creating a student leaves
     `admissionPaid = false` and writes no `Payment` rows; charging belongs to
     the Payment tag.
+14. **React 19 resets an uncontrolled form once its action resolves.** On a
+    validation error that would wipe what the user typed, so actions return the
+    submitted `values` and inputs use them as defaults. A `<select>` needs more:
+    `defaultValue` only applies at mount, so key it on the echoed value —
+    otherwise it resets to a `disabled` placeholder and the browser drops the
+    field from the submission entirely. See `admin/schedules/schedule-manager.tsx`.
+15. **All attendance/"now" logic is `Asia/Colombo`** via `src/lib/colombo-time.ts`,
+    never the server clock or `new Date()` parts. Production is UTC; verify with
+    `TZ=UTC npm run start`, because a dev box on `+0530` hides the bug.
+16. **Never sync props into state with an effect.** Filters are searchParams, so
+    a filter change is a fresh server render; key the component on the filter
+    signature and let it remount instead.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

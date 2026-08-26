@@ -216,6 +216,7 @@ model Student {
   nic           String?
   photoUrl      String? // S3-compatible object key/URL, compressed ~400px
   cardUid       String? @unique // current active NFC UID; overwritten on reissue
+  cardNumber    String? @unique // printed on the card + encoded in its QR, e.g. "0186-0001-2000"
   admissionPaid Boolean @default(false) // one-time admission fee flag
 
   enrollments Enrollment[]
@@ -348,6 +349,9 @@ model Attendance {
   markedBy          User             @relation("AttendanceMarkedBy", fields: [markedById], references: [id])
   markedById        String
   markedAt          DateTime         @default(now())
+  // Client-generated id so the coming offline sync can replay a queued mark
+  // without creating duplicates. Unique => the second attempt is a no-op.
+  clientRef         String           @unique
 
   // No @@unique here: Postgres treats NULLs as DISTINCT, so a unique across a
   // nullable additionalClassId would NOT block duplicate marks on regular

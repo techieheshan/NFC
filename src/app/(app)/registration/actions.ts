@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireOperationalAccess } from "@/lib/authz";
-import { normalizeCardUid } from "@/lib/card-uid";
+import { normalizeCardNumber, normalizeCardUid } from "@/lib/card-uid";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { isUniqueViolation } from "@/lib/prisma-errors";
@@ -17,7 +17,30 @@ import {
 
 const PATH = "/registration";
 
-export type ActionState = { ok: boolean; error?: string };
+/**
+ * `values` echoes back what was submitted. React 19 resets an uncontrolled form
+ * once its action resolves, which on a validation error would wipe everything
+ * the user typed — so failures return the submitted values and the inputs use
+ * them as defaults. See AGENTS.md rule 14.
+ */
+export type ActionState = {
+  ok: boolean;
+  error?: string;
+  values?: Record<string, string>;
+};
+
+/** Every string field of a submission (the photo File is skipped). */
+function echo(formData: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of formData.entries()) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
+function fail(formData: FormData, error: string): ActionState {
+  return { ok: false, error, values: echo(formData) };
+}
 
 export type EnrolmentView = {
   id: number;
@@ -36,14 +59,23 @@ export type StudentView = {
   nic: string | null;
   photoUrl: string | null;
   cardUid: string | null;
+  cardNumber: string | null;
   admissionPaid: boolean;
   enrolments: EnrolmentView[];
 };
 
+/**
+ * What the identify step captured. A card carries both identifiers, but any one
+ * scan only yields one of them: an NFC tap gives the UID, a QR gives the printed
+ * card number. Either is enough to find a student.
+ */
+export type Identifier = { cardUid?: string; cardNumber?: string };
+
 export type LookupResult =
   | { status: "invalid"; message: string }
-  | { status: "new"; cardUid: string }
-  | { status: "found"; student: StudentView };
+  | { status: "new"; captured: Identifier }
+  /** `captured` is echoed so the caller can offer to fill in a missing field. */
+  | { status: "found"; student: StudentView; captured: Identifier };
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -64,6 +96,13 @@ const uidSchema = z
   .transform(normalizeCardUid)
   .refine((v) => /^[0-9A-Z]+$/.test(v), "Card UID must be hexadecimal.");
 
+const cardNumberSchema = z
+  .string()
+  .trim()
+  .min(3, "Card number looks too short.")
+  .max(64, "Card number looks too long.")
+  .transform(normalizeCardNumber);
+
 const studentDetails = {
   name: z.string().trim().min(1, "Name is required.").max(120),
   phone: z.string().trim().min(1, "Phone is required.").max(30),
@@ -73,6 +112,12 @@ const studentDetails = {
 };
 
 const id = z.coerce.number().int().positive();
+
+/** An untouched form field arrives as "" — that means "not captured", not invalid. */
+function blankToUndefined(value: FormDataEntryValue | null): string | undefined {
+  const v = typeof value === "string" ? value.trim() : "";
+  return v === "" ? undefined : v;
+}
 
 /** Repeatable enrolment rows arrive as parallel `courseId` / `feeTierId` lists. */
 function readEnrolments(formData: FormData) {
@@ -134,6 +179,7 @@ function toStudentView(student: {
   nic: string | null;
   photoUrl: string | null;
   cardUid: string | null;
+  cardNumber: string | null;
   admissionPaid: boolean;
   enrollments: {
     id: number;
@@ -158,6 +204,7 @@ function toStudentView(student: {
     nic: student.nic,
     photoUrl: student.photoUrl,
     cardUid: student.cardUid,
+    cardNumber: student.cardNumber,
     admissionPaid: student.admissionPaid,
     enrolments: student.enrollments.map((e) => ({
       id: e.id,
@@ -187,28 +234,146 @@ const studentInclude = {
   },
 } as const;
 
+/**
+ * Both cardUid and cardNumber are unique, so a clash has to name the offending
+ * one. Prisma's `meta.target` isn't reliably populated through the driver
+ * adapter, so the values are re-checked directly instead of parsed out of the
+ * error — deterministic, and it costs one query on a path that already failed.
+ */
+async function clashMessage(candidate: {
+  cardUid?: string;
+  cardNumber?: string;
+}): Promise<string> {
+  const [uidTaken, numberTaken] = await Promise.all([
+    candidate.cardUid
+      ? db.student.findUnique({ where: { cardUid: candidate.cardUid }, select: { id: true } })
+      : null,
+    candidate.cardNumber
+      ? db.student.findUnique({ where: { cardNumber: candidate.cardNumber }, select: { id: true } })
+      : null,
+  ]);
+
+  if (uidTaken && numberTaken) {
+    return "That card UID and card number are both already assigned to other students.";
+  }
+  if (numberTaken) return "That card number is already assigned to another student.";
+  if (uidTaken) return "That card UID is already assigned to another student.";
+  return "That card identifier is already assigned to another student.";
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
 
-/** Step A: is this card known? Read-only, but still role-guarded. */
-export async function lookupCard(rawUid: string): Promise<LookupResult> {
+/**
+ * Step A: is this card known? Read-only, but still role-guarded.
+ *
+ * Matches on cardUid OR cardNumber, so tapping a card and scanning its QR both
+ * resolve to the same student — the two identifiers are printed on one card.
+ */
+export async function lookupCard(input: Identifier): Promise<LookupResult> {
   await requireOperationalAccess();
 
-  const parsed = uidSchema.safeParse(rawUid);
-  if (!parsed.success) {
-    return { status: "invalid", message: parsed.error.issues[0].message };
+  const captured: Identifier = {};
+
+  if (input.cardUid !== undefined && input.cardUid !== "") {
+    const parsed = uidSchema.safeParse(input.cardUid);
+    if (!parsed.success) {
+      return { status: "invalid", message: parsed.error.issues[0].message };
+    }
+    captured.cardUid = parsed.data;
   }
 
-  const cardUid = parsed.data;
-  const student = await db.student.findUnique({
-    where: { cardUid },
+  if (input.cardNumber !== undefined && input.cardNumber !== "") {
+    const parsed = cardNumberSchema.safeParse(input.cardNumber);
+    if (!parsed.success) {
+      return { status: "invalid", message: parsed.error.issues[0].message };
+    }
+    captured.cardNumber = parsed.data;
+  }
+
+  if (!captured.cardUid && !captured.cardNumber) {
+    return { status: "invalid", message: "Scan a card or enter an identifier." };
+  }
+
+  const or: { cardUid?: string; cardNumber?: string }[] = [];
+  if (captured.cardUid) or.push({ cardUid: captured.cardUid });
+  if (captured.cardNumber) or.push({ cardNumber: captured.cardNumber });
+
+  const student = await db.student.findFirst({
+    where: { OR: or },
     include: studentInclude,
   });
 
   return student
-    ? { status: "found", student: toStudentView(student) }
-    : { status: "new", cardUid };
+    ? { status: "found", student: toStudentView(student), captured }
+    : { status: "new", captured };
+}
+
+/**
+ * Fills in whichever identifier a known student is missing — the QR-registered
+ * student whose card is later tapped, or vice versa. Never overwrites a value
+ * that is already set; that would be a card reissue, which belongs elsewhere.
+ */
+export async function attachIdentifier(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireOperationalAccess();
+
+  const studentId = id.safeParse(formData.get("studentId"));
+  if (!studentId.success) return fail(formData, "Invalid student.");
+
+  const kind = formData.get("kind");
+  const raw = String(formData.get("value") ?? "");
+
+  if (kind !== "cardUid" && kind !== "cardNumber") {
+    return fail(formData, "Unknown identifier type.");
+  }
+
+  const parsed =
+    kind === "cardUid" ? uidSchema.safeParse(raw) : cardNumberSchema.safeParse(raw);
+  if (!parsed.success) {
+    return fail(formData, parsed.error.issues[0].message);
+  }
+
+  const current = await db.student.findUnique({
+    where: { id: studentId.data },
+    select: { cardUid: true, cardNumber: true },
+  });
+  if (!current) return fail(formData, "Student not found.");
+  if (current[kind]) {
+    return {
+      ok: false,
+      values: echo(formData),
+      error:
+        kind === "cardUid"
+          ? "This student already has a card UID."
+          : "This student already has a card number.",
+    };
+  }
+
+  try {
+    await db.student.update({
+      where: { id: studentId.data },
+      data: { [kind]: parsed.data },
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        ok: false,
+        values: echo(formData),
+        error:
+          kind === "cardUid"
+            ? "That card UID is already assigned to another student."
+            : "That card number is already assigned to another student.",
+      };
+    }
+    throw error;
+  }
+
+  revalidatePath(PATH);
+  return { ok: true };
 }
 
 /**
@@ -225,34 +390,48 @@ export async function createStudent(
 ): Promise<ActionState> {
   await requireOperationalAccess();
 
+  /**
+   * Both identifiers are optional individually but at least one is required:
+   * an NFC-only terminal may capture just the UID, while an office with no NFC
+   * phone has only the printed/QR card number. Blank means "not captured", and
+   * is stored as NULL so the unique indexes stay usable.
+   */
   const parsed = z
-    .object({ ...studentDetails, cardUid: uidSchema })
+    .object({
+      ...studentDetails,
+      cardUid: uidSchema.optional(),
+      cardNumber: cardNumberSchema.optional(),
+    })
+    .refine((v) => Boolean(v.cardUid) || Boolean(v.cardNumber), {
+      message: "Capture a card UID or a card number (at least one).",
+    })
     .safeParse({
       name: formData.get("name"),
       phone: formData.get("phone"),
       school: formData.get("school"),
       address: formData.get("address") ?? "",
       nic: formData.get("nic") ?? "",
-      cardUid: formData.get("cardUid"),
+      cardUid: blankToUndefined(formData.get("cardUid")),
+      cardNumber: blankToUndefined(formData.get("cardNumber")),
     });
 
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0].message };
+    return fail(formData, parsed.error.issues[0].message);
   }
 
   const rawRows = readEnrolments(formData);
-  if (!rawRows) return { ok: false, error: "Enrolment rows are malformed." };
+  if (!rawRows) return fail(formData, "Enrolment rows are malformed.");
 
   const rows = enrolmentSchema.safeParse(rawRows);
   if (!rows.success) {
-    return { ok: false, error: rows.error.issues[0].message };
+    return fail(formData, rows.error.issues[0].message);
   }
 
   const refError = await assertEnrolmentRefs(rows.data);
-  if (refError) return { ok: false, error: refError };
+  if (refError) return fail(formData, refError);
 
   const photo = await readPhoto(formData);
-  if (typeof photo === "string") return { ok: false, error: photo };
+  if (typeof photo === "string") return fail(formData, photo);
 
   let uploadedFor: number | null = null;
 
@@ -261,7 +440,13 @@ export async function createStudent(
       async (tx) => {
         // admissionPaid deliberately left at its default false — no money is
         // charged during registration.
-        const student = await tx.student.create({ data: parsed.data });
+        const student = await tx.student.create({
+          data: {
+            ...parsed.data,
+            cardUid: parsed.data.cardUid ?? null,
+            cardNumber: parsed.data.cardNumber ?? null,
+          },
+        });
 
         await tx.enrollment.createMany({
           data: rows.data.map((r) => ({
@@ -289,7 +474,7 @@ export async function createStudent(
       await deleteStudentPhoto(uploadedFor).catch(() => {});
     }
     if (isUniqueViolation(error)) {
-      return { ok: false, error: "That card is already assigned to a student." };
+      return fail(formData, await clashMessage(parsed.data));
     }
     throw error;
   }
@@ -369,7 +554,7 @@ export async function updateStudent(
     });
 
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0].message };
+    return fail(formData, parsed.error.issues[0].message);
   }
 
   const { studentId, ...details } = parsed.data;
