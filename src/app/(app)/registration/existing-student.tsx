@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { formatCardUid } from "@/lib/card-uid";
 
 import type { ActionState, Identifier, StudentView } from "./actions";
+import { CardFields } from "./card-fields";
 import {
   SELECT_CLASS,
   type CourseOption,
@@ -233,32 +234,52 @@ export function ExistingStudent({
         onDone={onChanged}
         action={actions.updateStudent}
         title="Edit details"
-        description="Update this student's contact details."
+        description="Update this student's details, including their card."
         submitLabel="Save"
       >
-        <input type="hidden" name="studentId" value={student.id} />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="edit-name">Name</Label>
-            <Input id="edit-name" name="name" defaultValue={student.name} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-phone">Phone</Label>
-            <Input id="edit-phone" name="phone" defaultValue={student.phone ?? ""} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-school">School</Label>
-            <Input id="edit-school" name="school" defaultValue={student.school ?? ""} required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-nic">NIC</Label>
-            <Input id="edit-nic" name="nic" defaultValue={student.nic ?? ""} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-address">Address</Label>
-            <Input id="edit-address" name="address" defaultValue={student.address ?? ""} />
-          </div>
-        </div>
+        {/*
+          `v` is the echoed submission. A card clash keeps this dialog open, and
+          React 19 has already reset the form by then — without these defaults
+          every other edit in the dialog would be wiped. See AGENTS.md rule 14.
+        */}
+        {(v) => (
+          <>
+            <input type="hidden" name="studentId" value={student.id} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="edit-name">Name</Label>
+                <Input id="edit-name" name="name" defaultValue={v?.name ?? student.name} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input id="edit-phone" name="phone" defaultValue={v?.phone ?? student.phone ?? ""} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-school">School</Label>
+                <Input id="edit-school" name="school" defaultValue={v?.school ?? student.school ?? ""} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-nic">NIC</Label>
+                <Input id="edit-nic" name="nic" defaultValue={v?.nic ?? student.nic ?? ""} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-address">Address</Label>
+                <Input id="edit-address" name="address" defaultValue={v?.address ?? student.address ?? ""} />
+              </div>
+            </div>
+
+            {/* Overwrite in place: a typo gets corrected, and a lost card is
+                reissued by writing the new UID over the old one. */}
+            <div className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Card</p>
+              <CardFields
+                idPrefix="edit"
+                defaultCardNumber={student.cardNumber ?? ""}
+                defaultCardUid={student.cardUid ?? ""}
+              />
+            </div>
+          </>
+        )}
       </ActionDialog>
 
       <ActionDialog
@@ -331,7 +352,8 @@ function ActionDialog({
   title: string;
   description: string;
   submitLabel: string;
-  children: React.ReactNode;
+  /** A render function receives the echoed values of a rejected submission. */
+  children: React.ReactNode | ((values?: Record<string, string>) => React.ReactNode);
 }) {
   const [state, formAction, pending] = useActionState(action, EMPTY);
 
@@ -352,7 +374,7 @@ function ActionDialog({
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {children}
+            {typeof children === "function" ? children(state.values) : children}
             {state.error && (
               <p role="alert" className="text-destructive text-sm">
                 {state.error}

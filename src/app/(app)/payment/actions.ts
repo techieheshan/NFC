@@ -336,6 +336,8 @@ export async function takePayment(input: {
           id: true,
           name: true,
           defaultFee: true,
+          // Frozen onto each CLASS payment at creation.
+          instituteSharePercent: true,
           teacher: { select: { name: true } },
           subject: { select: { label: true } },
           grade: { select: { label: true } },
@@ -492,6 +494,9 @@ export async function takePayment(input: {
           amount,
           takenById: user.id,
           paidAt,
+          // Freeze the institute's cut as it stands right now. Editing the
+          // course's % later must not rewrite this already-paid slip.
+          instituteSharePercentApplied: e.course.instituteSharePercent,
           // A refusal still records the combo that was offered, so staff can
           // later justify why the discount was withheld.
           comboId: inCombo?.comboId ?? null,

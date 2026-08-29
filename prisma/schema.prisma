@@ -417,6 +417,10 @@ model Payment {
   billingMonth Int? // 1..12
   feeTier      FeeTier? @relation(fields: [feeTierId], references: [id])
   feeTierId    Int?
+  // The institute's cut FROZEN at the moment of payment. Course.instituteSharePercent
+  // can be edited later; without this, changing it would silently rewrite every
+  // past payslip. Null on ADMISSION/SMART_CARD (no split) and on legacy rows.
+  instituteSharePercentApplied Decimal? @db.Decimal(5, 2)
 
   // Combined-payment audit (CLASS only). If combo applied, comboId set +
   // comboApplied true. If refused, comboApplied false + reason REQUIRED.

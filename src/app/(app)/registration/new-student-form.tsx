@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { formatCardUid } from "@/lib/card-uid";
 
 import type { ActionState, Identifier } from "./actions";
+import { CardFields } from "./card-fields";
 import {
   EnrolmentPicker,
   type CourseOption,
@@ -75,37 +76,16 @@ export function NewStudentForm({
           <div className="space-y-4 rounded-xl border p-4">
             {/*
               Both identifiers are shown and editable, pre-filled from whatever
-              the scan captured. Only one is required — an office with no NFC
-              phone registers by card number alone, an NFC-only flow by UID.
+              the identify step captured, and re-scannable in place: the card may
+              only be produced once the student is already sitting at the desk.
+              Only one is required — an office with no NFC phone registers by
+              card number alone, an NFC-only flow by UID.
             */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="cardNumber">Card number</Label>
-                <Input
-                  id="cardNumber"
-                  name="cardNumber"
-                  defaultValue={v?.cardNumber ?? captured.cardNumber ?? ""}
-                  placeholder="0186-0001-2000"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cardUid">Card UID</Label>
-                <Input
-                  id="cardUid"
-                  name="cardUid"
-                  defaultValue={v?.cardUid ?? captured.cardUid ?? ""}
-                  placeholder="04A22B9C"
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-              <p className="text-muted-foreground -mt-2 text-xs sm:col-span-2">
-                At least one is required. Capture both when the card allows it.
-              </p>
-            </div>
+            <CardFields
+              idPrefix="new"
+              defaultCardNumber={v?.cardNumber ?? captured.cardNumber ?? ""}
+              defaultCardUid={v?.cardUid ?? captured.cardUid ?? ""}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">

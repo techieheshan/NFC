@@ -99,16 +99,20 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Daily Summary",
     href: "/daily-summary",
     icon: Wallet,
+    // Institute-wide money: deductions, net, every teacher's collections.
+    // Teachers are deliberately excluded — their view is the Payslip.
     roles: OPERATIONAL,
-    surfaces: ["terminal"],
+    surfaces: ["terminal", "desktop"],
   },
   {
     key: "daily-attendance",
     label: "Daily Attendance",
     href: "/daily-attendance",
     icon: ClipboardList,
-    roles: OPERATIONAL,
-    surfaces: ["terminal"],
+    // TEACHER is included on purpose: the report scopes itself to their own
+    // courses server-side. See src/lib/reports.ts.
+    roles: ALL_ROLES,
+    surfaces: ["terminal", "desktop"],
   },
 
   // --- Setup: the backbone reference data everything else enrolls into ----
@@ -216,7 +220,9 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Payslips",
     href: "/payslips",
     icon: Receipt,
-    roles: ADMIN_AND_TEACHER,
+    // All three: ADMIN sees everything, STAFF sees slips without the institute
+    // profit block, TEACHER sees only their own last-completed month.
+    roles: ALL_ROLES,
     surfaces: ["desktop", "terminal"],
   },
   {

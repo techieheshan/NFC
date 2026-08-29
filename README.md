@@ -254,6 +254,74 @@ normal rate was still charged.
 Combos are soft-deleted only: past payments carry `comboId`, so a combo has to
 survive as the audit trail for a discount applied or refused.
 
+### Payslips (`/payslips`)
+
+Per teacher, per month: what each course collected, the institute's cut, the
+teacher's cut, minus their advances = final salary.
+
+`Payment.amount` is a **snapshot of what was actually charged** — it already
+carries the fee tier and any combo discount — so collected is a plain sum of it.
+Nothing is recomputed from `defaultFee × multiplier` here; doing so would undo
+a combo discount or a refusal after the fact.
+
+```
+institute share = collected × Course.instituteSharePercent / 100
+teacher share   = collected − institute share
+final salary    = Σ teacher share − that teacher's advances for the month
+institute profit = Σ institute share − Xenon expenses      (admin only)
+```
+
+**Teacher advances are not in institute profit.** They reduce the teacher's own
+salary and nothing else — two independent tracks. Staff advances sit inside the
+Xenon figure and are counted once.
+
+Access is decided in one place, `loadPayslips`:
+
+| Role | Month | Scope | Institute profit |
+| --- | --- | --- | --- |
+| ADMIN | any | every teacher | yes |
+| STAFF | any | every teacher | **no** |
+| TEACHER | last completed only | own slip only | no |
+
+The teacher rules are enforced server-side, so asking for another month or
+another teacher is refused rather than quietly re-scoped.
+
+**Three decisions were taken by default and need confirming** — see the tag
+report: month basis is `paidAt` (cash basis), the institute % is read from the
+course *now* rather than snapshotted, and STAFF may view slips but not profit.
+
+### Daily reports
+
+Two read-only reports, both exportable to PDF. Money is attributed by
+**`paidAt`** — when it was actually received — not by billing month, so a late
+July payment taken today lands in today's takings. Cancelled payments are
+excluded from every total and every count.
+
+**Daily Summary** (`/daily-summary`) — ADMIN + STAFF, date range. Per course:
+registered, students who paid (split Full/Half/25%), not-paid, free, and the
+amount. Each row reconciles as `Registered = paid + not-paid + free`; a row that
+doesn't is flagged rather than silently absorbed, which is what would happen if
+a payment used a tier outside those three. Admission and smart-card income are
+separate lines, then Total collected − Deductions = Net. Staff advances sit
+inside the Xenon figure and are counted once.
+
+TEACHER is blocked outright: this exposes institute-wide deductions, net profit
+and every teacher's collections. A teacher's own money view is the Payslip.
+
+**Daily Attendance** (`/daily-attendance`) — one day, listing courses that had a
+session (active schedule for that weekday, plus additional classes dated that
+day). Attended/absent/total are **for the day**; paid/not-paid/free are the
+**month's** status, which the UI states explicitly because mixing the two is the
+easy misreading. Free enrolments write no payment row, so they are counted
+separately rather than as debtors.
+
+A TEACHER may open this one, narrowed to courses they teach. The scope is
+resolved from the database in `courseScopeFor` — never from a session claim —
+and a teacher login with no Teacher attached sees nothing, failing closed.
+
+Both reads run only on the server (no client-callable action id exists), so the
+page guard and the action's own `requireRole` are the two independent gates.
+
 ### Expenses (`/expenses`)
 
 Two types, read from `ExpenseType` by **code** — ids are never inlined.

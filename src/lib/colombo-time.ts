@@ -71,3 +71,52 @@ export function to12Hour(time: string): string {
   const hour = h % 12 === 0 ? 12 : h % 12;
   return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
+
+/**
+ * Minutes Colombo is ahead of UTC at a given instant, derived rather than
+ * hardcoded so the code survives any future zone change.
+ */
+function colomboOffsetMinutes(at: Date): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: INSTITUTE_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(at);
+  const get = (t: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const hour = get("hour") === 24 ? 0 : get("hour");
+  const asIfUtc = Date.UTC(
+    get("year"), get("month") - 1, get("day"), hour, get("minute"), get("second"),
+  );
+  return (asIfUtc - at.getTime()) / 60000;
+}
+
+/**
+ * The UTC instant at which a Colombo calendar day begins.
+ *
+ * `Payment.paidAt` and `Attendance.markedAt` are timestamps, so filtering "money
+ * collected on the 26th" needs real instants — not the DATE-column trick used
+ * for `Attendance.date`. Colombo midnight is 18:30 UTC the day before.
+ */
+export function colomboDayStartUtc(date: string): Date {
+  const guess = new Date(`${date}T00:00:00.000Z`);
+  return new Date(guess.getTime() - colomboOffsetMinutes(guess) * 60000);
+}
+
+/** Half-open [start of `from`, start of the day after `to`) in UTC instants. */
+export function colomboRangeUtc(from: string, to: string): { gte: Date; lt: Date } {
+  const after = new Date(`${to}T00:00:00.000Z`);
+  after.setUTCDate(after.getUTCDate() + 1);
+  return {
+    gte: colomboDayStartUtc(from),
+    lt: colomboDayStartUtc(after.toISOString().slice(0, 10)),
+  };
+}
+
+/** The Colombo calendar day after `date`, as "YYYY-MM-DD". */
+export function colomboNextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}

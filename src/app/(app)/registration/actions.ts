@@ -239,17 +239,34 @@ const studentInclude = {
  * one. Prisma's `meta.target` isn't reliably populated through the driver
  * adapter, so the values are re-checked directly instead of parsed out of the
  * error — deterministic, and it costs one query on a path that already failed.
+ *
+ * `exceptStudentId` is what makes editing work: a student saving their own card
+ * number unchanged must not collide with themselves. Returns null when nothing
+ * is taken, so the same helper serves as the up-front check on edit and as the
+ * message builder in a create's catch.
+ *
+ * The message names which identifier clashed and nothing else — staff don't
+ * need (and shouldn't be shown) the other student behind a card they're not
+ * looking at.
  */
-async function clashMessage(candidate: {
-  cardUid?: string;
-  cardNumber?: string;
-}): Promise<string> {
+async function clashMessage(
+  candidate: { cardUid?: string; cardNumber?: string },
+  exceptStudentId?: number,
+): Promise<string | null> {
+  const other = exceptStudentId ? { id: { not: exceptStudentId } } : {};
+
   const [uidTaken, numberTaken] = await Promise.all([
     candidate.cardUid
-      ? db.student.findUnique({ where: { cardUid: candidate.cardUid }, select: { id: true } })
+      ? db.student.findFirst({
+          where: { cardUid: candidate.cardUid, ...other },
+          select: { id: true },
+        })
       : null,
     candidate.cardNumber
-      ? db.student.findUnique({ where: { cardNumber: candidate.cardNumber }, select: { id: true } })
+      ? db.student.findFirst({
+          where: { cardNumber: candidate.cardNumber, ...other },
+          select: { id: true },
+        })
       : null,
   ]);
 
@@ -258,8 +275,16 @@ async function clashMessage(candidate: {
   }
   if (numberTaken) return "That card number is already assigned to another student.";
   if (uidTaken) return "That card UID is already assigned to another student.";
-  return "That card identifier is already assigned to another student.";
+  return null;
 }
+
+/** A unique violation we couldn't attribute to a specific column. */
+const GENERIC_CLASH = "That card identifier is already assigned to another student.";
+
+/** Both identifiers are optional individually, but a student needs one of them. */
+const AT_LEAST_ONE = {
+  message: "A student needs a card UID or a card number (at least one).",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -402,9 +427,7 @@ export async function createStudent(
       cardUid: uidSchema.optional(),
       cardNumber: cardNumberSchema.optional(),
     })
-    .refine((v) => Boolean(v.cardUid) || Boolean(v.cardNumber), {
-      message: "Capture a card UID or a card number (at least one).",
-    })
+    .refine((v) => Boolean(v.cardUid) || Boolean(v.cardNumber), AT_LEAST_ONE)
     .safeParse({
       name: formData.get("name"),
       phone: formData.get("phone"),
@@ -474,7 +497,7 @@ export async function createStudent(
       await deleteStudentPhoto(uploadedFor).catch(() => {});
     }
     if (isUniqueViolation(error)) {
-      return fail(formData, await clashMessage(parsed.data));
+      return fail(formData, (await clashMessage(parsed.data)) ?? GENERIC_CLASH);
     }
     throw error;
   }
@@ -536,6 +559,14 @@ export async function addEnrolment(
   return { ok: true };
 }
 
+/**
+ * Edit a student's details AND their card identifiers.
+ *
+ * Card edits are deliberately an overwrite, not an append: the office fixes a
+ * mistyped number, and a lost card is reissued by writing the new UID over the
+ * old one. Clearing a field is allowed as long as the other one survives —
+ * a student must always be findable by at least one identifier.
+ */
 export async function updateStudent(
   _prev: ActionState,
   formData: FormData,
@@ -543,7 +574,13 @@ export async function updateStudent(
   await requireOperationalAccess();
 
   const parsed = z
-    .object({ studentId: id, ...studentDetails })
+    .object({
+      studentId: id,
+      ...studentDetails,
+      cardUid: uidSchema.optional(),
+      cardNumber: cardNumberSchema.optional(),
+    })
+    .refine((v) => Boolean(v.cardUid) || Boolean(v.cardNumber), AT_LEAST_ONE)
     .safeParse({
       studentId: formData.get("studentId"),
       name: formData.get("name"),
@@ -551,14 +588,34 @@ export async function updateStudent(
       school: formData.get("school"),
       address: formData.get("address") ?? "",
       nic: formData.get("nic") ?? "",
+      cardUid: blankToUndefined(formData.get("cardUid")),
+      cardNumber: blankToUndefined(formData.get("cardNumber")),
     });
 
   if (!parsed.success) {
     return fail(formData, parsed.error.issues[0].message);
   }
 
-  const { studentId, ...details } = parsed.data;
-  await db.student.update({ where: { id: studentId }, data: details });
+  const { studentId, cardUid, cardNumber, ...details } = parsed.data;
+  const card = { cardUid, cardNumber };
+
+  // Checked up front so the message can name the offending identifier; the
+  // unique indexes below are still the authority, since another terminal could
+  // claim the same card between this read and the write.
+  const clash = await clashMessage(card, studentId);
+  if (clash) return fail(formData, clash);
+
+  try {
+    await db.student.update({
+      where: { id: studentId },
+      data: { ...details, cardUid: cardUid ?? null, cardNumber: cardNumber ?? null },
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return fail(formData, (await clashMessage(card, studentId)) ?? GENERIC_CLASH);
+    }
+    throw error;
+  }
 
   revalidatePath(PATH);
   return { ok: true };
