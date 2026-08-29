@@ -14,6 +14,13 @@
 // Base reference rows (ClassType / FeeTier / ExpenseType / Setting / Stream) are
 // READ ONLY here, and the admin user is never touched.
 //
+// Scale: ~11 teachers, ~28 courses, ~110 students, with attendance on every one
+// of the last 10 days (today included) against classes that actually meet that
+// weekday. Big enough that the reports look like a real institute, small enough
+// that the terminal screens stay quick. The first four teachers, first nine
+// courses and first fifteen students are the load-bearing cases — the combos,
+// the fraud case, the tier spread and the open-now schedule all live there.
+//
 // NO LOGINS ARE CREATED. Teachers and staff are entities only; a committed seed
 // cannot hold a password without publishing it, and this repo is public. Create
 // real logins through Setup → Teachers with a password you choose.
@@ -85,9 +92,36 @@ function dayInLastMonth(day: number): Date {
 /** Money as a fixed 2dp string — Decimal columns never see a float. */
 const money = (n: number) => n.toFixed(2);
 
-let refCounter = 0;
-/** Deterministic per-run clientRef so re-seeding doesn't duplicate attendance. */
-const demoRef = (tag: string) => `demo-${tag}-${++refCounter}`;
+/**
+ * clientRef is UNIQUE and is what makes attendance seeding idempotent: it is
+ * derived from (student, course, day) — exactly the app's own "one mark per
+ * student per class per day" rule — so a re-run collides with itself and
+ * `skipDuplicates` drops the repeat instead of doubling the history.
+ */
+const attRef = (tag: string, studentId: number, courseId: number, date: Date) =>
+  `demo-${tag}-${studentId}-${courseId}-${date.toISOString().slice(0, 10)}`;
+
+/**
+ * A stable pseudo-random number in [0,1) from a string key (FNV-1a, then a
+ * xorshift finaliser). Attendance has to look random but BE deterministic:
+ * re-running the seed must reach the same present/absent decisions, or every
+ * run would rewrite the reports staff are looking at.
+ */
+function rand(key: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822507);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+/** Pick from a list by stable hash. */
+const pick = <T,>(key: string, list: readonly T[]): T => list[Math.floor(rand(key) * list.length)];
+
 
 // --- wipe -------------------------------------------------------------------
 
@@ -168,14 +202,29 @@ async function wipe() {
 
 // --- definitions ------------------------------------------------------------
 
-const SUBJECTS = ["ICT", "Chemistry", "Physics", "Combined Maths", "Biology", "Accounting"];
-const GRADES = ["A/L 2027", "A/L 2026", "A/L 2025", "Grade 11", "Grade 10"];
+const SUBJECTS = [
+  "ICT", "Chemistry", "Physics", "Combined Maths", "Biology", "Accounting",
+  "English", "Mathematics", "Science", "Business Studies", "Economics",
+];
+const GRADES = ["A/L 2027", "A/L 2026", "A/L 2025", "Grade 11", "Grade 10", "Grade 9"];
 
+/**
+ * The first four are load-bearing: the combos, the fraud case and every payslip
+ * assertion name them. Anything appended after them is volume — it makes the
+ * reports look like a real institute without touching those cases.
+ */
 const TEACHERS = [
   { name: "Ms. R. Wickramasinghe", nic: "198534500678", phone: "0772222222" },
   { name: "Mr. A. Gunawardena", nic: "197812300456", phone: "0771111111" },
   { name: "Mr. S. Rathnayake", nic: "198045600789", phone: "0773333333" },
   { name: "Mrs. D. Alwis", nic: "198711100222", phone: "0774444444" },
+  { name: "Mr. N. Jayasuriya", nic: "198209800123", phone: "0777000001" },
+  { name: "Ms. T. Karunaratne", nic: "199103400567", phone: "0777000002" },
+  { name: "Mr. L. Dissanayake", nic: "197905600890", phone: "0777000003" },
+  { name: "Mrs. S. Amarasinghe", nic: "198607800234", phone: "0777000004" },
+  { name: "Mr. H. Pathirana", nic: "198401200345", phone: "0777000005" },
+  { name: "Ms. N. Liyanage", nic: "199205600456", phone: "0777000006" },
+  { name: "Mr. C. Wijeratne", nic: "198310900567", phone: "0777000007" },
 ];
 
 /** Every demo student's name — the other half of `demoStudentWhere`. */
@@ -255,7 +304,11 @@ async function seed() {
   // --- courses ---
   const CHEM = "Ms. R. Wickramasinghe";
   const ICT_T = "Mr. A. Gunawardena";
-  const courseDefs = [
+  type CourseDef = {
+    key: string; name: string; teacher: string; subject: string; grade: string;
+    classType: number; stream: number; fee: number; share: string;
+  };
+  const courseDefs: CourseDef[] = [
     // Full combo set for one teacher, so combos are meaningful.
     { key: "chemT", name: `${DEMO}A/L 2027 Chemistry Theory`, teacher: CHEM, subject: "Chemistry", grade: "A/L 2027", classType: theory.id, stream: sciStream.id, fee: 3000, share: "20.00" },
     { key: "chemP", name: `${DEMO}A/L 2027 Chemistry Paper`, teacher: CHEM, subject: "Chemistry", grade: "A/L 2027", classType: paper.id, stream: sciStream.id, fee: 2500, share: "25.00" },
@@ -270,7 +323,51 @@ async function seed() {
     { key: "accT", name: `${DEMO}Grade 11 Accounting Theory`, teacher: "Mrs. D. Alwis", subject: "Accounting", grade: "Grade 11", classType: theory.id, stream: comStream.id, fee: 1500, share: "25.00" },
   ];
 
-  const course: Record<string, { id: number; fee: number }> = {};
+  /**
+   * Volume courses. Deliberately appended AFTER the nine above so the combo /
+   * fraud / tier cases keep their exact shape; these only widen the reports.
+   * `day`/`start` give each one a weekly session, which is what the live
+   * attendance below marks against.
+   */
+  const extraCourseDefs = [
+    { key: "x01", subject: "Physics", grade: "A/L 2027", teacher: "Mr. N. Jayasuriya", classType: theory.id, stream: sciStream.id, fee: 3000, share: "25.00", day: "MON", start: "08:00", end: "10:00" },
+    { key: "x02", subject: "Physics", grade: "A/L 2027", teacher: "Mr. N. Jayasuriya", classType: paper.id, stream: sciStream.id, fee: 2400, share: "27.50", day: "THU", start: "15:00", end: "17:00" },
+    { key: "x03", subject: "Chemistry", grade: "A/L 2026", teacher: "Ms. T. Karunaratne", classType: theory.id, stream: sciStream.id, fee: 2900, share: "20.00", day: "TUE", start: "08:00", end: "10:00" },
+    { key: "x04", subject: "Chemistry", grade: "A/L 2026", teacher: "Ms. T. Karunaratne", classType: revision.id, stream: sciStream.id, fee: 2100, share: "30.00", day: "SAT", start: "08:00", end: "10:00" },
+    { key: "x05", subject: "Combined Maths", grade: "A/L 2026", teacher: "Mr. L. Dissanayake", classType: theory.id, stream: alStream.id, fee: 3200, share: "30.00", day: "WED", start: "08:00", end: "10:30" },
+    { key: "x06", subject: "Combined Maths", grade: "A/L 2026", teacher: "Mr. L. Dissanayake", classType: paper.id, stream: alStream.id, fee: 2600, share: "27.50", day: "SUN", start: "08:00", end: "10:00" },
+    { key: "x07", subject: "Biology", grade: "A/L 2027", teacher: "Mrs. S. Amarasinghe", classType: theory.id, stream: sciStream.id, fee: 2800, share: "20.00", day: "MON", start: "13:00", end: "15:00" },
+    { key: "x08", subject: "Biology", grade: "A/L 2027", teacher: "Mrs. S. Amarasinghe", classType: paper.id, stream: sciStream.id, fee: 2300, share: "25.00", day: "FRI", start: "08:00", end: "10:00" },
+    { key: "x09", subject: "ICT", grade: "A/L 2026", teacher: "Mr. H. Pathirana", classType: theory.id, stream: techStream.id, fee: 2500, share: "25.00", day: "TUE", start: "15:00", end: "17:00" },
+    { key: "x10", subject: "ICT", grade: "Grade 11", teacher: "Mr. H. Pathirana", classType: theory.id, stream: techStream.id, fee: 1600, share: "25.00", day: "SAT", start: "11:00", end: "12:30" },
+    { key: "x11", subject: "English", grade: "Grade 11", teacher: "Ms. N. Liyanage", classType: theory.id, stream: comStream.id, fee: 1500, share: "20.00", day: "WED", start: "15:00", end: "16:30" },
+    { key: "x12", subject: "English", grade: "Grade 10", teacher: "Ms. N. Liyanage", classType: theory.id, stream: comStream.id, fee: 1400, share: "20.00", day: "SUN", start: "13:00", end: "14:30" },
+    { key: "x13", subject: "Mathematics", grade: "Grade 11", teacher: "Mr. C. Wijeratne", classType: theory.id, stream: comStream.id, fee: 1700, share: "25.00", day: "THU", start: "13:00", end: "15:00" },
+    { key: "x14", subject: "Mathematics", grade: "Grade 10", teacher: "Mr. C. Wijeratne", classType: theory.id, stream: comStream.id, fee: 1600, share: "25.00", day: "FRI", start: "15:00", end: "17:00" },
+    { key: "x15", subject: "Mathematics", grade: "Grade 9", teacher: "Mr. C. Wijeratne", classType: theory.id, stream: comStream.id, fee: 1400, share: "22.50", day: "SAT", start: "16:30", end: "18:00" },
+    { key: "x16", subject: "Science", grade: "Grade 11", teacher: "Mrs. S. Amarasinghe", classType: theory.id, stream: sciStream.id, fee: 1600, share: "22.50", day: "TUE", start: "13:00", end: "14:30" },
+    { key: "x17", subject: "Science", grade: "Grade 10", teacher: "Mrs. S. Amarasinghe", classType: theory.id, stream: sciStream.id, fee: 1500, share: "22.50", day: "MON", start: "17:00", end: "18:30" },
+    { key: "x18", subject: "Business Studies", grade: "A/L 2025", teacher: "Ms. N. Liyanage", classType: theory.id, stream: comStream.id, fee: 2400, share: "25.00", day: "WED", start: "17:00", end: "19:00" },
+    { key: "x19", subject: "Economics", grade: "A/L 2025", teacher: "Mr. L. Dissanayake", classType: theory.id, stream: comStream.id, fee: 2400, share: "27.50", day: "FRI", start: "17:00", end: "19:00" },
+  ] as const;
+
+  for (const c of extraCourseDefs) {
+    const label =
+      c.classType === theory.id ? "Theory" : c.classType === paper.id ? "Paper" : "Revision";
+    courseDefs.push({
+      key: c.key,
+      name: `${DEMO}${c.grade} ${c.subject} ${label}`,
+      teacher: c.teacher,
+      subject: c.subject,
+      grade: c.grade,
+      classType: c.classType,
+      stream: c.stream,
+      fee: c.fee,
+      share: c.share,
+    });
+  }
+
+  const course: Record<string, { id: number; fee: number; share: string }> = {};
   for (const c of courseDefs) {
     const found = await db.course.findFirst({ where: { name: c.name } });
     const row =
@@ -287,7 +384,7 @@ async function seed() {
           instituteSharePercent: c.share,
         },
       }));
-    course[c.key] = { id: row.id, fee: c.fee };
+    course[c.key] = { id: row.id, fee: c.fee, share: c.share };
   }
 
   // --- combos (one deliberately inactive) ---
@@ -348,7 +445,7 @@ async function seed() {
     });
   }
 
-  const scheduleDefs = [
+  const scheduleDefs: { course: string; day: string; start: string; end: string; active: boolean }[] = [
     { course: "ictT", day: "MON", start: "15:00", end: "17:00", active: true },
     { course: "ictP", day: "WED", start: "15:00", end: "17:00", active: true },
     { course: "chemP", day: "THU", start: "08:00", end: "10:00", active: true },
@@ -356,6 +453,9 @@ async function seed() {
     { course: "cmT", day: "SAT", start: "09:00", end: "11:30", active: true },
     { course: "bioT", day: "SAT", start: "14:00", end: "16:00", active: true },
     { course: "accT", day: "SUN", start: "10:00", end: "12:00", active: false },
+    ...extraCourseDefs.map((c) => ({
+      course: c.key, day: c.day, start: c.start, end: c.end, active: true,
+    })),
   ];
   for (const s of scheduleDefs) {
     const exists = await db.schedule.findFirst({
@@ -411,7 +511,7 @@ async function seed() {
   // `enrol` lists [courseKey, feeTier]; combo eligibility follows from it.
   type Tier = typeof full;
   const S = (n: number) => `${DEMO_CARD_PREFIX}${String(n).padStart(4, "0")}`;
-  const studentDefs: {
+  type StudentDef = {
     n: number;
     name: string;
     school: string;
@@ -421,7 +521,8 @@ async function seed() {
     admissionPaid: boolean;
     enrol: [string, Tier][];
     dropped?: string;
-  }[] = [
+  };
+  const studentDefs: StudentDef[] = [
     // Combo-eligible: Theory + Paper (qualifies for the 2-way combo).
     { n: 1, name: "Nimali Rajapaksa", school: "Holy Family Convent", phone: "0770000001", uid: "0A100001", number: S(1), admissionPaid: true, enrol: [["chemT", full], ["chemP", full]] },
     // The fraud case: attends Theory but almost never Paper (history below).
@@ -445,6 +546,72 @@ async function seed() {
     { n: 14, name: "Malith Abeysekara", school: "Kalutara Vidyalaya", phone: "0770000014", uid: null, number: S(14), admissionPaid: true, enrol: [["accT", half]] },
     { n: 15, name: "Oshadi Perera", school: "Tissa Central", phone: "0770000015", uid: "0A10000F", number: null, admissionPaid: true, enrol: [["ictT", full]], dropped: "ictP" },
   ];
+
+  /**
+   * Volume students, n = 101 upward so the fifteen hand-built cases above keep
+   * their numbers and their card numbers. Everything about them is derived from
+   * a stable hash of their own name, so a re-run produces byte-identical rows.
+   *
+   * They all get a card number (the DEMO prefix), which is what `--wipe`
+   * matches on — the name list stays reserved for the one hand-built student
+   * who deliberately has none.
+   */
+  const FIRST_NAMES = [
+    "Nadeesha", "Kasun", "Thilini", "Lahiru", "Dinusha", "Sachini", "Isuru",
+    "Rashmi", "Chathura", "Upeksha", "Gayan", "Nethmi", "Sahan", "Dulani",
+    "Pasindu", "Tharushi", "Janith", "Hiruni", "Randika", "Anjali", "Buddhika",
+    "Shanika", "Tharaka", "Nipuni", "Charith", "Yasodha", "Kalpa", "Erandi",
+  ];
+  const SURNAMES = [
+    "Ratnayake", "Samarasinghe", "Wijekoon", "Dharmasena", "Ilangakoon",
+    "Munasinghe", "Karunanayake", "Seneviratne", "Abeywickrama", "Gamage",
+    "Hettiarachchi", "Wanigasekara", "Pathiraja", "Kodikara", "Rupasinghe",
+  ];
+  const SCHOOLS = [
+    "Royal College", "Ananda College", "Visakha Vidyalaya", "Nalanda College",
+    "Holy Family Convent", "St. John's College", "Tissa Central",
+    "Kalutara Vidyalaya", "Devi Balika Vidyalaya", "Mahanama College",
+  ];
+  // Weighted so FULL dominates and FREE is rare — the tier spread stays
+  // visible without pretending a quarter of the institute pays nothing.
+  const TIER_POOL: Tier[] = [full, full, full, full, full, half, half, quarter, free];
+  const extraCourseKeys = extraCourseDefs.map((c) => c.key);
+
+  const takenNames = new Set(STUDENT_NAMES);
+  for (let i = 0; i < 95; i++) {
+    const n = 101 + i;
+    const seed = `student-${n}`;
+    let name = `${pick(`${seed}-first`, FIRST_NAMES)} ${pick(`${seed}-last`, SURNAMES)}`;
+    // Two students may share a name in real life, but a duplicate here would
+    // make the demo confusing to read; nudge until it's unique.
+    for (let bump = 1; takenNames.has(name); bump++) {
+      name = `${pick(`${seed}-first-${bump}`, FIRST_NAMES)} ${pick(`${seed}-last-${bump}`, SURNAMES)}`;
+    }
+    takenNames.add(name);
+
+    // 1–3 courses, drawn from the volume set (occasionally a core one, so the
+    // original nine courses have believable class sizes too).
+    const howMany = 1 + Math.floor(rand(`${seed}-count`) * 3);
+    const keys = new Set<string>();
+    for (let k = 0; k < howMany; k++) {
+      const fromCore = rand(`${seed}-core-${k}`) < 0.25;
+      const poolKeys = fromCore
+        ? ["chemT", "chemP", "ictT", "phyT", "cmT", "bioT", "accT"]
+        : extraCourseKeys;
+      keys.add(pick(`${seed}-course-${k}`, poolKeys));
+    }
+
+    studentDefs.push({
+      n,
+      name,
+      school: pick(`${seed}-school`, SCHOOLS),
+      phone: `07${String(80000000 + i * 137).padStart(8, "0")}`,
+      uid: `0B${String(n).padStart(6, "0")}`,
+      number: S(n),
+      admissionPaid: rand(`${seed}-adm`) < 0.88,
+      enrol: [...keys].map((key) => [key, pick(`${seed}-tier-${key}`, TIER_POOL)] as [string, Tier]),
+    });
+  }
 
   const student: Record<number, number> = {};
   for (const s of studentDefs) {
@@ -500,39 +667,122 @@ async function seed() {
     { student: 8, course: "phyT", days: [22, 15, 8] },
   ];
 
-  if ((await db.attendance.count({ where: { clientRef: { startsWith: "demo-" } } })) === 0) {
-    for (const plan of attendancePlan) {
-      for (const [i, d] of plan.days.entries()) {
-        await db.attendance.create({
-          data: {
-            studentId: student[plan.student],
-            courseId: course[plan.course].id,
-            date: daysAgo(d),
-            method: methods[i % methods.length],
-            markedById: actor.id,
-            markedAt: daysAgo(d),
-            clientRef: demoRef(`att-${plan.student}-${plan.course}-${d}`),
-          },
-        });
-      }
+  // Written with createMany + skipDuplicates rather than guarded by a global
+  // count: each ref carries (student, course, day), so a re-run collides with
+  // itself and inserts nothing. That also means new history can be added later
+  // without a wipe.
+  const history: {
+    studentId: number; courseId: number; date: Date; method: (typeof methods)[number];
+    markedById: string; markedAt: Date; clientRef: string;
+  }[] = [];
+
+  for (const plan of attendancePlan) {
+    for (const [i, d] of plan.days.entries()) {
+      const when = daysAgo(d);
+      history.push({
+        studentId: student[plan.student],
+        courseId: course[plan.course].id,
+        date: when,
+        method: methods[i % methods.length],
+        markedById: actor.id,
+        markedAt: when,
+        clientRef: attRef("att", student[plan.student], course[plan.course].id, when),
+      });
     }
-    for (const plan of lastMonthPlan) {
-      for (const [i, d] of plan.days.entries()) {
-        const when = dayInLastMonth(d);
-        await db.attendance.create({
-          data: {
-            studentId: student[plan.student],
-            courseId: course[plan.course].id,
-            date: when,
-            method: methods[i % methods.length],
-            markedById: actor.id,
-            markedAt: when,
-            clientRef: demoRef(`lm-${plan.student}-${plan.course}-${d}`),
-          },
+  }
+  for (const plan of lastMonthPlan) {
+    for (const [i, d] of plan.days.entries()) {
+      const when = dayInLastMonth(d);
+      history.push({
+        studentId: student[plan.student],
+        courseId: course[plan.course].id,
+        date: when,
+        method: methods[i % methods.length],
+        markedById: actor.id,
+        markedAt: when,
+        clientRef: attRef("lm", student[plan.student], course[plan.course].id, when),
+      });
+    }
+  }
+
+  // --- live attendance: the last 10 days, including today -----------------
+  //
+  // Marked only against courses that ACTUALLY have a session that weekday, read
+  // back from the schedules just written plus any additional class on the day —
+  // seeding a mark for a class that never met would make Daily Attendance lie.
+  //
+  // Who attends is a stable hash of (course, day, student), so the mix is
+  // realistic but reproducible: roughly 60–85% of a course's active students,
+  // with the rate itself varying per course per day.
+  const LIVE_DAYS = 10;
+
+  const activeSchedules = await db.schedule.findMany({
+    where: { active: true, course: { name: { startsWith: DEMO } } },
+    select: { courseId: true, dayOfWeek: true },
+  });
+  const courseIdsByWeekday = new Map<string, number[]>();
+  for (const sc of activeSchedules) {
+    const list = courseIdsByWeekday.get(sc.dayOfWeek) ?? [];
+    list.push(sc.courseId);
+    courseIdsByWeekday.set(sc.dayOfWeek, list);
+  }
+
+  const extraSessions = await db.additionalClass.findMany({
+    where: { course: { name: { startsWith: DEMO } } },
+    select: { courseId: true, date: true },
+  });
+  const courseIdsByDate = new Map<string, number[]>();
+  for (const a of extraSessions) {
+    const key = a.date.toISOString().slice(0, 10);
+    const list = courseIdsByDate.get(key) ?? [];
+    list.push(a.courseId);
+    courseIdsByDate.set(key, list);
+  }
+
+  const activeEnrolments = await db.enrollment.findMany({
+    where: { status: "ACTIVE", course: { name: { startsWith: DEMO } } },
+    select: { studentId: true, courseId: true },
+  });
+  const rosterOf = new Map<number, number[]>();
+  for (const e of activeEnrolments) {
+    const list = rosterOf.get(e.courseId) ?? [];
+    list.push(e.studentId);
+    rosterOf.set(e.courseId, list);
+  }
+
+  for (let back = LIVE_DAYS - 1; back >= 0; back--) {
+    const at = new Date();
+    at.setUTCDate(at.getUTCDate() - back);
+    const day = colomboNow(at);
+    const dateValue = colomboDateValue(day.date);
+
+    const meeting = new Set([
+      ...(courseIdsByWeekday.get(day.dayOfWeek) ?? []),
+      ...(courseIdsByDate.get(dateValue.toISOString().slice(0, 10)) ?? []),
+    ]);
+
+    for (const courseId of meeting) {
+      const roster = rosterOf.get(courseId) ?? [];
+      // 60–85%, drifting by course and by day — never everyone, never nobody.
+      const presentRate = 0.6 + rand(`rate-${courseId}-${day.date}`) * 0.25;
+
+      for (const studentId of roster) {
+        if (rand(`mark-${courseId}-${day.date}-${studentId}`) >= presentRate) continue;
+        history.push({
+          studentId,
+          courseId,
+          date: dateValue,
+          method: pick(`method-${courseId}-${day.date}-${studentId}`, methods),
+          markedById: actor.id,
+          // Mid-morning Colombo, so the timestamp reads sensibly next to the date.
+          markedAt: new Date(dateValue.getTime() + 4 * 60 * 60 * 1000),
+          clientRef: attRef("live", studentId, courseId, dateValue),
         });
       }
     }
   }
+
+  await db.attendance.createMany({ data: history, skipDuplicates: true });
 
   // --- payments -----------------------------------------------------------
   const admissionFee = Number(
@@ -542,77 +792,132 @@ async function seed() {
     (await db.setting.findUnique({ where: { key: "smart_card_fee" } }))?.value ?? "500",
   );
 
-  const alreadySeeded = await db.payment.count({
+  /**
+   * Payments are deduped precisely instead of behind one global "has this seed
+   * run?" flag: the app's own rule is one un-cancelled CLASS payment per
+   * student per course per billing month, so that tuple is the key. Re-running
+   * adds only what is genuinely missing, which is what lets the volume students
+   * below be added to an already-seeded database.
+   */
+  const existingPayments = await db.payment.findMany({
     where: { student: demoStudentWhere() },
+    select: {
+      kind: true, studentId: true, courseId: true,
+      billingYear: true, billingMonth: true, comboId: true, cancelled: true,
+    },
   });
+  const classKey = (sid: number, cid: number, y: number, m: number) => `${sid}:${cid}:${y}:${m}`;
+  const haveClass = new Set(
+    existingPayments
+      .filter((p) => p.kind === "CLASS" && p.comboId === null && p.courseId !== null)
+      .map((p) => classKey(p.studentId, p.courseId!, p.billingYear!, p.billingMonth!)),
+  );
+  const haveAdmission = new Set(
+    existingPayments.filter((p) => p.kind === "ADMISSION").map((p) => p.studentId),
+  );
+  const haveSmartCard = new Set(
+    existingPayments.filter((p) => p.kind === "SMART_CARD").map((p) => p.studentId),
+  );
+  const haveComboRows = existingPayments.some((p) => p.comboId !== null);
+  const haveCancelled = existingPayments.some((p) => p.cancelled);
 
-  if (alreadySeeded === 0) {
-    // Admission for everyone flagged paid.
-    for (const s of studentDefs.filter((x) => x.admissionPaid)) {
-      await db.payment.create({
-        data: {
-          kind: "ADMISSION",
+  const tierOf = new Map<string, number>();
+  for (const s of studentDefs) {
+    for (const [key, tier] of s.enrol) {
+      tierOf.set(`${s.n}:${key}`, Number(tier.multiplier));
+    }
+  }
+
+  type CreateManyArgs = NonNullable<Parameters<typeof db.payment.createMany>[0]>;
+  type NewPayment = Extract<CreateManyArgs["data"], unknown[]>[number];
+  const payments: NewPayment[] = [];
+
+  // --- admission: spread across the last two months, not all on one day ---
+  for (const s of studentDefs.filter((x) => x.admissionPaid)) {
+    if (haveAdmission.has(student[s.n])) continue;
+    payments.push({
+      kind: "ADMISSION",
+      studentId: student[s.n],
+      amount: money(admissionFee),
+      takenById: actor.id,
+      paidAt: daysAgo(s.n <= 15 ? 45 : 3 + Math.floor(rand(`adm-${s.n}`) * 57)),
+    });
+  }
+
+  // --- smart cards: the original three, plus a slice of the new intake -----
+  const smartCardPlan: { n: number; uid: string; back: number }[] = [
+    { n: 1, uid: "0A100001", back: 45 },
+    { n: 1, uid: "0A1000F1", back: 10 },   // the lost-card reissue case
+    { n: 6, uid: "0A100006", back: 44 },
+  ];
+  for (const s of studentDefs.filter((x) => x.n > 15)) {
+    if (rand(`card-${s.n}`) < 0.35) {
+      smartCardPlan.push({ n: s.n, uid: s.uid!, back: 2 + Math.floor(rand(`card-day-${s.n}`) * 58) });
+    }
+  }
+  for (const c of smartCardPlan) {
+    // Student 1 legitimately has two (lost card), so only the volume students
+    // are deduped by "already has one".
+    if (c.n > 15 && haveSmartCard.has(student[c.n])) continue;
+    if (c.n <= 15 && haveSmartCard.has(student[c.n])) continue;
+    payments.push({
+      kind: "SMART_CARD",
+      studentId: student[c.n],
+      amount: money(smartCardFee),
+      cardUidIssued: c.uid,
+      takenById: actor.id,
+      paidAt: daysAgo(c.back),
+    });
+  }
+
+  // --- monthly class fees, at each student's tier -------------------------
+  // paidAt is scattered through each billing month rather than parked on the
+  // 5th, so Daily Summary has something on most days of a 30-day range.
+  const monthsBack = [2, 1, 0];
+  for (const s of studentDefs) {
+    for (const [key, tier] of s.enrol) {
+      for (const back of monthsBack) {
+        // Leave the current month unpaid for some students, so paid/unpaid and
+        // "owing" views have something to show.
+        if (back === 0 && s.n % 3 === 0) continue;
+
+        const anchor = new Date();
+        anchor.setUTCMonth(anchor.getUTCMonth() - back, 5);
+        const [y, m] = colomboNow(anchor).date.split("-").map(Number);
+        if (haveClass.has(classKey(student[s.n], course[key].id, y, m))) continue;
+
+        // The current month can't have been paid in the future.
+        const lastDay = back === 0 ? Number(now.date.slice(8, 10)) : 28;
+        const day = 1 + Math.floor(rand(`pay-${s.n}-${key}-${back}`) * lastDay);
+        const paidOn = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+        payments.push({
+          kind: "CLASS",
           studentId: student[s.n],
-          amount: money(admissionFee),
+          courseId: course[key].id,
+          feeTierId: tier.id,
+          billingYear: y,
+          billingMonth: m,
+          amount: money(course[key].fee * (tierOf.get(`${s.n}:${key}`) ?? 1)),
+          // Frozen at payment time, exactly as the counter does it.
+          instituteSharePercentApplied: course[key].share,
           takenById: actor.id,
-          paidAt: daysAgo(45),
-        },
-      });
-    }
-
-    // Smart cards — student 1 twice, the lost-card reissue case.
-    await db.payment.create({
-      data: { kind: "SMART_CARD", studentId: student[1], amount: money(smartCardFee), cardUidIssued: "0A100001", takenById: actor.id, paidAt: daysAgo(45) },
-    });
-    await db.payment.create({
-      data: { kind: "SMART_CARD", studentId: student[1], amount: money(smartCardFee), cardUidIssued: "0A1000F1", takenById: actor.id, paidAt: daysAgo(10) },
-    });
-    await db.payment.create({
-      data: { kind: "SMART_CARD", studentId: student[6], amount: money(smartCardFee), cardUidIssued: "0A100006", takenById: actor.id, paidAt: daysAgo(44) },
-    });
-
-    // Monthly class fees across the last 3 months, at each student's tier.
-    const tierOf = new Map<string, number>();
-    for (const s of studentDefs) {
-      for (const [key, tier] of s.enrol) {
-        tierOf.set(`${s.n}:${key}`, Number(tier.multiplier));
+          paidAt: colomboDateValue(paidOn),
+        });
       }
     }
-    const monthsBack = [2, 1, 0];
-    for (const s of studentDefs) {
-      for (const [key, tier] of s.enrol) {
-        for (const back of monthsBack) {
-          // Leave the current month unpaid for a few students, so paid/unpaid
-          // and "owing" views have something to show.
-          if (back === 0 && s.n % 3 === 0) continue;
-          const when = new Date();
-          when.setUTCMonth(when.getUTCMonth() - back, 5);
-          const cn = colomboNow(when);
-          const [y, m] = cn.date.split("-").map(Number);
-          const amount = course[key].fee * (tierOf.get(`${s.n}:${key}`) ?? 1);
-          await db.payment.create({
-            data: {
-              kind: "CLASS",
-              studentId: student[s.n],
-              courseId: course[key].id,
-              feeTierId: tier.id,
-              billingYear: y,
-              billingMonth: m,
-              amount: money(amount),
-              takenById: actor.id,
-              paidAt: colomboDateValue(cn.date),
-            },
-          });
-        }
-      }
-    }
+  }
 
+  if (payments.length > 0) await db.payment.createMany({ data: payments });
+
+  const comboTP = combo[`${DEMO}Chemistry Theory+Paper`];
+  const lastMonth = new Date();
+  lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1, 12);
+  const lm = colomboNow(lastMonth);
+  const [ly, lmn] = lm.date.split("-").map(Number);
+
+  if (!haveComboRows) {
     // Combo APPLIED — student 1, Chemistry Theory+Paper at the combo rate.
-    const comboTP = combo[`${DEMO}Chemistry Theory+Paper`];
-    const lastMonth = new Date();
-    lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1, 12);
-    const lm = colomboNow(lastMonth);
-    const [ly, lmn] = lm.date.split("-").map(Number);
     for (const key of ["chemT", "chemP"]) {
       await db.payment.create({
         data: {
@@ -623,6 +928,7 @@ async function seed() {
           billingYear: ly,
           billingMonth: lmn,
           amount: money(2000),
+          instituteSharePercentApplied: course[key].share,
           comboId: comboTP,
           comboApplied: true,
           takenById: actor.id,
@@ -643,6 +949,7 @@ async function seed() {
           billingYear: ly,
           billingMonth: lmn,
           amount: money(course[key].fee),
+          instituteSharePercentApplied: course[key].share,
           comboId: comboTP,
           comboApplied: false,
           comboRefusedReason: "Did not attend Paper class regularly last month.",
@@ -651,7 +958,9 @@ async function seed() {
         },
       });
     }
+  }
 
+  if (!haveCancelled) {
     // A cancelled payment — must be excluded from every total.
     const toCancel = await db.payment.create({
       data: {
@@ -662,6 +971,7 @@ async function seed() {
         billingYear: ly,
         billingMonth: lmn,
         amount: money(course.phyT.fee),
+        instituteSharePercentApplied: course.phyT.share,
         takenById: actor.id,
         paidAt: colomboDateValue(lm.date),
       },
@@ -730,8 +1040,26 @@ async function seed() {
     expenses: await db.expense.count(),
   };
 
+  // Today's marks, per course — the number the Daily Attendance screen shows.
+  const todayMarks = await db.attendance.findMany({
+    where: { date: colomboDateValue(now.date), course: { name: { startsWith: DEMO } } },
+    select: { courseId: true },
+  });
+  const perCourseToday = new Map<number, number>();
+  for (const a of todayMarks) perCourseToday.set(a.courseId, (perCourseToday.get(a.courseId) ?? 0) + 1);
+  const namesById = new Map(
+    (await db.course.findMany({
+      where: { id: { in: [...perCourseToday.keys()] } },
+      select: { id: true, name: true },
+    })).map((c) => [c.id, c.name]),
+  );
+
   console.log("\nDemo data seeded:", counts);
   console.log(`\nColombo now: ${now.date} ${now.time} ${now.dayOfWeek}`);
+  console.log(`Attendance marked TODAY (${now.date}): ${todayMarks.length} across ${perCourseToday.size} classes`);
+  for (const [id, n] of [...perCourseToday].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${n.toString().padStart(3)}  ${namesById.get(id)}`);
+  }
   console.log("OPEN NOW — mark this student on /attendance immediately:");
   console.log(`  ${openNow.name}  card ${openNow.number}  uid ${openNow.uid}`);
   console.log(`  regular class : ${DEMO}A/L 2027 Chemistry Theory`);
