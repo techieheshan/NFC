@@ -10,9 +10,10 @@ import type { Receipt } from "./actions";
 /**
  * 58mm thermal receipt (~384px at 203dpi), rendered from the rows just written.
  *
- * The schema has no receipt/transaction grouping column and this tag must not
- * add one, so the reference is derived from the created payment ids and the
- * receipt is not reprintable later — a reprint feature would need that column.
+ * The same component prints the original and every reprint: `Payment.transactionRef`
+ * groups the rows one checkout wrote, so the Receipts screen can rebuild this
+ * exact document later. A voided transaction reprints with a CANCELLED band
+ * across it — it must never come off the printer looking valid.
  *
  * Printing goes through the browser: `@page` is pinned to 58mm and everything
  * outside the receipt is hidden, so the same markup works on a thermal printer
@@ -22,10 +23,14 @@ import type { Receipt } from "./actions";
 export function ReceiptView({
   receipt,
   onDone,
+  doneLabel = "Next student",
 }: {
   receipt: Receipt;
   onDone: () => void;
+  doneLabel?: string;
 }) {
+  const voided = receipt.cancelled ?? null;
+
   return (
     <div className="space-y-4">
       <style>{`
@@ -51,6 +56,19 @@ export function ReceiptView({
             <p className="text-base font-bold tracking-widest">XENON</p>
             <p className="text-[11px]">Institute</p>
           </div>
+
+          {voided && (
+            <>
+              <Rule />
+              <div className="border-y-2 border-black py-1 text-center">
+                <p className="text-[15px] font-bold tracking-widest">*** CANCELLED ***</p>
+                <p className="text-[11px]">
+                  {voided.date} {to12Hour(voided.at)} by {voided.by}
+                </p>
+                <p className="text-[11px] break-words">{voided.reason}</p>
+              </div>
+            </>
+          )}
 
           <Rule />
 
@@ -83,7 +101,9 @@ export function ReceiptView({
           <Rule />
 
           <Row left="Taken by" right={receipt.takenBy} />
-          <p className="mt-3 text-center text-[11px]">Thank you</p>
+          <p className="mt-3 text-center text-[11px]">
+            {voided ? "This receipt has been cancelled." : "Thank you"}
+          </p>
         </div>
       </div>
 
@@ -93,7 +113,7 @@ export function ReceiptView({
           Print
         </Button>
         <Button className="flex-1" onClick={onDone}>
-          Next student
+          {doneLabel}
         </Button>
       </div>
     </div>

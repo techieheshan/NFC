@@ -443,6 +443,12 @@ model Payment {
   takenById String
   paidAt    DateTime @default(now())
 
+  // Groups every row written by ONE checkout. A combo across three courses, or
+  // a three-month catch-up, is a single receipt — reprinting has to reproduce
+  // that document, not one line of it, and cancelling voids it as a unit.
+  // Null only on rows written before this column existed, until the backfill.
+  transactionRef String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -453,6 +459,7 @@ model Payment {
   @@index([courseId, billingYear, billingMonth])
   @@index([paidAt])
   @@index([kind])
+  @@index([transactionRef])
 }
 
 // ----------------------------------------------------------------------------

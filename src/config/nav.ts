@@ -198,12 +198,15 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["desktop"],
   },
   {
-    key: "cancel-payment",
-    label: "Cancel Payment",
-    href: "/cancel-payment",
+    key: "receipts",
+    label: "Receipts & Cancel",
+    href: "/receipts",
     icon: Undo2,
-    roles: ADMIN_ONLY,
-    surfaces: ["desktop"],
+    // ADMIN + STAFF on purpose: reprinting a receipt is counter work. The
+    // cancel control inside is ADMIN-only, enforced on the action as well as
+    // hidden in the UI — one screen beats two that share a lookup.
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
   },
 
   // --- Shared across both shells ------------------------------------------

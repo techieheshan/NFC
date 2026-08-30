@@ -27,6 +27,7 @@
 // -----------------------------------------------------------------------------
 
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -908,6 +909,20 @@ async function seed() {
     }
   }
 
+  // One transactionRef per (student, instant) — the same grouping the counter
+  // produces and the backfill reconstructs, so demo receipts reprint as whole
+  // documents instead of single lines.
+  const refByGroup = new Map<string, string>();
+  for (const row of payments) {
+    const key = `${row.studentId}|${(row.paidAt as Date).toISOString()}`;
+    let ref = refByGroup.get(key);
+    if (!ref) {
+      ref = randomUUID();
+      refByGroup.set(key, ref);
+    }
+    row.transactionRef = ref;
+  }
+
   if (payments.length > 0) await db.payment.createMany({ data: payments });
 
   const comboTP = combo[`${DEMO}Chemistry Theory+Paper`];
@@ -917,6 +932,10 @@ async function seed() {
   const [ly, lmn] = lm.date.split("-").map(Number);
 
   if (!haveComboRows) {
+    // Both rows of a combo are one receipt — the case reprint has to get right.
+    const comboAppliedRef = randomUUID();
+    const comboRefusedRef = randomUUID();
+
     // Combo APPLIED — student 1, Chemistry Theory+Paper at the combo rate.
     for (const key of ["chemT", "chemP"]) {
       await db.payment.create({
@@ -929,6 +948,7 @@ async function seed() {
           billingMonth: lmn,
           amount: money(2000),
           instituteSharePercentApplied: course[key].share,
+          transactionRef: comboAppliedRef,
           comboId: comboTP,
           comboApplied: true,
           takenById: actor.id,
@@ -950,6 +970,7 @@ async function seed() {
           billingMonth: lmn,
           amount: money(course[key].fee),
           instituteSharePercentApplied: course[key].share,
+          transactionRef: comboRefusedRef,
           comboId: comboTP,
           comboApplied: false,
           comboRefusedReason: "Did not attend Paper class regularly last month.",
@@ -972,6 +993,7 @@ async function seed() {
         billingMonth: lmn,
         amount: money(course.phyT.fee),
         instituteSharePercentApplied: course.phyT.share,
+        transactionRef: randomUUID(),
         takenById: actor.id,
         paidAt: colomboDateValue(lm.date),
       },

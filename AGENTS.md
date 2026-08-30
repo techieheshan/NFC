@@ -67,6 +67,14 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
 17. **Never sync props into state with an effect.** Filters are searchParams, so
     a filter change is a fresh server render; key the component on the filter
     signature and let it remount instead.
+18. **A receipt is a transaction, not a row.** Everything one checkout writes
+    shares a `Payment.transactionRef`; reprint and cancel both act on the whole
+    group. Never hard-delete a payment — cancelling sets `cancelled` +
+    `cancelledById` / `cancelledAt` / `cancelReason`, amounts are never
+    recomputed, and reports already exclude cancelled rows. Cancelling an
+    ADMISSION row must revert `Student.admissionPaid`; a cancelled SMART_CARD
+    leaves `cardUid` alone. A legacy row with a null ref stands alone — never
+    filter on `transactionRef: null`, which matches every un-backfilled row.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

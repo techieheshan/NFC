@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
 
 import { requireOperationalAccess } from "@/lib/authz";
@@ -7,6 +9,12 @@ import { applicableCombos, type ApplicableCombo } from "@/lib/combos";
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
+import {
+  monthLabel,
+  receiptReference,
+  type Receipt,
+  type ReceiptLine,
+} from "@/lib/receipts";
 import {
   findStudentByIdentifier,
   searchStudentsQuery,
@@ -69,17 +77,10 @@ export type PaymentPanel = {
   combos: ApplicableCombo[];
 };
 
-export type ReceiptLine = { label: string; amount: string };
-
-export type Receipt = {
-  reference: string;
-  at: string;
-  date: string;
-  student: { name: string; cardNumber: string | null };
-  takenBy: string;
-  lines: ReceiptLine[];
-  total: string;
-};
+// The receipt shape lives in src/lib/receipts.ts, because the Receipts screen
+// reprints the very same document. Re-exported so the print component keeps
+// importing it from the screen it belongs to.
+export type { Receipt, ReceiptLine };
 
 export type PanelResult =
   | { status: "unknown" }
@@ -92,12 +93,6 @@ export type ChargeResult =
 // ---------------------------------------------------------------------------
 
 const id = z.coerce.number().int().positive();
-
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-const monthLabel = (y: number, m: number) => `${MONTH_NAMES[m - 1]} ${y}`;
 
 /** Money always leaves the DB as a fixed 2dp string; never a float in the UI. */
 const money = (n: number) => n.toFixed(2);
@@ -311,6 +306,12 @@ export async function takePayment(input: {
 
   const now = colomboNow();
   const paidAt = new Date();
+  /**
+   * One reference for everything this checkout writes. A combo across three
+   * courses, or a three-month catch-up, is a single receipt — this is what lets
+   * it be reprinted as that document and cancelled as a unit.
+   */
+  const transactionRef = randomUUID();
 
   const student = await db.student.findUnique({
     where: { id: studentId },
@@ -441,6 +442,7 @@ export async function takePayment(input: {
         data: {
           kind: "ADMISSION",
           studentId,
+          transactionRef,
           amount,
           takenById: user.id,
           paidAt,
@@ -460,6 +462,7 @@ export async function takePayment(input: {
         data: {
           kind: "SMART_CARD",
           studentId,
+          transactionRef,
           amount,
           // Records which card this charge issued — matters for reissues.
           cardUidIssued: student.cardUid,
@@ -487,6 +490,7 @@ export async function takePayment(input: {
         data: {
           kind: "CLASS",
           studentId,
+          transactionRef,
           courseId: row.courseId,
           feeTierId: e.feeTier.id,
           billingYear: row.year,
@@ -520,9 +524,10 @@ export async function takePayment(input: {
   return {
     ok: true,
     receipt: {
-      // No grouping column in the schema, so the reference is built from the
-      // rows just written. Deliberately not persisted.
-      reference: `XN-${created[0]}${created.length > 1 ? `-${created[created.length - 1]}` : ""}`,
+      // Human-facing reference: the lowest row id in the transaction. Short
+      // enough for 58mm paper and stable, so a reprint prints the same string.
+      // The grouping itself lives in transactionRef.
+      reference: receiptReference(created),
       at: colomboNow(paidAt).time,
       date: colomboNow(paidAt).date,
       student: { name: student.name, cardNumber: student.cardNumber },
