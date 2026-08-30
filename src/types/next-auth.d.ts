@@ -7,12 +7,17 @@ declare module "next-auth" {
       id: string;
       username: string;
       role: UserRole;
+      /** Routes the whole app to /change-password until it is cleared. */
+      mustChangePassword: boolean;
     } & DefaultSession["user"];
   }
 
   interface User {
     username: string;
     role: UserRole;
+    /** Stamped into the token at sign-in so revocation can be detected later. */
+    tokenVersion: number;
+    mustChangePassword: boolean;
   }
 }
 
@@ -28,5 +33,12 @@ declare module "@auth/core/jwt" {
     userId: string;
     username: string;
     role: UserRole;
+    /**
+     * The User.tokenVersion this token was minted with. It is deliberately NOT
+     * refreshed from the database on later requests — comparing the frozen
+     * value against the live one is the whole revocation mechanism.
+     */
+    ver: number;
+    mustChange: boolean;
   }
 }

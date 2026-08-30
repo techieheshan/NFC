@@ -1,7 +1,7 @@
-import { AuthError } from "next-auth";
+import { AuthError, CredentialsSignin } from "next-auth";
 import { redirect } from "next/navigation";
 
-import { signIn } from "@/auth";
+import { auth, signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,12 @@ async function login(formData: FormData) {
   } catch (error) {
     // A successful signIn throws NEXT_REDIRECT, which must be rethrown.
     if (error instanceof AuthError) {
+      // A locked account carries the Colombo time the lock lifts, so the page
+      // can say something true instead of "wrong password".
+      const code = error instanceof CredentialsSignin ? error.code : "";
+      if (typeof code === "string" && code.startsWith("locked:")) {
+        redirect(`/login?locked=${encodeURIComponent(code.slice("locked:".length))}`);
+      }
       redirect("/login?error=1");
     }
     throw error;
@@ -27,7 +33,19 @@ async function login(formData: FormData) {
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const failed = "error" in (await searchParams);
+  // The authoritative "are you actually signed in" check — it runs the Node jwt
+  // callback, so a revoked or deactivated session lands on the form instead of
+  // being bounced to a page that would bounce it straight back here.
+  const session = await auth();
+  if (session?.user) {
+    redirect(session.user.mustChangePassword ? "/change-password" : "/");
+  }
+
+  const params = await searchParams;
+  const failed = "error" in params;
+  const lockedUntil = typeof params.locked === "string" ? params.locked : null;
+  const revoked = "revoked" in params;
+  const passwordChanged = "changed" in params;
 
   return (
     <div className="from-primary/10 flex min-h-svh items-center justify-center bg-gradient-to-b to-transparent px-4 py-12">
@@ -43,14 +61,32 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </div>
 
         <form action={login} className="bg-card space-y-4 rounded-xl border p-6 shadow-sm">
-          {failed && (
+          {lockedUntil ? (
+            <p
+              role="alert"
+              className="border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
+            >
+              Too many attempts — try again after {lockedUntil}.
+            </p>
+          ) : failed ? (
             <p
               role="alert"
               className="border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
             >
               Incorrect username or password.
             </p>
-          )}
+          ) : revoked ? (
+            <p
+              role="alert"
+              className="bg-secondary text-secondary-foreground rounded-md px-3 py-2 text-sm"
+            >
+              Your session has ended. Sign in again.
+            </p>
+          ) : passwordChanged ? (
+            <p className="bg-secondary text-secondary-foreground rounded-md px-3 py-2 text-sm">
+              Password changed. Sign in with the new one.
+            </p>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>

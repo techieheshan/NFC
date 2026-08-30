@@ -158,6 +158,20 @@ model User {
   role         UserRole
   active       Boolean  @default(true)
 
+  // --- Auth hardening. All four are DB-backed on purpose: the on-prem box may
+  // run more than one instance and will be restarted, so a lockout or a
+  // revocation held in process memory would simply evaporate.
+  //
+  // Bumped to revoke every JWT already issued to this user. The token carries
+  // the version it was minted with; a mismatch ends the session on the next
+  // request. This is what makes a stateless JWT revocable.
+  tokenVersion       Int       @default(0)
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  // Set when an admin creates the account or resets the password: the person
+  // who chose that password is not the person who should keep using it.
+  mustChangePassword Boolean   @default(false)
+
   // A login may belong to one Teacher (to view own payslip) or one Staff.
   teacher   Teacher? @relation(fields: [teacherId], references: [id])
   teacherId Int?     @unique

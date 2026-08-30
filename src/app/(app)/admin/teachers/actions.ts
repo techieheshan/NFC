@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import { requireSetupAccess } from "@/lib/authz";
+import { hashPassword, passwordField, usernameField } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import { isUniqueViolation } from "@/lib/prisma-errors";
 
@@ -39,18 +39,11 @@ const teacherFields = {
   joinDate: optionalDate,
 };
 
-const usernameField = z
-  .string()
-  .trim()
-  .min(3, "Username must be at least 3 characters.")
-  .max(50)
-  .regex(/^[a-zA-Z0-9._-]+$/, "Username may use letters, numbers, . _ - only.");
-
 const createSchema = z.object({
   ...teacherFields,
   username: usernameField,
-  // Staff set this once at creation; resetting it belongs to the User/Roles tag.
-  password: z.string().min(8, "Password must be at least 8 characters.").max(200),
+  // Set once here; resetting it later is User/Roles' job, on /user-roles.
+  password: passwordField,
 });
 
 const updateSchema = z.object({
@@ -87,7 +80,7 @@ export async function createTeacher(
   }
 
   const { username, password, ...teacher } = parsed.data;
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await hashPassword(password);
 
   try {
     // Both writes or neither: a duplicate username must not leave an orphan

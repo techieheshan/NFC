@@ -21,17 +21,24 @@ export const authConfig = {
   pages: { signIn: "/login" },
   providers: [],
   callbacks: {
-    // Runs in middleware. Returning false sends the visitor to `pages.signIn`.
+    /**
+     * Runs in middleware. Returning false sends the visitor to `pages.signIn`.
+     *
+     * This is a COARSE gate: on the edge there is no database, so it can only
+     * ask "is there a decodable token", not "is that token still valid". The
+     * authoritative check — account deactivated, session revoked — lives in the
+     * Node `jwt` callback in src/auth.ts.
+     *
+     * /login is therefore always allowed through, never redirected away from.
+     * Bouncing a token-holder to "/" here caused an infinite loop the moment
+     * revocation landed: the edge saw a token and sent them to "/", the app
+     * layout asked the database, found the session revoked, and sent them back.
+     * The "already signed in, skip the form" redirect now lives on the login
+     * page itself, which can actually tell.
+     */
     authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = Boolean(auth?.user);
-      const isOnLogin = nextUrl.pathname === "/login";
-
-      if (isOnLogin) {
-        // Already signed in? No reason to show the login form.
-        return isLoggedIn ? Response.redirect(new URL("/", nextUrl)) : true;
-      }
-
-      return isLoggedIn;
+      if (nextUrl.pathname === "/login") return true;
+      return Boolean(auth?.user);
     },
 
     // Copy identity + role onto the token at sign-in, then off it on every read.

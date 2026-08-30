@@ -75,6 +75,19 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     ADMISSION row must revert `Student.admissionPaid`; a cancelled SMART_CARD
     leaves `cardUid` alone. A legacy row with a null ref stands alone — never
     filter on `transactionRef: null`, which matches every un-backfilled row.
+19. **The edge proxy is a coarse gate; Node is the authority.** `src/proxy.ts`
+    runs `auth.config.ts`, which cannot reach Prisma, so it can only ask "is
+    there a decodable token" — not whether the account is still active or the
+    session still valid. That check lives in the Node `jwt` callback in
+    `src/auth.ts`, which returns `null` to end a session. Never let the edge
+    redirect a token-holder *away* from `/login`: it will bounce them to a page
+    whose Node check bounces them straight back, forever. Anything "am I really
+    signed in" belongs on the Node side.
+20. **A password change bumps `User.tokenVersion`.** That is what revokes
+    already-issued JWTs — deactivation, admin reset, own change, and "sign out
+    everywhere" all bump it. Admin-set passwords also set `mustChangePassword`,
+    which the `(app)` layout turns into a redirect to `/change-password`; that
+    page must stay OUTSIDE the `(app)` group or it redirects to itself.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code
