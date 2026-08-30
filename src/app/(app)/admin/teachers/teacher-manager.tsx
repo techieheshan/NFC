@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { KeyRound, Pencil, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,8 @@ export type TeacherRow = {
   joinDate: string | null;
   active: boolean;
   username: string | null;
+  /** The linked login's id, so its password can be reset from this row. */
+  userId: string | null;
 };
 
 const EMPTY: ActionState = { ok: false };
@@ -44,6 +46,7 @@ type Props = {
   createAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updateAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   toggleAction: (formData: FormData) => Promise<void>;
+  resetPasswordAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
 };
 
 export function TeacherManager({
@@ -51,9 +54,11 @@ export function TeacherManager({
   createAction,
   updateAction,
   toggleAction,
+  resetPasswordAction,
 }: Props) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TeacherRow | null>(null);
+  const [resetting, setResetting] = useState<TeacherRow | null>(null);
 
   return (
     <div className="space-y-6">
@@ -131,6 +136,17 @@ export function TeacherManager({
                         <Pencil className="size-3.5" aria-hidden />
                         Edit
                       </Button>
+                      {row.userId && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => setResetting(row)}
+                        >
+                          <KeyRound className="size-3.5" aria-hidden />
+                          Password
+                        </Button>
+                      )}
                       <form action={toggleAction}>
                         <input type="hidden" name="id" value={row.id} />
                         <input
@@ -167,7 +183,15 @@ export function TeacherManager({
         mode="edit"
         row={editing}
       />
-    </div>
+      {resetting && (
+        <ResetPasswordDialog
+          key={resetting.id}
+          row={resetting}
+          action={resetPasswordAction}
+          onClose={() => setResetting(null)}
+        />
+      )}
+      </div>
   );
 }
 
@@ -304,6 +328,76 @@ function TeacherDialog({
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? "Saving…" : isCreate ? "Create" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Staff-reachable password reset for a teacher login.
+ *
+ * The current password is not asked for — the point is that the teacher has
+ * forgotten it. Everything else follows Auth Hardening: they must set their own
+ * on next login, and every session they hold is ended.
+ */
+function ResetPasswordDialog({
+  row,
+  action,
+  onClose,
+}: {
+  row: TeacherRow;
+  action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  onClose: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(action, EMPTY);
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state.ok, onClose]);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <form action={formAction}>
+          <DialogHeader>
+            <DialogTitle>Reset {row.name}&apos;s password</DialogTitle>
+            <DialogDescription>
+              Login <span className="font-mono">{row.username}</span>. The old
+              password isn&apos;t needed. Tell them the new one directly — they
+              will be asked to choose their own the next time they sign in, and
+              any device still signed in as them is signed out.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <input type="hidden" name="userId" value={row.userId ?? ""} />
+            <div className="space-y-2">
+              <Label htmlFor="teacher-password">New password</Label>
+              <Input
+                id="teacher-password"
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                required
+              />
+              <p className="text-muted-foreground text-xs">At least 8 characters.</p>
+            </div>
+            {state.error && (
+              <p role="alert" className="text-destructive text-sm">
+                {state.error}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? "Saving…" : "Set password"}
             </Button>
           </DialogFooter>
         </form>

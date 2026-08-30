@@ -13,22 +13,35 @@ import {
   XCircle,
 } from "lucide-react";
 
+import { CloudOff, RefreshCw, UploadCloud } from "lucide-react";
+
 import { QrScanner } from "@/components/scan/qr-scanner";
 import { useNfcScan } from "@/components/scan/use-nfc-scan";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { to12Hour } from "@/lib/colombo-time";
+import { colomboNow, to12Hour } from "@/lib/colombo-time";
 
 import type { StudentBrief } from "@/lib/students";
-import type { Candidate, Method, ScanResult } from "./actions";
+import type {
+  Candidate,
+  Method,
+  QueuedMark,
+  ScanResult,
+  SyncOutcome,
+  WorkingSet,
+} from "./actions";
+import { useOfflineAttendance } from "./use-offline-attendance";
 import { playAlreadyMarked, playReject, playSuccess, primeAudio } from "./sounds";
 import { StudentSearch } from "@/components/scan/student-search";
 
 type RecentMark = {
-  attendanceId: number;
+  /** Null for a mark taken offline — there is no server row to undo yet. */
+  attendanceId: number | null;
+  key: string;
   student: string;
   course: string;
   at: string;
+  queued: boolean;
 };
 
 type Props = {
@@ -48,6 +61,8 @@ type Props = {
   }) => Promise<ScanResult>;
   undoMark: (attendanceId: number) => Promise<{ ok: boolean; error?: string }>;
   searchStudents: (query: string) => Promise<StudentBrief[]>;
+  loadWorkingSet: () => Promise<WorkingSet>;
+  syncMarks: (items: QueuedMark[]) => Promise<SyncOutcome[]>;
 };
 
 /**
@@ -62,12 +77,16 @@ export function AttendanceScreen({
   markCandidate,
   undoMark,
   searchStudents,
+  loadWorkingSet,
+  syncMarks,
 }: Props) {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [recent, setRecent] = useState<RecentMark[]>([]);
   const [qrOpen, setQrOpen] = useState(false);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const offline = useOfflineAttendance({ loadWorkingSet, syncMarks });
 
   // The method that produced the current result, so a confirm/pick keeps it.
   const methodRef = useRef<Method>("SEARCH");
@@ -81,16 +100,40 @@ export function AttendanceScreen({
         [
           {
             attendanceId: r.mark.attendanceId,
+            key: r.mark.clientRef,
             student: r.student.name,
             course: r.mark.candidate.course,
             at: r.mark.at,
+            queued: false,
+          },
+          ...prev,
+        ].slice(0, 10),
+      );
+    } else if (r.status === "queued") {
+      // Same cue as a real mark: to the person at the counter it succeeded,
+      // and it will reach the server on its own.
+      playSuccess();
+      setRecent((prev) =>
+        [
+          {
+            attendanceId: null,
+            key: `${r.student.id}:${r.candidate.key}:${r.at}`,
+            student: r.student.name,
+            course: r.candidate.course,
+            at: r.at,
+            queued: true,
           },
           ...prev,
         ].slice(0, 10),
       );
     } else if (r.status === "already") {
       playAlreadyMarked();
-    } else if (r.status === "unknown" || r.status === "no-class" || r.status === "outside") {
+    } else if (
+      r.status === "unknown" ||
+      r.status === "no-class" ||
+      r.status === "outside" ||
+      r.status === "offline-blocked"
+    ) {
       playReject();
     }
     // "confirm" and "choose" are silent — they're questions, not outcomes.
@@ -100,37 +143,80 @@ export function AttendanceScreen({
     (input: { cardUid?: string; cardNumber?: string; studentId?: number }, method: Method) => {
       primeAudio();
       methodRef.current = method;
+      const clientRef = crypto.randomUUID();
       startTransition(async () => {
-        announce(await resolveScan({ ...input, method, clientRef: crypto.randomUUID() }));
+        // Try the server first and fall back on failure, rather than trusting
+        // navigator.onLine: a terminal can have Wi-Fi and no route to the box.
+        try {
+          if (!navigator.onLine) throw new Error("offline");
+          const r = await resolveScan({ ...input, method, clientRef });
+          offline.setReachable(true);
+          announce(r);
+        } catch {
+          offline.setReachable(false);
+          announce(await offline.resolveOffline(input, method, clientRef));
+        }
       });
     },
-    [announce, resolveScan],
+    [announce, resolveScan, offline],
   );
 
   const choose = useCallback(
     (student: StudentBrief, candidate: Candidate) => {
+      const clientRef = crypto.randomUUID();
       startTransition(async () => {
-        announce(
-          await markCandidate({
+        try {
+          if (!navigator.onLine) throw new Error("offline");
+          const r = await markCandidate({
             studentId: student.id,
             courseId: candidate.courseId,
             additionalClassId: candidate.additionalClassId,
             method: methodRef.current,
-            clientRef: crypto.randomUUID(),
-          }),
-        );
+            clientRef,
+          });
+          offline.setReachable(true);
+          announce(r);
+        } catch {
+          offline.setReachable(false);
+          announce(
+            await offline.queueOffline(
+              student,
+              candidate,
+              methodRef.current,
+              clientRef,
+              colomboNow().date,
+              colomboNow().time,
+            ),
+          );
+        }
       });
     },
-    [announce, markCandidate],
+    [announce, markCandidate, offline],
+  );
+
+  /** Server typeahead, falling back to the cached roster when it can't answer. */
+  const search = useCallback(
+    async (query: string) => {
+      try {
+        if (!navigator.onLine) throw new Error("offline");
+        const hits = await searchStudents(query);
+        offline.setReachable(true);
+        return hits;
+      } catch {
+        offline.setReachable(false);
+        return offline.searchOffline(query);
+      }
+    },
+    [searchStudents, offline],
   );
 
   const nfc = useNfcScan((cardUid) => scan({ cardUid }, "NFC"));
 
   const undoLast = useCallback(() => {
     const last = recent[0];
-    if (!last) return;
+    if (!last || last.attendanceId === null) return;
     startTransition(async () => {
-      const res = await undoMark(last.attendanceId);
+      const res = await undoMark(last.attendanceId!);
       if (res.ok) {
         setRecent((prev) => prev.slice(1));
         setResult(null);
@@ -155,11 +241,21 @@ export function AttendanceScreen({
         </p>
       </div>
 
+      <ConnectionBar
+        online={offline.connected}
+        stale={offline.stale}
+        cacheDate={offline.cache?.date ?? null}
+        queued={offline.queued}
+        syncing={offline.syncing}
+        message={offline.lastSyncMessage}
+        onSync={() => void offline.flush()}
+      />
+
       {result ? (
         <ResultPanel
           result={result}
           pending={pending}
-          canUndo={recent.length > 0}
+          canUndo={recent[0]?.attendanceId != null}
           undoError={undoError}
           onUndo={undoLast}
           onChoose={choose}
@@ -219,7 +315,7 @@ export function AttendanceScreen({
 
           <div className="rounded-xl border p-4">
             <StudentSearch
-              search={searchStudents}
+              search={search}
               busy={pending}
               onPick={(s) => scan({ studentId: s.id }, "SEARCH")}
             />
@@ -239,12 +335,13 @@ export function AttendanceScreen({
           <p className="mb-2 text-sm font-medium">Recent marks</p>
           <ul className="divide-y text-sm">
             {recent.map((m) => (
-              <li key={m.attendanceId} className="flex items-center justify-between gap-3 py-1.5">
+              <li key={m.key} className="flex items-center justify-between gap-3 py-1.5">
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{m.student}</span>
                   <span className="text-muted-foreground block truncate text-xs">{m.course}</span>
                 </span>
-                <span className="text-muted-foreground shrink-0 tabular-nums">
+                <span className="text-muted-foreground flex shrink-0 items-center gap-2 tabular-nums">
+                  {m.queued && <Badge variant="outline">Queued</Badge>}
                   {to12Hour(m.at)}
                 </span>
               </li>
@@ -421,6 +518,32 @@ function ResultPanel({
     );
   }
 
+  if (result.status === "queued") {
+    return (
+      <Banner tone="success" icon={CheckCircle2} title="Marked present — queued">
+        <StudentHeader student={result.student} />
+        <div className="bg-background/60 rounded-lg border p-3">
+          <CandidateLine c={result.candidate} />
+          <p className="mt-1 text-sm font-medium tabular-nums">{to12Hour(result.at)}</p>
+        </div>
+        <p className="text-sm">
+          Saved on this device and will sync when the connection is back. The
+          time is the terminal&apos;s own clock.
+        </p>
+        {Next}
+      </Banner>
+    );
+  }
+
+  if (result.status === "offline-blocked") {
+    return (
+      <Banner tone="error" icon={CloudOff} title="Can't mark offline yet">
+        <p className="text-sm">{result.message}</p>
+        {Next}
+      </Banner>
+    );
+  }
+
   return (
     <Banner tone="warn" icon={Clock} title="Which class?">
       <StudentHeader student={result.student} />
@@ -473,6 +596,82 @@ function Banner({
         {title}
       </p>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Connection and sync state, always visible on this screen because it changes
+ * what a mark MEANS: online it is on the server, offline it is on this device
+ * until the router comes back.
+ */
+function ConnectionBar({
+  online,
+  stale,
+  cacheDate,
+  queued,
+  syncing,
+  message,
+  onSync,
+}: {
+  online: boolean;
+  stale: boolean;
+  cacheDate: string | null;
+  queued: number;
+  syncing: boolean;
+  message: string | null;
+  onSync: () => void;
+}) {
+  // Nothing to say when everything is normal: online, nothing queued, fresh.
+  if (online && queued === 0 && !stale && !message) return null;
+
+  return (
+    <div className="space-y-2">
+      {!online && (
+        <p className="border-primary/30 bg-primary/5 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+          <CloudOff className="size-4 shrink-0" aria-hidden />
+          <span>
+            Offline — attendance still works from this device&apos;s cached
+            timetable. Everything else needs a connection.
+          </span>
+        </p>
+      )}
+
+      {stale && (
+        <p
+          role="alert"
+          className="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+        >
+          <AlertTriangle className="size-4 shrink-0" aria-hidden />
+          <span>
+            Offline data is from {cacheDate}, not today. Reconnect to refresh
+            before relying on it.
+          </span>
+        </p>
+      )}
+
+      {queued > 0 && (
+        <div className="bg-secondary text-secondary-foreground flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm">
+          <span className="flex items-center gap-2">
+            <UploadCloud className="size-4 shrink-0" aria-hidden />
+            {queued} mark{queued === 1 ? "" : "s"} waiting to sync
+          </span>
+          <Button size="sm" variant="outline" onClick={onSync} disabled={syncing || !online}>
+            {syncing ? (
+              <>
+                <RefreshCw className="size-3.5 animate-spin" aria-hidden />
+                Syncing…
+              </>
+            ) : (
+              "Sync now"
+            )}
+          </Button>
+        </div>
+      )}
+
+      {message && queued === 0 && (
+        <p className="text-muted-foreground text-sm">{message}</p>
+      )}
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import { requireNavAccess } from "@/lib/authz";
 
 import {
+  loadWorkingSet,
   markCandidate,
   resolveScan,
   searchStudents,
+  syncMarks,
   undoMark,
 } from "./actions";
 import { AttendanceScreen } from "./attendance-screen";
@@ -19,6 +21,8 @@ export default async function AttendancePage() {
       markCandidate={markCandidate}
       undoMark={undoMark}
       searchStudents={searchStudents}
+      loadWorkingSet={loadWorkingSet}
+      syncMarks={syncMarks}
     />
   );
 }

@@ -107,6 +107,16 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["terminal", "desktop"],
   },
   {
+    key: "my-students",
+    label: "My Students",
+    href: "/my-students",
+    icon: UsersRound,
+    // All three: a TEACHER is narrowed to their own courses server-side, the
+    // same way Daily Attendance is. See src/lib/roster.ts.
+    roles: ALL_ROLES,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
     key: "daily-attendance",
     label: "Daily Attendance",
     href: "/daily-attendance",

@@ -2,9 +2,15 @@
 
 import { z } from "zod";
 
+import {
+  candidateKey,
+  matchCandidates,
+  outsideMessage,
+  type Candidate,
+} from "@/lib/attendance-match";
 import { requireOperationalAccess } from "@/lib/authz";
 import { normalizeCardNumber, normalizeCardUid } from "@/lib/card-uid";
-import { colomboDateValue, colomboNow, to12Hour } from "@/lib/colombo-time";
+import {colomboDateValue, colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { isUniqueViolation } from "@/lib/prisma-errors";
@@ -19,20 +25,7 @@ export type Method = "NFC" | "QR" | "SEARCH";
 
 export type { StudentBrief };
 
-export type Candidate = {
-  key: string;
-  kind: "regular" | "additional";
-  courseId: number;
-  additionalClassId: number | null;
-  course: string;
-  teacher: string;
-  startTime: string;
-  endTime: string;
-  opens: string;
-  closes: string;
-  /** "HH:mm" if this class is already marked for the student today. */
-  markedAt: string | null;
-};
+export type { Candidate };
 
 export type MarkedInfo = {
   attendanceId: number;
@@ -43,6 +36,9 @@ export type MarkedInfo = {
 
 export type ScanResult =
   | { status: "unknown" }
+  /** Offline outcomes. Produced in the browser, never by these actions. */
+  | { status: "queued"; student: StudentBrief; candidate: Candidate; at: string }
+  | { status: "offline-blocked"; message: string }
   | { status: "no-class"; student: StudentBrief }
   | { status: "outside"; student: StudentBrief; message: string }
   | { status: "already"; student: StudentBrief; candidate: Candidate; at: string }
@@ -153,31 +149,7 @@ async function markedToday(studentId: number, date: string) {
   return map;
 }
 
-const candidateKey = (c: Candidate) =>
-  `${c.courseId}:${c.additionalClassId ?? ""}`;
 
-/**
- * Why is nothing open? Answer with the class staff are most likely asking
- * about: the next one to open if all are still ahead, otherwise the one that
- * closed most recently.
- */
-function outsideMessage(all: Candidate[], now: string): string {
-  const upcoming = all
-    .filter((c) => now < c.opens)
-    .sort((a, b) => a.opens.localeCompare(b.opens))[0];
-  if (upcoming) {
-    return `${upcoming.course} — attendance opens at ${to12Hour(upcoming.opens)}`;
-  }
-
-  const closed = all
-    .filter((c) => now > c.closes)
-    .sort((a, b) => b.closes.localeCompare(a.closes))[0];
-  if (closed) {
-    return `${closed.course} — attendance closed at ${to12Hour(closed.closes)}`;
-  }
-
-  return "No class open right now.";
-}
 
 /**
  * Writes the mark, or reports that it already exists.
@@ -294,39 +266,35 @@ export async function resolveScan(input: {
   const marks = await markedToday(student.id, now.date);
   const withMarks = all.map((c) => ({ ...c, markedAt: marks.get(candidateKey(c))?.at ?? null }));
 
-  const open = withMarks.filter((c) => now.time >= c.opens && now.time <= c.closes);
+  // The same matcher the browser runs offline — one implementation, two runtimes.
+  const decision = matchCandidates(withMarks, now.time);
 
-  if (open.length === 0) {
-    return { status: "outside", student, message: outsideMessage(withMarks, now.time) };
-  }
+  switch (decision.kind) {
+    case "no-class":
+      return { status: "no-class", student };
+    case "outside":
+      return { status: "outside", student, message: decision.message };
+    case "already":
+      return { status: "already", student, candidate: decision.candidate, at: decision.at };
+    case "confirm":
+      return { status: "confirm", student, candidate: decision.candidate };
+    case "choose":
+      return { status: "choose", student, candidates: decision.candidates };
+    case "mark": {
+      const result = await writeMark({
+        studentId: student.id,
+        candidate: decision.candidate,
+        date: now.date,
+        method: parsedMethod.data,
+        clientRef: parsedRef.data,
+        markedById: user.id,
+      });
 
-  if (open.length === 1) {
-    const candidate = open[0];
-
-    if (candidate.markedAt) {
-      return { status: "already", student, candidate, at: candidate.markedAt };
+      return result.ok
+        ? { status: "marked", student, mark: result.mark }
+        : { status: "already", student, candidate: decision.candidate, at: result.at };
     }
-
-    // An additional class is unusual enough that staff must acknowledge it.
-    if (candidate.kind === "additional") {
-      return { status: "confirm", student, candidate };
-    }
-
-    const result = await writeMark({
-      studentId: student.id,
-      candidate,
-      date: now.date,
-      method: parsedMethod.data,
-      clientRef: parsedRef.data,
-      markedById: user.id,
-    });
-
-    return result.ok
-      ? { status: "marked", student, mark: result.mark }
-      : { status: "already", student, candidate, at: result.at };
   }
-
-  return { status: "choose", student, candidates: open };
 }
 
 /** Marks a candidate the staff explicitly chose (confirm or pick-list). */
@@ -410,4 +378,236 @@ export async function undoMark(attendanceId: number): Promise<{ ok: boolean; err
 
   await db.attendance.delete({ where: { id: row.id } });
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Offline support (Attendance Tag B)
+// ---------------------------------------------------------------------------
+
+export type WorkingSetStudent = {
+  id: number;
+  name: string;
+  school: string | null;
+  cardUid: string | null;
+  cardNumber: string | null;
+};
+
+export type WorkingSet = {
+  /** The Colombo date this set describes. Stale if it isn't today. */
+  date: string;
+  builtAt: number;
+  students: WorkingSetStudent[];
+  /** studentId -> today's candidate classes. Missing = no class today. */
+  classes: Record<number, Candidate[]>;
+};
+
+/**
+ * A lean projection of everything the matcher needs to work with no network.
+ *
+ * No photos: this is copied into IndexedDB on a POS terminal, and the identify
+ * step only needs enough to turn a tap, a scan or a typed fragment into a
+ * student. Marks already made today are included so an offline terminal can say
+ * "already marked" instead of queueing a duplicate.
+ */
+export async function loadWorkingSet(): Promise<WorkingSet> {
+  await requireOperationalAccess();
+
+  const now = colomboNow();
+  const today = colomboDateValue(now.date);
+
+  const [students, enrolments, schedules, additional, marks] = await Promise.all([
+    db.student.findMany({
+      select: { id: true, name: true, school: true, cardUid: true, cardNumber: true },
+      orderBy: { id: "asc" },
+    }),
+    db.enrollment.findMany({
+      where: { status: "ACTIVE" },
+      select: { studentId: true, courseId: true },
+    }),
+    db.schedule.findMany({
+      where: { active: true, dayOfWeek: now.dayOfWeek as never },
+      include: { course: { select: courseSelect } },
+    }),
+    db.additionalClass.findMany({
+      where: { date: today },
+      include: { course: { select: courseSelect } },
+    }),
+    db.attendance.findMany({
+      where: { date: today },
+      select: { studentId: true, courseId: true, additionalClassId: true, markedAt: true },
+    }),
+  ]);
+
+  // courseId -> the classes that course runs today.
+  const byCourse = new Map<number, Candidate[]>();
+  const add = (
+    row: {
+      id: number;
+      courseId: number;
+      startTime: string;
+      endTime: string;
+      attendanceOpensBeforeMin: number;
+      attendanceClosesBeforeMin: number;
+      course: {
+        name: string | null;
+        teacher: { name: string };
+        subject: { label: string };
+        grade: { label: string };
+        classType: { label: string };
+      };
+    },
+    kind: "regular" | "additional",
+  ) => {
+    const w = attendanceWindow(row);
+    const list = byCourse.get(row.courseId) ?? [];
+    list.push({
+      key: `${kind}:${row.id}`,
+      kind,
+      courseId: row.courseId,
+      additionalClassId: kind === "additional" ? row.id : null,
+      course: courseDisplayName(row.course),
+      teacher: row.course.teacher.name,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      opens: w.opens,
+      closes: w.closes,
+      markedAt: null,
+    });
+    byCourse.set(row.courseId, list);
+  };
+  for (const row of schedules) add(row, "regular");
+  for (const row of additional) add(row, "additional");
+
+  const markedBy = new Map<string, string>();
+  for (const m of marks) {
+    markedBy.set(
+      `${m.studentId}|${candidateKey(m)}`,
+      colomboNow(m.markedAt).time,
+    );
+  }
+
+  const classes: Record<number, Candidate[]> = {};
+  for (const e of enrolments) {
+    const runs = byCourse.get(e.courseId);
+    if (!runs) continue;
+    const list = classes[e.studentId] ?? (classes[e.studentId] = []);
+    for (const c of runs) {
+      list.push({ ...c, markedAt: markedBy.get(`${e.studentId}|${candidateKey(c)}`) ?? null });
+    }
+  }
+
+  return { date: now.date, builtAt: Date.now(), students, classes };
+}
+
+export type QueuedMark = {
+  clientRef: string;
+  studentId: number;
+  courseId: number;
+  additionalClassId: number | null;
+  method: Method;
+  /** The Colombo date the terminal believed it was when the mark was taken. */
+  date: string;
+};
+
+export type SyncOutcome = {
+  clientRef: string;
+  /** `settled` means the outbox may drop it: written, or already on record. */
+  settled: boolean;
+  status: "written" | "duplicate" | "rejected";
+  message?: string;
+};
+
+/** Marks older than this are refused rather than replayed into the past. */
+const MAX_QUEUED_AGE_DAYS = 7;
+
+const queuedSchema = z.object({
+  clientRef: clientRefSchema,
+  studentId: id,
+  courseId: id,
+  additionalClassId: z.number().int().positive().nullable(),
+  method: method,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+/**
+ * Flush the terminal's outbox.
+ *
+ * Idempotency is the whole contract: every item carries the `clientRef` the
+ * terminal generated when the mark was taken, and `writeMark` already refuses a
+ * second row for the same ref OR the same (student, class, day). Flushing the
+ * same outbox twice therefore writes once, which is what lets the client keep
+ * an item queued until the server confirms it.
+ *
+ * The attendance WINDOW is deliberately not re-checked here. The mark was taken
+ * at the terminal while the class was open; by the time the router comes back
+ * the window may have closed, and refusing then would throw away exactly the
+ * marks this feature exists to save. Enrolment and the class's existence on
+ * that date ARE re-checked, so a forged item still cannot invent attendance.
+ */
+export async function syncMarks(items: QueuedMark[]): Promise<SyncOutcome[]> {
+  const user = await requireOperationalAccess();
+
+  const out: SyncOutcome[] = [];
+  const today = colomboNow();
+
+  for (const raw of items.slice(0, 200)) {
+    const parsed = queuedSchema.safeParse(raw);
+    if (!parsed.success) {
+      out.push({
+        clientRef: String(raw?.clientRef ?? "?"),
+        settled: true,
+        status: "rejected",
+        message: "Malformed queued mark.",
+      });
+      continue;
+    }
+    const item = parsed.data;
+
+    const ageDays =
+      (colomboDateValue(today.date).getTime() - colomboDateValue(item.date).getTime()) / 86_400_000;
+    if (ageDays < 0 || ageDays > MAX_QUEUED_AGE_DAYS) {
+      out.push({
+        clientRef: item.clientRef,
+        settled: true,
+        status: "rejected",
+        message: "Queued mark is too old to sync.",
+      });
+      continue;
+    }
+
+    // The weekday of the mark's OWN date, so an outage spanning midnight still
+    // resolves against the right day's timetable. Midday UTC is safely inside
+    // the Colombo day.
+    const dayOfWeek = colomboNow(new Date(`${item.date}T06:00:00.000Z`)).dayOfWeek;
+    const all = await todaysClasses(item.studentId, item.date, dayOfWeek);
+    const candidate = all.find(
+      (c) => c.courseId === item.courseId && c.additionalClassId === item.additionalClassId,
+    );
+    if (!candidate) {
+      out.push({
+        clientRef: item.clientRef,
+        settled: true,
+        status: "rejected",
+        message: "That class is not on this student's timetable for that day.",
+      });
+      continue;
+    }
+
+    const result = await writeMark({
+      studentId: item.studentId,
+      candidate,
+      date: item.date,
+      method: item.method,
+      clientRef: item.clientRef,
+      markedById: user.id,
+    });
+
+    out.push(
+      result.ok
+        ? { clientRef: item.clientRef, settled: true, status: "written" }
+        : { clientRef: item.clientRef, settled: true, status: "duplicate", message: `Already marked at ${result.at}.` },
+    );
+  }
+
+  return out;
 }

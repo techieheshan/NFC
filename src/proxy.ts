@@ -18,8 +18,10 @@ export const config = {
    *   - /api/auth/*        Auth.js's own endpoints (sign-in would deadlock)
    *   - Next.js internals and static assets
    *   - PWA files that must be fetchable before a session exists
+   *   - /offline, which the service worker precaches and serves when there is
+   *     no server to redirect anyone anywhere
    */
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|icons/|favicon.ico|manifest.webmanifest|sw.js).*)",
+    "/((?!api/auth|offline|_next/static|_next/image|icons/|favicon.ico|manifest.webmanifest|sw.js).*)",
   ],
 };

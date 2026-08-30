@@ -169,3 +169,58 @@ export async function setTeacherActive(formData: FormData): Promise<void> {
 
   revalidatePath(PATH);
 }
+
+/**
+ * Reset a TEACHER's login password. ADMIN + STAFF.
+ *
+ * The front desk fixing a forgotten password is routine, so it does not need an
+ * administrator — but it is deliberately the ONLY account power staff have.
+ * `requireSetupAccess` lets them in; the role check below is what keeps them
+ * out of admin and staff accounts, and it is a server check because hiding the
+ * control would protect nothing (this is its own HTTP endpoint).
+ *
+ * The consequences are Auth Hardening's, unchanged: the teacher must choose
+ * their own password at next login, every session they hold is revoked, and any
+ * lockout is lifted — which is the other half of "the front desk can rescue me".
+ */
+export async function resetTeacherPassword(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireSetupAccess();
+
+  const parsed = z
+    .object({ userId: z.string().min(1), password: passwordField })
+    .safeParse({ userId: formData.get("userId"), password: formData.get("password") });
+
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+
+  const target = await db.user.findUnique({
+    where: { id: parsed.data.userId },
+    select: { id: true, role: true, username: true },
+  });
+  if (!target) return { ok: false, error: "That login no longer exists." };
+
+  // The whole point of this action. An admin resetting an admin goes through
+  // User Roles, which is ADMIN-only.
+  if (target.role !== "TEACHER") {
+    return {
+      ok: false,
+      error: "Only teacher logins can be reset here. Use User Roles for admin and staff accounts.",
+    };
+  }
+
+  await db.user.update({
+    where: { id: target.id },
+    data: {
+      passwordHash: await hashPassword(parsed.data.password),
+      mustChangePassword: true,
+      tokenVersion: { increment: 1 },
+      failedLoginCount: 0,
+      lockedUntil: null,
+    },
+  });
+
+  revalidatePath(PATH);
+  return { ok: true };
+}

@@ -34,8 +34,13 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
    `surfaces` — never write a second menu per role. That config is also the
    route-level authorization source; keep the role guard when replacing a
    placeholder with a real screen.
-8. **Don't add caching to `public/sw.js`** until the Attendance tag's offline
-   sync engine lands. Stale payment/attendance screens are worse than none.
+8. **`public/sw.js` caches `/attendance` and nothing else.** Everything else
+   falls back to `/offline` — a stale payment or report screen is worse than
+   none. Never cache a non-GET, `/api/*`, or another route's HTML. Serve a
+   cached page by reading its body and building a FRESH `Response`: handing
+   `caches.match()`'s stored response straight to a navigation is rejected by
+   Chrome for some routes, intermittently, and the user gets the browser's own
+   error page instead of ours.
 9. **Soft-delete reference data.** Subjects, grades, teachers and courses are
    deactivated (`active = false`), never deleted — later rows point at them.
 10. **Guard server actions separately from pages.** Use `requireRole` /
@@ -88,6 +93,14 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     everywhere" all bump it. Admin-set passwords also set `mustChangePassword`,
     which the `(app)` layout turns into a redirect to `/change-password`; that
     page must stay OUTSIDE the `(app)` group or it redirects to itself.
+21. **Offline attendance dedupes on `clientRef`, and only attendance goes
+    offline.** The outbox drops an item only when the server confirms it, so a
+    flush is always safe to repeat; `writeMark` refuses a second row for the
+    same ref OR the same (student, class, day). Never trust `navigator.onLine`
+    to decide anything — it stays `true` while every request fails. Try the
+    server and fall back on failure. Offline the device clock is the only
+    clock: queued mark times are best-effort, and a working set from another
+    day refuses to mark at all.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

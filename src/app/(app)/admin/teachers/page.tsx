@@ -1,7 +1,7 @@
 import { requireNavAccess } from "@/lib/authz";
 import { db } from "@/lib/db";
 
-import { createTeacher, setTeacherActive, updateTeacher } from "./actions";
+import { createTeacher, resetTeacherPassword, setTeacherActive, updateTeacher } from "./actions";
 import { TeacherManager, type TeacherRow } from "./teacher-manager";
 
 export const metadata = { title: "Teachers" };
@@ -22,7 +22,7 @@ export default async function TeachersPage() {
       phone: true,
       joinDate: true,
       active: true,
-      user: { select: { username: true } },
+      user: { select: { id: true, username: true } },
     },
     orderBy: [{ active: "desc" }, { name: "asc" }],
   });
@@ -35,6 +35,7 @@ export default async function TeachersPage() {
     joinDate: toDateInput(t.joinDate),
     active: t.active,
     username: t.user?.username ?? null,
+    userId: t.user?.id ?? null,
   }));
 
   return (
@@ -42,6 +43,7 @@ export default async function TeachersPage() {
       rows={rows}
       createAction={createTeacher}
       updateAction={updateTeacher}
+      resetPasswordAction={resetTeacherPassword}
       toggleAction={setTeacherActive}
     />
   );

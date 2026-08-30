@@ -56,6 +56,27 @@ export default async function PayslipsPage({ searchParams }: PageProps<"/payslip
           <Link href="/payslips">This month</Link>
         </Button>
       )}
+
+      {/*
+        Print one teacher's voucher, for handing to a teacher who doesn't log
+        in. A plain GET to the voucher route — teachers have no card to scan, so
+        they are picked from a list. The route re-checks the role itself.
+      */}
+      {view.report.slips.length > 0 && (
+        <div className="ml-auto flex flex-wrap items-end gap-2 border-l pl-3">
+          <div className="space-y-1.5">
+            <label htmlFor="teacherId" className="block text-sm font-medium">
+              Voucher for
+            </label>
+            <select id="teacherId" name="teacherId" className={FIELD} form="voucher-form" required>
+              {view.report.slips.map((s) => (
+                <option key={s.teacherId} value={s.teacherId}>{s.teacher}</option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit" form="voucher-form">Print voucher</Button>
+        </div>
+      )}
     </form>
   ) : (
     <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
@@ -65,5 +86,18 @@ export default async function PayslipsPage({ searchParams }: PageProps<"/payslip
     </p>
   );
 
-  return <PayslipsScreen view={view} filterUi={filterUi} />;
+  return (
+    <>
+      {/*
+        Declared outside the month form: nesting one form in another is invalid
+        HTML, so the voucher controls above reference this one by id.
+      */}
+      {view.canPickMonth && (
+        <form id="voucher-form" method="get" action="/payslips/voucher" className="hidden">
+          <input type="hidden" name="month" value={current} />
+        </form>
+      )}
+      <PayslipsScreen view={view} filterUi={filterUi} />
+    </>
+  );
 }
