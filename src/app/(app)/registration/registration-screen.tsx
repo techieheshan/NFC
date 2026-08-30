@@ -27,6 +27,8 @@ type Props = {
   updateStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updatePhoto: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   attachIdentifier: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  /** Set when Search deep-links a student; otherwise the flow starts at scan. */
+  initialStudent?: StudentView | null;
 };
 
 /**
@@ -44,8 +46,16 @@ export function RegistrationScreen({
   updateStudent,
   updatePhoto,
   attachIdentifier,
+  initialStudent = null,
 }: Props) {
-  const [phase, setPhase] = useState<Phase>({ kind: "scan" });
+  // Used as the INITIAL value only — never synced back in with an effect
+  // (AGENTS.md rule 17). A different student means a different URL, so the
+  // route change remounts this component with the new one.
+  const [phase, setPhase] = useState<Phase>(
+    initialStudent
+      ? { kind: "existing", student: initialStudent, captured: {} }
+      : { kind: "scan" },
+  );
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -54,7 +64,7 @@ export function RegistrationScreen({
    * stable callback: it's passed to dialogs whose effects list it as a
    * dependency, and an identity that changed every render would re-fire them.
    */
-  const shownStudentId = useRef<number | null>(null);
+  const shownStudentId = useRef<number | null>(initialStudent?.id ?? null);
 
   /** What the current visit's scan captured, kept for the refresh path. */
   const capturedRef = useRef<Identifier>({});

@@ -15,8 +15,17 @@ import { RegistrationScreen } from "./registration-screen";
 
 export const metadata = { title: "Registration" };
 
-export default async function RegistrationPage() {
+export default async function RegistrationPage({
+  searchParams,
+}: PageProps<"/registration">) {
   await requireNavAccess("/registration");
+
+  // Search links here with a student id so its rows open the edit view
+  // directly; the scan flow is unchanged when the parameter is absent.
+  const raw = (await searchParams).studentId;
+  const studentId = Number(Array.isArray(raw) ? raw[0] : raw);
+  const initialStudent =
+    Number.isInteger(studentId) && studentId > 0 ? await refreshStudent(studentId) : null;
 
   const [courses, feeTiers] = await Promise.all([
     db.course.findMany({
@@ -54,6 +63,7 @@ export default async function RegistrationPage() {
       updateStudent={updateStudent}
       updatePhoto={updateStudentPhoto}
       attachIdentifier={attachIdentifier}
+      initialStudent={initialStudent}
     />
   );
 }

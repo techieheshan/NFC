@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { requireNavAccess } from "@/lib/authz";
 import { colomboNow } from "@/lib/colombo-time";
-import { findTransactions } from "@/lib/receipts";
+import { findTransactions, loadTransaction } from "@/lib/receipts";
 
 import { ReceiptsScreen } from "./receipts-screen";
 
@@ -27,8 +27,12 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/receipt
   const from = toStr(params.from);
   const to = toStr(params.to);
   const includeCancelled = toStr(params.cancelled) === "1";
-  const transactions = await findTransactions({ q, from, to, includeCancelled });
-  const searched = Boolean(q || (from && to));
+  // Search links straight to one receipt rather than making staff re-find it.
+  const key = toStr(params.key);
+
+  const one = key ? await loadTransaction(key) : null;
+  const transactions = one ? [one] : key ? [] : await findTransactions({ q, from, to, includeCancelled });
+  const searched = Boolean(key || q || (from && to));
   const today = colomboNow().date;
 
   return (
@@ -97,7 +101,7 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/receipt
         than syncing props into state.
       */}
       <ReceiptsScreen
-        key={`${q ?? ""}|${from ?? ""}|${to ?? ""}|${includeCancelled}`}
+        key={`${key ?? ""}|${q ?? ""}|${from ?? ""}|${to ?? ""}|${includeCancelled}`}
         transactions={transactions}
         canCancel={user.role === "ADMIN"}
         searched={searched}

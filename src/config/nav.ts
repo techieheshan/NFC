@@ -92,7 +92,9 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/search",
     icon: Search,
     roles: OPERATIONAL,
-    surfaces: ["terminal"],
+    // Desktop too: the filtered lookup and its PDF export are back-office work,
+    // not just a counter tile.
+    surfaces: ["terminal", "desktop"],
   },
   {
     key: "daily-summary",
