@@ -28,6 +28,17 @@ export type Candidate = {
   markedAt: string | null;
 };
 
+/**
+ * The paid/not-paid colour, as the counter shows it. Computed by
+ * `studentArrears` (student-arrears.ts) — this is only the shape, declared here
+ * because the offline client needs the type and that module is server-only.
+ */
+export type ArrearsBadge = {
+  status: "green" | "amber" | "red" | "grey";
+  /** "Jul, Aug" · "Up to date" · "Free tier". */
+  label: string;
+};
+
 export type MatchDecision =
   | { kind: "no-class" }
   | { kind: "outside"; message: string }

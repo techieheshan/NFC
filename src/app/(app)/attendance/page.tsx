@@ -1,3 +1,8 @@
+import {
+  loadPanel,
+  searchStudents as paymentSearch,
+  takePayment,
+} from "@/app/(app)/payment/actions";
 import { requireNavAccess } from "@/lib/authz";
 
 import {
@@ -23,6 +28,9 @@ export default async function AttendancePage() {
       searchStudents={searchStudents}
       loadWorkingSet={loadWorkingSet}
       syncMarks={syncMarks}
+      loadPanel={loadPanel}
+      takePayment={takePayment}
+      paymentSearch={paymentSearch}
     />
   );
 }

@@ -6,9 +6,11 @@ import {
   candidateKey,
   matchCandidates,
   outsideMessage,
+  type ArrearsBadge,
   type Candidate,
 } from "@/lib/attendance-match";
 import { requireOperationalAccess } from "@/lib/authz";
+import { studentArrears, studentArrearsMany } from "@/lib/student-arrears";
 import { normalizeCardNumber, normalizeCardUid } from "@/lib/card-uid";
 import {colomboDateValue, colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
@@ -37,14 +39,14 @@ export type MarkedInfo = {
 export type ScanResult =
   | { status: "unknown" }
   /** Offline outcomes. Produced in the browser, never by these actions. */
-  | { status: "queued"; student: StudentBrief; candidate: Candidate; at: string }
+  | { status: "queued"; student: StudentBrief; candidate: Candidate; at: string; arrears: ArrearsBadge }
   | { status: "offline-blocked"; message: string }
-  | { status: "no-class"; student: StudentBrief }
-  | { status: "outside"; student: StudentBrief; message: string }
-  | { status: "already"; student: StudentBrief; candidate: Candidate; at: string }
-  | { status: "marked"; student: StudentBrief; mark: MarkedInfo }
-  | { status: "confirm"; student: StudentBrief; candidate: Candidate }
-  | { status: "choose"; student: StudentBrief; candidates: Candidate[] };
+  | { status: "no-class"; student: StudentBrief; arrears: ArrearsBadge }
+  | { status: "outside"; student: StudentBrief; message: string; arrears: ArrearsBadge }
+  | { status: "already"; student: StudentBrief; candidate: Candidate; at: string; arrears: ArrearsBadge }
+  | { status: "marked"; student: StudentBrief; mark: MarkedInfo; arrears: ArrearsBadge }
+  | { status: "confirm"; student: StudentBrief; candidate: Candidate; arrears: ArrearsBadge }
+  | { status: "choose"; student: StudentBrief; candidates: Candidate[]; arrears: ArrearsBadge };
 
 // ---------------------------------------------------------------------------
 
@@ -130,6 +132,15 @@ async function todaysClasses(studentId: number, date: string, dayOfWeek: string)
     ...schedules.map((s) => toCandidate(s, "regular")),
     ...additional.map((a) => toCandidate(a, "additional")),
   ];
+}
+
+/**
+ * The colour, straight from the shared arrears function. Not recomputed here —
+ * the counter and the Student Profile must never disagree about who is behind.
+ */
+async function badgeFor(studentId: number): Promise<ArrearsBadge> {
+  const a = await studentArrears(studentId);
+  return { status: a.status, label: a.label };
 }
 
 /** Existing marks for this student today, keyed the way candidates are. */
@@ -260,8 +271,9 @@ export async function resolveScan(input: {
   if (!student) return { status: "unknown" };
 
   const now = colomboNow();
+  const arrears = await badgeFor(student.id);
   const all = await todaysClasses(student.id, now.date, now.dayOfWeek);
-  if (all.length === 0) return { status: "no-class", student };
+  if (all.length === 0) return { status: "no-class", student, arrears };
 
   const marks = await markedToday(student.id, now.date);
   const withMarks = all.map((c) => ({ ...c, markedAt: marks.get(candidateKey(c))?.at ?? null }));
@@ -271,15 +283,15 @@ export async function resolveScan(input: {
 
   switch (decision.kind) {
     case "no-class":
-      return { status: "no-class", student };
+      return { status: "no-class", student, arrears };
     case "outside":
-      return { status: "outside", student, message: decision.message };
+      return { status: "outside", student, message: decision.message, arrears };
     case "already":
-      return { status: "already", student, candidate: decision.candidate, at: decision.at };
+      return { status: "already", student, candidate: decision.candidate, at: decision.at, arrears };
     case "confirm":
-      return { status: "confirm", student, candidate: decision.candidate };
+      return { status: "confirm", student, candidate: decision.candidate, arrears };
     case "choose":
-      return { status: "choose", student, candidates: decision.candidates };
+      return { status: "choose", student, candidates: decision.candidates, arrears };
     case "mark": {
       const result = await writeMark({
         studentId: student.id,
@@ -291,8 +303,8 @@ export async function resolveScan(input: {
       });
 
       return result.ok
-        ? { status: "marked", student, mark: result.mark }
-        : { status: "already", student, candidate: decision.candidate, at: result.at };
+        ? { status: "marked", student, mark: result.mark, arrears }
+        : { status: "already", student, candidate: decision.candidate, at: result.at, arrears };
     }
   }
 }
@@ -325,6 +337,7 @@ export async function markCandidate(input: {
   if (!student) return { status: "unknown" };
 
   const now = colomboNow();
+  const arrears = await badgeFor(student.id);
   const all = await todaysClasses(student.id, now.date, now.dayOfWeek);
 
   // Re-derive the candidate server-side: a stale or forged client must not be
@@ -337,7 +350,7 @@ export async function markCandidate(input: {
       now.time <= c.closes,
   );
   if (!candidate) {
-    return { status: "outside", student, message: outsideMessage(all, now.time) };
+    return { status: "outside", student, message: outsideMessage(all, now.time), arrears };
   }
 
   const result = await writeMark({
@@ -350,8 +363,8 @@ export async function markCandidate(input: {
   });
 
   return result.ok
-    ? { status: "marked", student, mark: result.mark }
-    : { status: "already", student, candidate, at: result.at };
+    ? { status: "marked", student, mark: result.mark, arrears }
+    : { status: "already", student, candidate, at: result.at, arrears };
 }
 
 /**
@@ -399,6 +412,14 @@ export type WorkingSet = {
   students: WorkingSetStudent[];
   /** studentId -> today's candidate classes. Missing = no class today. */
   classes: Record<number, Candidate[]>;
+  /**
+   * studentId -> the paid/not-paid colour, precomputed at refresh time.
+   *
+   * Only the colour and its label are cached, never the month-by-month
+   * history: the offline popup shows a badge, and copying arrears detail for
+   * 120 students onto a terminal would be a lot of bytes nobody reads.
+   */
+  arrears: Record<number, ArrearsBadge>;
 };
 
 /**
@@ -496,7 +517,12 @@ export async function loadWorkingSet(): Promise<WorkingSet> {
     }
   }
 
-  return { date: now.date, builtAt: Date.now(), students, classes };
+  // Batched: one pass for everyone, not a query per student.
+  const arrearsMap = await studentArrearsMany(students.map((s) => s.id));
+  const arrears: Record<number, ArrearsBadge> = {};
+  for (const [id, a] of arrearsMap) arrears[id] = { status: a.status, label: a.label };
+
+  return { date: now.date, builtAt: Date.now(), students, classes, arrears };
 }
 
 export type QueuedMark = {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { candidateKey, matchCandidates } from "@/lib/attendance-match";
+import { candidateKey, matchCandidates, type ArrearsBadge } from "@/lib/attendance-match";
 import { colomboNow } from "@/lib/colombo-time";
 import {
   dropFromOutbox,
@@ -188,6 +188,7 @@ export function useOfflineAttendance(deps: {
       clientRef: string,
       date: string,
       at: string,
+      arrears: ArrearsBadge,
     ): Promise<ScanResult> => {
       await queueMark({
         clientRef,
@@ -207,6 +208,7 @@ export function useOfflineAttendance(deps: {
         student,
         candidate: candidate as never,
         at,
+        arrears,
       };
     },
     [refreshOutbox],
@@ -300,20 +302,24 @@ export function useOfflineAttendance(deps: {
 
       const now = colomboNow();
       const decision = matchCandidates(candidates, now.time);
+      // Straight from the cache; the server computed it with `studentArrears`
+      // at the last refresh. Grey when this student post-dates the cache.
+      const arrears: ArrearsBadge =
+        cache.arrears?.[student.id] ?? { status: "grey", label: "Unknown offline" };
 
       switch (decision.kind) {
         case "no-class":
-          return { status: "no-class", student: brief };
+          return { status: "no-class", student: brief, arrears };
         case "outside":
-          return { status: "outside", student: brief, message: decision.message };
+          return { status: "outside", student: brief, message: decision.message, arrears };
         case "already":
-          return { status: "already", student: brief, candidate: decision.candidate, at: decision.at };
+          return { status: "already", student: brief, candidate: decision.candidate, at: decision.at, arrears };
         case "confirm":
-          return { status: "confirm", student: brief, candidate: decision.candidate };
+          return { status: "confirm", student: brief, candidate: decision.candidate, arrears };
         case "choose":
-          return { status: "choose", student: brief, candidates: decision.candidates };
+          return { status: "choose", student: brief, candidates: decision.candidates, arrears };
         case "mark":
-          return queueOffline(brief, decision.candidate, method, clientRef, cache.date, now.time);
+          return queueOffline(brief, decision.candidate, method, clientRef, cache.date, now.time, arrears);
       }
     },
     [cache, queueOffline],

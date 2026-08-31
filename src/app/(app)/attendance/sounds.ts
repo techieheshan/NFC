@@ -69,3 +69,31 @@ export const playAlreadyMarked = () =>
 /** Rejected — low buzz, obviously wrong even in a noisy corridor. */
 export const playReject = () =>
   play([{ freq: 160, start: 0, duration: 0.32, type: "sawtooth" }], 0.12);
+
+/**
+ * Marked, but the student owes — success followed by a low tail, so staff hear
+ * "yes, and look up" without stopping the queue. Deliberately starts like
+ * `playSuccess` so a busy counter still hears the mark land.
+ */
+export const playMarkedButOwes = () =>
+  play([
+    { freq: 880, start: 0, duration: 0.09 },
+    { freq: 1320, start: 0.09, duration: 0.1 },
+    { freq: 440, start: 0.24, duration: 0.22, type: "triangle" },
+  ]);
+
+/** Needs a choice — insistent triple, the only cue that means "stop and click". */
+export const playNeedsChoice = () =>
+  play([
+    { freq: 1046, start: 0, duration: 0.07 },
+    { freq: 1046, start: 0.12, duration: 0.07 },
+    { freq: 1046, start: 0.24, duration: 0.07 },
+  ]);
+
+/** Payment taken — a longer rising chime, distinct from a plain mark. */
+export const playPaymentSuccess = () =>
+  play([
+    { freq: 660, start: 0, duration: 0.1 },
+    { freq: 880, start: 0.1, duration: 0.1 },
+    { freq: 1320, start: 0.2, duration: 0.26 },
+  ]);

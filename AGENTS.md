@@ -101,6 +101,15 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     server and fall back on failure. Offline the device clock is the only
     clock: queued mark times are best-effort, and a working set from another
     day refuses to mark at all.
+22. **The counter sequences; it never decides.** `/attendance` streams taps
+    through a serial queue, but which class is open comes from
+    `attendance-match.ts`, the paid/not-paid colour from `studentArrears`
+    (`student-arrears.ts`), and every amount from `takePayment` — the popup only
+    launches it, embedded via `PaymentScreen`'s `initialStudentId`. Never add a
+    second matcher, a second arrears rule or any money math here. Two or more
+    open classes STOP the stream for a manual pick: guessing the class is the
+    one error the counter must never make. Arrears is billing-month based, so a
+    July fee paid in August clears July.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

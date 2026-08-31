@@ -1,200 +1,257 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   AlertTriangle,
-  CheckCircle2,
-  Clock,
+  Banknote,
+  CloudOff,
   Loader2,
   Nfc,
   QrCode,
-  Undo2,
-  UserRound,
-  XCircle,
+  RefreshCw,
+  UploadCloud,
 } from "lucide-react";
 
-import { CloudOff, RefreshCw, UploadCloud } from "lucide-react";
-
-import { QrScanner } from "@/components/scan/qr-scanner";
-import { useNfcScan } from "@/components/scan/use-nfc-scan";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { colomboNow, to12Hour } from "@/lib/colombo-time";
-
-import type { StudentBrief } from "@/lib/students";
+import { PaymentScreen } from "@/app/(app)/payment/payment-screen";
 import type {
-  Candidate,
+  ChargeResult,
+  ComboDecision,
+  PanelResult,
+} from "@/app/(app)/payment/actions";
+import { QrScanner } from "@/components/scan/qr-scanner";
+import { StudentSearch } from "@/components/scan/student-search";
+import { useNfcScan } from "@/components/scan/use-nfc-scan";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { colomboNow } from "@/lib/colombo-time";
+import type { Candidate } from "@/lib/attendance-match";
+import type { StudentBrief } from "@/lib/students";
+
+import type {
   Method,
   QueuedMark,
   ScanResult,
   SyncOutcome,
   WorkingSet,
 } from "./actions";
+import { ChoiceCard, CounterCard } from "./counter-card";
+import {
+  playAlreadyMarked,
+  playMarkedButOwes,
+  playNeedsChoice,
+  playPaymentSuccess,
+  playReject,
+  playSuccess,
+  primeAudio,
+} from "./sounds";
 import { useOfflineAttendance } from "./use-offline-attendance";
-import { playAlreadyMarked, playReject, playSuccess, primeAudio } from "./sounds";
-import { StudentSearch } from "@/components/scan/student-search";
 
-type RecentMark = {
-  /** Null for a mark taken offline — there is no server row to undo yet. */
-  attendanceId: number | null;
-  key: string;
-  student: string;
-  course: string;
-  at: string;
-  queued: boolean;
-};
+type Tap = { input: { cardUid?: string; cardNumber?: string; studentId?: number }; method: Method };
+
+type StreamCard = { id: string; result: ScanResult };
+
+/** How many confirmations stay on screen. Older ones scroll out of the way. */
+const TRAIL = 6;
 
 type Props = {
   resolveScan: (input: {
-    cardUid?: string;
-    cardNumber?: string;
-    studentId?: number;
-    method: Method;
-    clientRef: string;
+    cardUid?: string; cardNumber?: string; studentId?: number;
+    method: Method; clientRef: string;
   }) => Promise<ScanResult>;
   markCandidate: (input: {
-    studentId: number;
-    courseId: number;
-    additionalClassId: number | null;
-    method: Method;
-    clientRef: string;
+    studentId: number; courseId: number; additionalClassId: number | null;
+    method: Method; clientRef: string;
   }) => Promise<ScanResult>;
   undoMark: (attendanceId: number) => Promise<{ ok: boolean; error?: string }>;
   searchStudents: (query: string) => Promise<StudentBrief[]>;
   loadWorkingSet: () => Promise<WorkingSet>;
   syncMarks: (items: QueuedMark[]) => Promise<SyncOutcome[]>;
+  // Payment engine, passed straight through to the embedded payment screen.
+  loadPanel: (input: { cardUid?: string; cardNumber?: string; studentId?: number }) => Promise<PanelResult>;
+  takePayment: (input: {
+    comboDecisions: ComboDecision[]; studentId: number; admission: boolean;
+    smartCard: boolean; classMonths: { courseId: number; year: number; month: number }[];
+  }) => Promise<ChargeResult>;
+  paymentSearch: (query: string) => Promise<StudentBrief[]>;
 };
 
 /**
- * The whole screen is one result at a time: identify → matcher → outcome.
+ * The streaming counter.
  *
- * Marks are written by the server actions; this only decides which cue to play
- * and what to show. `clientRef` is generated here even though we're online —
- * Tag B's outbox dedupes on it, so the shape must already be right.
+ * The reader never stops. Every tap joins a SERIAL queue — a burst processes in
+ * order, none dropped, none raced — and each outcome stacks a confirmation card
+ * that needs no click to clear. The only thing that halts the stream is a
+ * genuine ambiguity (two classes open, or a one-off extra class): those need a
+ * decision, and taps that arrive meanwhile buffer rather than being lost.
+ *
+ * Nothing here decides anything on its own. The class comes from
+ * `attendance-match.ts`, the colour from `studentArrears`, the money from the
+ * existing `takePayment` — this file is sequencing and presentation.
  */
 export function AttendanceScreen({
   resolveScan,
   markCandidate,
-  undoMark,
   searchStudents,
   loadWorkingSet,
   syncMarks,
+  loadPanel,
+  takePayment,
+  paymentSearch,
 }: Props) {
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [recent, setRecent] = useState<RecentMark[]>([]);
+  const [cards, setCards] = useState<StreamCard[]>([]);
+  const [blocking, setBlocking] = useState<StreamCard | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
-  const [undoError, setUndoError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(false);
+  const [buffered, setBuffered] = useState(0);
+  const [paying, setPaying] = useState<{ studentId: number; name: string } | null>(null);
 
   const offline = useOfflineAttendance({ loadWorkingSet, syncMarks });
 
-  // The method that produced the current result, so a confirm/pick keeps it.
-  const methodRef = useRef<Method>("SEARCH");
+  // --- the serial queue ----------------------------------------------------
+  // Refs, not state: the drain loop must see the live values, and a re-render
+  // in the middle of a burst must not restart it.
+  const queue = useRef<Tap[]>([]);
+  const running = useRef(false);
+  const blocked = useRef(false);
+  const method = useRef<Method>("SEARCH");
 
-  const announce = useCallback((r: ScanResult) => {
-    setResult(r);
-    setUndoError(null);
-    if (r.status === "marked") {
-      playSuccess();
-      setRecent((prev) =>
-        [
-          {
-            attendanceId: r.mark.attendanceId,
-            key: r.mark.clientRef,
-            student: r.student.name,
-            course: r.mark.candidate.course,
-            at: r.mark.at,
-            queued: false,
-          },
-          ...prev,
-        ].slice(0, 10),
-      );
-    } else if (r.status === "queued") {
-      // Same cue as a real mark: to the person at the counter it succeeded,
-      // and it will reach the server on its own.
-      playSuccess();
-      setRecent((prev) =>
-        [
-          {
-            attendanceId: null,
-            key: `${r.student.id}:${r.candidate.key}:${r.at}`,
-            student: r.student.name,
-            course: r.candidate.course,
-            at: r.at,
-            queued: true,
-          },
-          ...prev,
-        ].slice(0, 10),
-      );
-    } else if (r.status === "already") {
-      playAlreadyMarked();
-    } else if (
-      r.status === "unknown" ||
-      r.status === "no-class" ||
-      r.status === "outside" ||
-      r.status === "offline-blocked"
-    ) {
-      playReject();
+  const push = useCallback((result: ScanResult) => {
+    const card = { id: crypto.randomUUID(), result };
+
+    // Sound first: staff run this counter by ear.
+    switch (result.status) {
+      case "marked":
+      case "queued":
+        (result.arrears.status === "amber" || result.arrears.status === "red"
+          ? playMarkedButOwes
+          : playSuccess)();
+        break;
+      case "already":
+        playAlreadyMarked();
+        break;
+      case "choose":
+      case "confirm":
+        playNeedsChoice();
+        break;
+      default:
+        playReject();
     }
-    // "confirm" and "choose" are silent — they're questions, not outcomes.
+
+    if (result.status === "choose" || result.status === "confirm") {
+      // The stream stops here, on purpose. Never guess the class.
+      blocked.current = true;
+      setBlocking(card);
+      return;
+    }
+    setCards((prev) => [card, ...prev].slice(0, TRAIL));
   }, []);
 
-  const scan = useCallback(
-    (input: { cardUid?: string; cardNumber?: string; studentId?: number }, method: Method) => {
-      primeAudio();
-      methodRef.current = method;
+  /** One tap, online-first with the offline path as the fallback. */
+  const process = useCallback(
+    async (tap: Tap) => {
       const clientRef = crypto.randomUUID();
-      startTransition(async () => {
-        // Try the server first and fall back on failure, rather than trusting
-        // navigator.onLine: a terminal can have Wi-Fi and no route to the box.
-        try {
-          if (!navigator.onLine) throw new Error("offline");
-          const r = await resolveScan({ ...input, method, clientRef });
-          offline.setReachable(true);
-          announce(r);
-        } catch {
-          offline.setReachable(false);
-          announce(await offline.resolveOffline(input, method, clientRef));
-        }
-      });
+      try {
+        if (!navigator.onLine) throw new Error("offline");
+        const r = await resolveScan({ ...tap.input, method: tap.method, clientRef });
+        offline.setReachable(true);
+        return r;
+      } catch {
+        offline.setReachable(false);
+        return offline.resolveOffline(tap.input, tap.method, clientRef);
+      }
     },
-    [announce, resolveScan, offline],
+    [resolveScan, offline],
   );
+
+  const drain = useCallback(async () => {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    try {
+      while (queue.current.length > 0 && !blocked.current) {
+        const tap = queue.current.shift()!;
+        setBuffered(queue.current.length);
+        push(await process(tap));
+      }
+    } finally {
+      running.current = false;
+      setBusy(false);
+      setBuffered(queue.current.length);
+    }
+  }, [process, push]);
+
+  /** Every entry point lands here. Taps are never dropped, only deferred. */
+  const tap = useCallback(
+    (input: Tap["input"], m: Method) => {
+      primeAudio();
+      method.current = m;
+      queue.current.push({ input, method: m });
+      setBuffered(queue.current.length);
+      void drain();
+    },
+    [drain],
+  );
+
+  const nfc = useNfcScan((cardUid) => tap({ cardUid }, "NFC"));
+
+  /** Resolving the blocking card releases the stream. */
+  const release = useCallback(() => {
+    blocked.current = false;
+    setBlocking(null);
+    void drain();
+  }, [drain]);
 
   const choose = useCallback(
     (student: StudentBrief, candidate: Candidate) => {
-      const clientRef = crypto.randomUUID();
-      startTransition(async () => {
+      setBusy(true);
+      void (async () => {
+        const clientRef = crypto.randomUUID();
+        let result: ScanResult;
         try {
           if (!navigator.onLine) throw new Error("offline");
-          const r = await markCandidate({
+          result = await markCandidate({
             studentId: student.id,
             courseId: candidate.courseId,
             additionalClassId: candidate.additionalClassId,
-            method: methodRef.current,
+            method: method.current,
             clientRef,
           });
           offline.setReachable(true);
-          announce(r);
         } catch {
           offline.setReachable(false);
-          announce(
-            await offline.queueOffline(
-              student,
-              candidate,
-              methodRef.current,
-              clientRef,
-              colomboNow().date,
-              colomboNow().time,
-            ),
+          result = await offline.queueOffline(
+            { ...student, photoUrl: student.photoUrl ?? null },
+            candidate,
+            method.current,
+            clientRef,
+            colomboNow().date,
+            colomboNow().time,
+            offline.cache?.arrears?.[student.id] ?? { status: "grey", label: "Unknown offline" },
           );
         }
-      });
+        setBusy(false);
+        // Never re-block on the card we just resolved.
+        blocked.current = false;
+        setBlocking(null);
+        setCards((prev) => [{ id: crypto.randomUUID(), result }, ...prev].slice(0, TRAIL));
+        if (result.status === "marked" || result.status === "queued") {
+          (result.arrears.status === "green" || result.arrears.status === "grey"
+            ? playSuccess
+            : playMarkedButOwes)();
+        }
+        void drain();
+      })();
     },
-    [announce, markCandidate, offline],
+    [markCandidate, offline, drain],
   );
 
-  /** Server typeahead, falling back to the cached roster when it can't answer. */
+  /** Search falls back to the cached roster when the server can't answer. */
   const search = useCallback(
     async (query: string) => {
       try {
@@ -210,37 +267,8 @@ export function AttendanceScreen({
     [searchStudents, offline],
   );
 
-  const nfc = useNfcScan((cardUid) => scan({ cardUid }, "NFC"));
-
-  const undoLast = useCallback(() => {
-    const last = recent[0];
-    if (!last || last.attendanceId === null) return;
-    startTransition(async () => {
-      const res = await undoMark(last.attendanceId!);
-      if (res.ok) {
-        setRecent((prev) => prev.slice(1));
-        setResult(null);
-      } else {
-        setUndoError(res.error ?? "Couldn't undo that mark.");
-      }
-    });
-  }, [recent, undoMark]);
-
-  const reset = useCallback(() => {
-    setResult(null);
-    setUndoError(null);
-  }, []);
-
   return (
-    <div className="mx-auto max-w-lg space-y-5">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Tap a card, scan its QR, or search. The class open right now is marked
-          automatically.
-        </p>
-      </div>
-
+    <div className="mx-auto max-w-2xl space-y-5">
       <ConnectionBar
         online={offline.connected}
         stale={offline.stale}
@@ -251,378 +279,136 @@ export function AttendanceScreen({
         onSync={() => void offline.flush()}
       />
 
-      {result ? (
-        <ResultPanel
-          result={result}
-          pending={pending}
-          canUndo={recent[0]?.attendanceId != null}
-          undoError={undoError}
-          onUndo={undoLast}
-          onChoose={choose}
-          onDone={reset}
-        />
-      ) : (
-        <div className="space-y-4">
-          <div className="space-y-3">
-            {nfc.support !== "unsupported" &&
-              (nfc.scanning ? (
-                <div className="space-y-3 rounded-xl border border-dashed p-6 text-center">
-                  <Loader2 className="text-primary mx-auto size-6 animate-spin" aria-hidden />
-                  <p className="text-sm font-medium">Hold the card against the phone…</p>
-                  <Button variant="outline" size="sm" onClick={nfc.stop}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  onClick={() => {
-                    primeAudio();
-                    void nfc.start();
-                  }}
-                  className="h-16 w-full gap-2 text-base"
-                  disabled={pending || nfc.support === "unknown"}
-                >
-                  <Nfc className="size-5" aria-hidden />
-                  Tap card (NFC)
-                </Button>
-              ))}
-
+      {/* --- the reader: always live, never replaced by a result --- */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {nfc.support !== "unsupported" &&
+          (nfc.scanning ? (
+            <div className="space-y-2 rounded-xl border border-dashed p-4 text-center sm:col-span-2">
+              <Loader2 className="text-primary mx-auto size-6 animate-spin" aria-hidden />
+              <p className="text-sm font-medium">Reader live — tap cards</p>
+              <Button variant="outline" size="sm" onClick={nfc.stop}>Stop reader</Button>
+            </div>
+          ) : (
             <Button
-              onClick={() => {
-                primeAudio();
-                setQrOpen(true);
-              }}
-              variant={nfc.support === "unsupported" ? "default" : "secondary"}
-              className="h-16 w-full gap-2 text-base"
-              disabled={pending}
+              onClick={() => { primeAudio(); void nfc.start(); }}
+              className="h-16 gap-2 text-base sm:col-span-2"
+              disabled={nfc.support === "unknown"}
             >
-              <QrCode className="size-5" aria-hidden />
-              Scan QR code
+              <Nfc className="size-5" aria-hidden />
+              Tap card (NFC)
             </Button>
-          </div>
+          ))}
 
-          {nfc.support === "unsupported" && (
-            <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
-              This browser can&apos;t read NFC. Use the QR scan or search below.
-            </p>
-          )}
+        <Button
+          onClick={() => { primeAudio(); setQrOpen(true); }}
+          variant={nfc.support === "unsupported" ? "default" : "secondary"}
+          className="h-14 gap-2"
+        >
+          <QrCode className="size-5" aria-hidden />
+          Scan QR
+        </Button>
 
-          {nfc.error && (
-            <p role="alert" className="text-destructive text-sm">
-              {nfc.error}
-            </p>
-          )}
-
-          <div className="rounded-xl border p-4">
-            <StudentSearch
-              search={search}
-              busy={pending}
-              onPick={(s) => scan({ studentId: s.id }, "SEARCH")}
-            />
-          </div>
-
-          {pending && (
-            <p className="text-muted-foreground flex items-center justify-center gap-2 text-sm">
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-              Checking the timetable…
-            </p>
-          )}
+        <div className="flex items-center justify-center rounded-xl border px-3">
+          <p className="text-muted-foreground text-xs">
+            {busy ? "Processing…" : "Ready"}
+            {buffered > 0 && ` · ${buffered} waiting`}
+          </p>
         </div>
-      )}
-
-      {recent.length > 0 && (
-        <div className="rounded-xl border p-4">
-          <p className="mb-2 text-sm font-medium">Recent marks</p>
-          <ul className="divide-y text-sm">
-            {recent.map((m) => (
-              <li key={m.key} className="flex items-center justify-between gap-3 py-1.5">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{m.student}</span>
-                  <span className="text-muted-foreground block truncate text-xs">{m.course}</span>
-                </span>
-                <span className="text-muted-foreground flex shrink-0 items-center gap-2 tabular-nums">
-                  {m.queued && <Badge variant="outline">Queued</Badge>}
-                  {to12Hour(m.at)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <QrScanner
-        open={qrOpen}
-        onOpenChange={setQrOpen}
-        onDecode={(value) => scan({ cardNumber: value }, "QR")}
-      />
-    </div>
-  );
-}
-
-function StudentHeader({ student }: { student: StudentBrief }) {
-  return (
-    <div className="flex items-center gap-4">
-      <span className="bg-muted size-20 shrink-0 overflow-hidden rounded-xl border">
-        {student.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={student.photoUrl} alt="" className="size-full object-cover" />
-        ) : (
-          <span className="text-muted-foreground grid size-full place-items-center">
-            <UserRound className="size-8" aria-hidden />
-          </span>
-        )}
-      </span>
-      <div className="min-w-0">
-        <p className="truncate text-xl font-semibold">{student.name}</p>
-        <p className="text-muted-foreground truncate text-sm">
-          {student.cardNumber ?? "no card number"}
-        </p>
       </div>
-    </div>
-  );
-}
 
-function CandidateLine({ c }: { c: Candidate }) {
-  return (
-    <span className="min-w-0 text-left">
-      <span className="block truncate font-medium">{c.course}</span>
-      <span className="text-muted-foreground block truncate text-xs">
-        {c.teacher} · {to12Hour(c.startTime)}–{to12Hour(c.endTime)}
-      </span>
-    </span>
-  );
-}
+      <div className="rounded-xl border p-3">
+        <StudentSearch search={search} busy={false} onPick={(s) => tap({ studentId: s.id }, "SEARCH")} />
+      </div>
 
-function ResultPanel({
-  result,
-  pending,
-  canUndo,
-  undoError,
-  onUndo,
-  onChoose,
-  onDone,
-}: {
-  result: ScanResult;
-  pending: boolean;
-  canUndo: boolean;
-  undoError: string | null;
-  onUndo: () => void;
-  onChoose: (student: StudentBrief, candidate: Candidate) => void;
-  onDone: () => void;
-}) {
-  const Next = (
-    <Button onClick={onDone} className="w-full" variant="outline" disabled={pending}>
-      Next student
-    </Button>
-  );
-
-  if (result.status === "unknown") {
-    return (
-      <Banner tone="error" icon={XCircle} title="Card not recognised">
-        <p className="text-sm">Register this card first, or search by name.</p>
-        {Next}
-      </Banner>
-    );
-  }
-
-  if (result.status === "no-class") {
-    return (
-      <Banner tone="error" icon={XCircle} title="No class open right now">
-        <StudentHeader student={result.student} />
-        {Next}
-      </Banner>
-    );
-  }
-
-  if (result.status === "outside") {
-    return (
-      <Banner tone="warn" icon={Clock} title="Not open yet / already closed">
-        <StudentHeader student={result.student} />
-        <p className="text-sm font-medium">{result.message}</p>
-        {Next}
-      </Banner>
-    );
-  }
-
-  if (result.status === "already") {
-    return (
-      <Banner
-        tone="warn"
-        icon={AlertTriangle}
-        title={`Already marked at ${to12Hour(result.at)}`}
-      >
-        <StudentHeader student={result.student} />
-        <p className="text-muted-foreground text-sm">{result.candidate.course}</p>
-        {Next}
-      </Banner>
-    );
-  }
-
-  if (result.status === "marked") {
-    return (
-      <Banner tone="success" icon={CheckCircle2} title="Marked present">
-        <StudentHeader student={result.student} />
-        <div className="bg-background/60 rounded-lg border p-3">
-          <CandidateLine c={result.mark.candidate} />
-          <p className="mt-1 text-sm font-medium tabular-nums">
-            {to12Hour(result.mark.at)}
-          </p>
-        </div>
-        {undoError && (
-          <p role="alert" className="text-destructive text-sm">
-            {undoError}
-          </p>
+      {/* --- the one thing that stops the stream --- */}
+      {blocking &&
+        (blocking.result.status === "choose" || blocking.result.status === "confirm") && (
+          <ChoiceCard
+            result={blocking.result}
+            pending={busy}
+            onChoose={(c) =>
+              choose(
+                (blocking.result as Extract<ScanResult, { status: "choose" }>).student,
+                c,
+              )
+            }
+            onCancel={release}
+          />
         )}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1 gap-1.5"
-            onClick={onUndo}
-            disabled={pending || !canUndo}
-          >
-            <Undo2 className="size-4" aria-hidden />
-            Undo
-          </Button>
-          <Button onClick={onDone} className="flex-1" disabled={pending}>
-            Next student
-          </Button>
-        </div>
-      </Banner>
-    );
-  }
 
-  if (result.status === "confirm") {
-    return (
-      <Banner tone="warn" icon={AlertTriangle} title="Additional class">
-        <StudentHeader student={result.student} />
-        <div className="bg-background/60 rounded-lg border p-3">
-          <CandidateLine c={result.candidate} />
-        </div>
-        <p className="text-sm">
-          Mark <span className="font-medium">{result.student.name}</span> present
-          for this one-off class?
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={onDone} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            className="flex-1"
-            disabled={pending}
-            onClick={() => onChoose(result.student, result.candidate)}
-          >
-            {pending ? "Marking…" : "Mark present"}
-          </Button>
-        </div>
-      </Banner>
-    );
-  }
+      {/* --- the trail: newest first, no click to advance --- */}
+      {cards.length > 0 && (
+        <ul className="space-y-3">
+          {cards.map((c) => (
+            <CounterCard
+              key={c.id}
+              result={c.result}
+              canPay={offline.connected}
+              onPay={(studentId, name) => {
+              // Hold the stream while the till is open: a confirmation card
+              // stacked behind a modal is a mark nobody saw. Taps still queue.
+              blocked.current = true;
+              setPaying({ studentId, name });
+            }}
+            />
+          ))}
+        </ul>
+      )}
 
-  if (result.status === "queued") {
-    return (
-      <Banner tone="success" icon={CheckCircle2} title="Marked present — queued">
-        <StudentHeader student={result.student} />
-        <div className="bg-background/60 rounded-lg border p-3">
-          <CandidateLine c={result.candidate} />
-          <p className="mt-1 text-sm font-medium tabular-nums">{to12Hour(result.at)}</p>
-        </div>
-        <p className="text-sm">
-          Saved on this device and will sync when the connection is back. The
-          time is the terminal&apos;s own clock.
-        </p>
-        {Next}
-      </Banner>
-    );
-  }
+      <QrScanner open={qrOpen} onOpenChange={setQrOpen} onDecode={(v) => tap({ cardNumber: v }, "QR")} />
 
-  if (result.status === "offline-blocked") {
-    return (
-      <Banner tone="error" icon={CloudOff} title="Can't mark offline yet">
-        <p className="text-sm">{result.message}</p>
-        {Next}
-      </Banner>
-    );
-  }
-
-  return (
-    <Banner tone="warn" icon={Clock} title="Which class?">
-      <StudentHeader student={result.student} />
-      <ul className="space-y-2">
-        {result.candidates.map((c) => (
-          <li key={c.key}>
-            <button
-              type="button"
-              disabled={pending || Boolean(c.markedAt)}
-              onClick={() => onChoose(result.student, c)}
-              className="hover:bg-accent bg-background/60 flex w-full items-center justify-between gap-3 rounded-lg border p-3 transition-colors disabled:opacity-60"
-            >
-              <CandidateLine c={c} />
-              <span className="flex shrink-0 items-center gap-2">
-                <Badge variant={c.kind === "additional" ? "default" : "secondary"}>
-                  {c.kind === "additional" ? "Additional" : "Regular"}
-                </Badge>
-                {c.markedAt && <Badge variant="outline">Marked</Badge>}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {Next}
-    </Banner>
-  );
-}
-
-const TONES = {
-  success: "border-emerald-300 bg-emerald-50 text-emerald-900",
-  warn: "border-amber-300 bg-amber-50 text-amber-900",
-  error: "border-destructive/40 bg-destructive/5 text-destructive",
-} as const;
-
-function Banner({
-  tone,
-  icon: Icon,
-  title,
-  children,
-}: {
-  tone: keyof typeof TONES;
-  icon: typeof CheckCircle2;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`space-y-4 rounded-xl border p-5 ${TONES[tone]}`} role="status">
-      <p className="flex items-center gap-2 text-lg font-semibold">
-        <Icon className="size-6 shrink-0" aria-hidden />
-        {title}
-      </p>
-      {children}
+      {/*
+        Pay without leaving the counter. This is the EXISTING payment screen —
+        month picker, catch-up, combo prompt with the fraud check, receipt, and
+        server-side recomputation of every amount — opened on a student the
+        counter already identified. Keyed so each student gets a fresh instance.
+      */}
+      <Dialog
+        open={paying !== null}
+        onOpenChange={(o) => {
+          if (o) return;
+          setPaying(null);
+          release();
+        }}
+      >
+        <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="size-4" aria-hidden />
+              Take payment — {paying?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Taps keep queuing behind this and are marked when it closes.
+            </DialogDescription>
+          </DialogHeader>
+          {paying && (
+            <PaymentScreen
+              key={paying.studentId}
+              embedded
+              initialStudentId={paying.studentId}
+              loadPanel={loadPanel}
+              takePayment={takePayment}
+              searchStudents={paymentSearch}
+              onFinished={() => {
+                playPaymentSuccess();
+                setPaying(null);
+                release();
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-/**
- * Connection and sync state, always visible on this screen because it changes
- * what a mark MEANS: online it is on the server, offline it is on this device
- * until the router comes back.
- */
+/** Connection and sync state — it changes what a mark MEANS, so it stays visible. */
 function ConnectionBar({
-  online,
-  stale,
-  cacheDate,
-  queued,
-  syncing,
-  message,
-  onSync,
+  online, stale, cacheDate, queued, syncing, message, onSync,
 }: {
-  online: boolean;
-  stale: boolean;
-  cacheDate: string | null;
-  queued: number;
-  syncing: boolean;
-  message: string | null;
-  onSync: () => void;
+  online: boolean; stale: boolean; cacheDate: string | null;
+  queued: number; syncing: boolean; message: string | null; onSync: () => void;
 }) {
-  // Nothing to say when everything is normal: online, nothing queued, fresh.
   if (online && queued === 0 && !stale && !message) return null;
 
   return (
@@ -632,21 +418,15 @@ function ConnectionBar({
           <CloudOff className="size-4 shrink-0" aria-hidden />
           <span>
             Offline — attendance still works from this device&apos;s cached
-            timetable. Everything else needs a connection.
+            timetable. Payments and everything else need a connection.
           </span>
         </p>
       )}
 
       {stale && (
-        <p
-          role="alert"
-          className="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-        >
+        <p role="alert" className="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
           <AlertTriangle className="size-4 shrink-0" aria-hidden />
-          <span>
-            Offline data is from {cacheDate}, not today. Reconnect to refresh
-            before relying on it.
-          </span>
+          <span>Offline data is from {cacheDate}, not today. Reconnect to refresh before relying on it.</span>
         </p>
       )}
 
@@ -657,21 +437,12 @@ function ConnectionBar({
             {queued} mark{queued === 1 ? "" : "s"} waiting to sync
           </span>
           <Button size="sm" variant="outline" onClick={onSync} disabled={syncing || !online}>
-            {syncing ? (
-              <>
-                <RefreshCw className="size-3.5 animate-spin" aria-hidden />
-                Syncing…
-              </>
-            ) : (
-              "Sync now"
-            )}
+            {syncing ? (<><RefreshCw className="size-3.5 animate-spin" aria-hidden />Syncing…</>) : "Sync now"}
           </Button>
         </div>
       )}
 
-      {message && queued === 0 && (
-        <p className="text-muted-foreground text-sm">{message}</p>
-      )}
+      {message && queued === 0 && <p className="text-muted-foreground text-sm">{message}</p>}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Candidate } from "@/lib/attendance-match";
+import type { ArrearsBadge, Candidate } from "@/lib/attendance-match";
 
 /**
  * The terminal's local store: the cached working set and the outbox of marks
@@ -29,6 +29,8 @@ export type CachedWorkingSet = {
     cardNumber: string | null;
   }[];
   classes: Record<number, Candidate[]>;
+  /** Precomputed at each online refresh — the colour survives the outage. */
+  arrears: Record<number, ArrearsBadge>;
 };
 
 export type OutboxItem = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   CheckCircle2,
   CreditCard,
@@ -44,12 +44,32 @@ type Props = {
     classMonths: { courseId: number; year: number; month: number }[];
   }) => Promise<ChargeResult>;
   searchStudents: (query: string) => Promise<StudentBrief[]>;
+  /**
+   * Open straight onto this student instead of the identify step.
+   *
+   * The attendance counter opens this whole screen inside a dialog for a
+   * student it has already identified from their tap — reusing the payment
+   * engine rather than growing a second one. Everything below (months, combo
+   * prompt, fraud check, receipt, server recomputation) is untouched.
+   */
+  initialStudentId?: number;
+  /** Hides the identify UI and the "Change student" affordance. */
+  embedded?: boolean;
+  /** Called after a receipt is closed, so the host can dismiss the dialog. */
+  onFinished?: () => void;
 };
 
 const monthKey = (courseId: number, year: number, month: number) =>
   `${courseId}:${year}:${month}`;
 
-export function PaymentScreen({ loadPanel, takePayment, searchStudents }: Props) {
+export function PaymentScreen({
+  loadPanel,
+  takePayment,
+  searchStudents,
+  initialStudentId,
+  embedded = false,
+  onFinished,
+}: Props) {
   const [panel, setPanel] = useState<PaymentPanel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -94,6 +114,17 @@ export function PaymentScreen({ loadPanel, takePayment, searchStudents }: Props)
   );
 
   const nfc = useNfcScan((cardUid) => identify({ cardUid }));
+
+  // Embedded: load the student the counter already identified, once, on mount.
+  // `initialStudentId` is a mount-time input, never synced back in — a
+  // different student means a different dialog instance (keyed by the host).
+  const openedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (initialStudentId === undefined) return;
+    if (openedFor.current === initialStudentId) return;
+    openedFor.current = initialStudentId;
+    identify({ studentId: initialStudentId });
+  }, [initialStudentId, identify]);
 
   const reset = useCallback(() => {
     setPanel(null);
@@ -207,8 +238,21 @@ export function PaymentScreen({ loadPanel, takePayment, searchStudents }: Props)
           <CheckCircle2 className="size-6" aria-hidden />
           Payment taken
         </p>
-        <ReceiptView receipt={receipt} onDone={reset} />
+        <ReceiptView
+          receipt={receipt}
+          doneLabel={embedded ? "Back to the counter" : "Next student"}
+          onDone={embedded ? () => onFinished?.() : reset}
+        />
       </div>
+    );
+  }
+
+  if (!panel && embedded) {
+    return (
+      <p className="text-muted-foreground flex items-center justify-center gap-2 py-10 text-sm">
+        <Loader2 className="size-4 animate-spin" aria-hidden />
+        {notFound ? "That student could not be loaded." : "Loading fees…"}
+      </p>
     );
   }
 
@@ -233,9 +277,11 @@ export function PaymentScreen({ loadPanel, takePayment, searchStudents }: Props)
               {panel.student.cardNumber ?? "no card number"}
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={reset}>
-            Change
-          </Button>
+          {!embedded && (
+            <Button variant="ghost" size="sm" onClick={reset}>
+              Change
+            </Button>
+          )}
         </div>
 
         {/* Admission */}
