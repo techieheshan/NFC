@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Download, Receipt, UserRound } from "lucide-react";
+import { Download, IdCard, Receipt, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,12 +132,20 @@ export function SearchResults({
                   {s.enrolments.length > 0 ? s.enrolments.join(" · ") : "No active enrolments"}
                 </p>
               </div>
-              <Button asChild size="sm" variant="outline" className="gap-1.5">
-                <Link href={`/registration?studentId=${s.id}`}>
-                  <UserRound className="size-3.5" aria-hidden />
-                  Open
-                </Link>
-              </Button>
+              <div className="flex shrink-0 gap-2">
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <Link href={`/students/${s.id}`}>
+                    <IdCard className="size-3.5" aria-hidden />
+                    Profile
+                  </Link>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <Link href={`/registration?studentId=${s.id}`}>
+                    <UserRound className="size-3.5" aria-hidden />
+                    Edit
+                  </Link>
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
