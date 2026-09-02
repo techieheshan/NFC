@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
 import type { ActionState, Identifier, LookupResult, StudentView } from "./actions";
 import { CardScanner } from "./card-scanner";
@@ -29,6 +30,8 @@ type Props = {
   attachIdentifier: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   /** Set when Search deep-links a student; otherwise the flow starts at scan. */
   initialStudent?: StudentView | null;
+  /** From the Settings voice toggle. */
+  voiceEnabled?: boolean;
 };
 
 /**
@@ -47,7 +50,9 @@ export function RegistrationScreen({
   updatePhoto,
   attachIdentifier,
   initialStudent = null,
+  voiceEnabled = false,
 }: Props) {
+  setVoiceEnabled(voiceEnabled);
   // Used as the INITIAL value only — never synced back in with an effect
   // (AGENTS.md rule 17). A different student means a different URL, so the
   // route change remounts this component with the new one.
@@ -137,7 +142,10 @@ export function RegistrationScreen({
         courses={courses}
         feeTiers={feeTiers}
         action={createStudent}
-        onSaved={() => setPhase({ kind: "saved" })}
+        onSaved={() => {
+          VOICE.registered();
+          setPhase({ kind: "saved" });
+        }}
         onBack={backToScan}
       />
     );

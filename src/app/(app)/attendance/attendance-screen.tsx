@@ -52,6 +52,7 @@ import {
   primeAudio,
 } from "./sounds";
 import { useOfflineAttendance } from "./use-offline-attendance";
+import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
 type Tap = { input: { cardUid?: string; cardNumber?: string; studentId?: number }; method: Method };
 
@@ -96,6 +97,8 @@ type Props = {
     smartCard: boolean; classMonths: { courseId: number; year: number; month: number }[];
   }) => Promise<ChargeResult>;
   paymentSearch: (query: string) => Promise<StudentBrief[]>;
+  /** From the Settings voice toggle. Tones play either way. */
+  voiceEnabled: boolean;
 };
 
 /**
@@ -120,6 +123,7 @@ export function AttendanceScreen({
   loadPanel,
   takePayment,
   paymentSearch,
+  voiceEnabled,
 }: Props) {
   // ONE popup. The device screen is small and must not scroll, so nothing
   // accumulates: each outcome replaces the last.
@@ -129,6 +133,7 @@ export function AttendanceScreen({
   const [paying, setPaying] = useState<{ studentId: number; name: string } | null>(null);
 
   const offline = useOfflineAttendance({ loadWorkingSet, syncMarks });
+  setVoiceEnabled(voiceEnabled);
 
   // --- the serial queue ----------------------------------------------------
   // Refs, not state: the drain loop must see the live values, and a re-render
@@ -142,19 +147,29 @@ export function AttendanceScreen({
     const card = { id: crypto.randomUUID(), result };
 
     // Sound first: staff run this counter by ear.
+    const owing = "arrears" in result && (result.arrears.status === "amber" || result.arrears.status === "red");
     switch (result.status) {
       case "marked":
       case "queued":
-        (result.arrears.status === "amber" || result.arrears.status === "red"
-          ? playMarkedButOwes
-          : playSuccess)();
+        (owing ? playMarkedButOwes : playSuccess)();
+        (owing ? VOICE.markedOwing : VOICE.marked)();
         break;
       case "already":
         playAlreadyMarked();
+        VOICE.alreadyMarked();
         break;
       case "choose":
       case "confirm":
         playNeedsChoice();
+        break;
+      case "unknown":
+        playReject();
+        VOICE.unknownCard();
+        break;
+      case "no-class":
+      case "outside":
+        playReject();
+        VOICE.noClass();
         break;
       default:
         playReject();
@@ -266,9 +281,9 @@ export function AttendanceScreen({
         blocked.current = false;
         setPopup({ id: crypto.randomUUID(), result });
         if (result.status === "marked" || result.status === "queued") {
-          (result.arrears.status === "green" || result.arrears.status === "grey"
-            ? playSuccess
-            : playMarkedButOwes)();
+          const owes = result.arrears.status === "amber" || result.arrears.status === "red";
+          (owes ? playMarkedButOwes : playSuccess)();
+          (owes ? VOICE.markedOwing : VOICE.marked)();
         }
         void drain();
       })();
@@ -425,6 +440,7 @@ export function AttendanceScreen({
               searchStudents={paymentSearch}
               onFinished={() => {
                 playPaymentSuccess();
+                VOICE.paymentComplete();
                 setPaying(null);
                 release();
               }}

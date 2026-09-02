@@ -1,4 +1,5 @@
 import { requireNavAccess } from "@/lib/authz";
+import { getToggle } from "@/lib/settings";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 
@@ -22,6 +23,8 @@ export default async function RegistrationPage({
 
   // Search links here with a student id so its rows open the edit view
   // directly; the scan flow is unchanged when the parameter is absent.
+  const voiceEnabled = await getToggle("voice_confirmations");
+
   const raw = (await searchParams).studentId;
   const studentId = Number(Array.isArray(raw) ? raw[0] : raw);
   const initialStudent =
@@ -64,6 +67,7 @@ export default async function RegistrationPage({
       updatePhoto={updateStudentPhoto}
       attachIdentifier={attachIdentifier}
       initialStudent={initialStudent}
+      voiceEnabled={voiceEnabled}
     />
   );
 }
