@@ -5,19 +5,11 @@ import { requireNavAccess } from "@/lib/authz";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { buildRoster } from "@/lib/roster";
+import { getToggle } from "@/lib/settings";
 
 import { RosterScreen } from "./roster-screen";
 
 export const metadata = { title: "My Students" };
-
-/**
- * Contact numbers on the roster.
- *
- * A teacher can see the phone number of a student in their own class, so they
- * can reach the student or their parent about that class. Flip this to false to
- * remove the column from the screen AND the PDF in one edit.
- */
-const SHOW_PHONE = true;
 
 const FIELD =
   "border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs";
@@ -46,6 +38,8 @@ export default async function MyStudentsPage({ searchParams }: PageProps<"/my-st
   };
 
   const roster = await buildRoster(user, filters);
+  // Contact numbers are a policy decision, not a constant: Settings owns it.
+  const showPhone = await getToggle("roster_show_phone");
   const isTeacher = user.role === "TEACHER";
 
   // The filter selects are only meaningful for a viewer who can see everything.
@@ -143,7 +137,7 @@ export default async function MyStudentsPage({ searchParams }: PageProps<"/my-st
         key={JSON.stringify(params)}
         courses={roster.courses}
         filterSummary={filterSummary}
-        showPhone={SHOW_PHONE}
+        showPhone={showPhone}
       />
     </div>
   );
