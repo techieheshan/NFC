@@ -21,6 +21,32 @@ import { db } from "@/lib/db";
 
 export type ArrearsStatus = "green" | "amber" | "red" | "grey";
 
+/**
+ * What counts as "this month is settled", in ONE place.
+ *
+ * A non-cancelled CLASS payment stamped for that billing month — never the cash
+ * date. Both the arrears colour and the student-list report read through this,
+ * so a course-month can never be paid on one screen and owed on the other.
+ */
+export const SETTLED_PAYMENT_WHERE = {
+  kind: "CLASS",
+  cancelled: false,
+  courseId: { not: null },
+} as const;
+
+/** Which students have settled one course for one billing month. */
+export async function paidStudentsForCourseMonth(
+  courseId: number,
+  year: number,
+  month: number,
+): Promise<Set<number>> {
+  const rows = await db.payment.findMany({
+    where: { ...SETTLED_PAYMENT_WHERE, courseId, billingYear: year, billingMonth: month },
+    select: { studentId: true },
+  });
+  return new Set(rows.map((r) => r.studentId));
+}
+
 export type OwedMonth = { year: number; month: number; label: string };
 
 export type CourseArrears = {
@@ -86,12 +112,7 @@ export async function studentArrearsMany(
       },
     }),
     db.payment.findMany({
-      where: {
-        studentId: { in: studentIds },
-        kind: "CLASS",
-        cancelled: false,
-        courseId: { not: null },
-      },
+      where: { ...SETTLED_PAYMENT_WHERE, studentId: { in: studentIds } },
       select: { studentId: true, courseId: true, billingYear: true, billingMonth: true },
     }),
   ]);

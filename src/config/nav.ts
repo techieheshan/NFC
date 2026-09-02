@@ -46,7 +46,6 @@ export type NavItem = {
 const ALL_ROLES: UserRole[] = ["ADMIN", "STAFF", "TEACHER"];
 const OPERATIONAL: UserRole[] = ["ADMIN", "STAFF"];
 const ADMIN_ONLY: UserRole[] = ["ADMIN"];
-const ADMIN_AND_TEACHER: UserRole[] = ["ADMIN", "TEACHER"];
 
 /** Sidebar group headings, in render order. Ungrouped items come first. */
 export const NAV_GROUPS = ["Setup"] as const;
@@ -227,7 +226,9 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Reports",
     href: "/reports",
     icon: ClipboardList,
-    roles: ADMIN_AND_TEACHER,
+    // All three: the student list is teacher-facing, and staff hand it out.
+    // A TEACHER is narrowed to their own courses server-side.
+    roles: ALL_ROLES,
     surfaces: ["desktop", "terminal"],
   },
   {
