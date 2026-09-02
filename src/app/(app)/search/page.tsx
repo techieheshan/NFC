@@ -15,7 +15,9 @@ import {
   type StudentFilters,
 } from "@/lib/search";
 
+import { resolveCard } from "./actions";
 import { SearchResults } from "./search-screen";
+import { TapToProfile } from "./tap-to-profile";
 
 export const metadata = { title: "Search" };
 
@@ -106,6 +108,10 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
           digits are enough.
         </p>
       </div>
+
+      {/* The card front door. Tapping opens the profile directly — the same
+          continuous reader the attendance counter arms. */}
+      {tab === "students" && <TapToProfile resolveCard={resolveCard} />}
 
       <div className="flex gap-2">
         <Button asChild variant={tab === "students" ? "default" : "outline"} size="sm">
