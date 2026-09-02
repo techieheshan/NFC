@@ -8,6 +8,7 @@ import {
   Loader2,
   Nfc,
   QrCode,
+  Pause,
   RefreshCw,
   UploadCloud,
 } from "lucide-react";
@@ -66,6 +67,15 @@ type StreamCard = { id: string; result: ScanResult };
  */
 const BLOCKS = new Set<ScanResult["status"]>(["choose", "confirm", "unknown"]);
 
+/**
+ * What the reader is doing, as staff sees it.
+ *
+ *   off      — not armed yet
+ *   on       — armed and listening; students tap one after another
+ *   waiting  — armed, but a choice is on screen, so taps are IGNORED
+ */
+type ReaderState = "off" | "on" | "waiting";
+
 type Props = {
   resolveScan: (input: {
     cardUid?: string; cardNumber?: string; studentId?: number;
@@ -116,7 +126,6 @@ export function AttendanceScreen({
   const [popup, setPopup] = useState<StreamCard | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [buffered, setBuffered] = useState(0);
   const [paying, setPaying] = useState<{ studentId: number; name: string } | null>(null);
 
   const offline = useOfflineAttendance({ loadWorkingSet, syncMarks });
@@ -180,29 +189,42 @@ export function AttendanceScreen({
     try {
       while (queue.current.length > 0 && !blocked.current) {
         const tap = queue.current.shift()!;
-        setBuffered(queue.current.length);
         push(await process(tap));
       }
+      // A choice just opened: anything still queued behind it is dropped, not
+      // banked, so nobody is marked without staff seeing their popup.
+      if (blocked.current) queue.current.length = 0;
     } finally {
       running.current = false;
       setBusy(false);
-      setBuffered(queue.current.length);
     }
   }, [process, push]);
 
-  /** Every entry point lands here. Taps are never dropped, only deferred. */
+  /**
+   * Every entry point lands here.
+   *
+   * While a choice is on screen the reader is OFF and a tap does NOTHING — it
+   * is not queued for later. Staff are looking at a question; silently banking
+   * taps behind it would mark students they never verified.
+   */
   const tap = useCallback(
     (input: Tap["input"], m: Method) => {
+      if (blocked.current) return;
       primeAudio();
       method.current = m;
+      // The queue still exists, but only to keep a BURST in order — never to
+      // hold taps across a choice.
       queue.current.push({ input, method: m });
-      setBuffered(queue.current.length);
       void drain();
     },
     [drain],
   );
 
-  const nfc = useNfcScan((cardUid) => tap({ cardUid }, "NFC"));
+  // Armed once, then continuous: a queue of students taps one after another
+  // with no further button press.
+  const nfc = useNfcScan((cardUid) => tap({ cardUid }, "NFC"), { continuous: true });
+
+  const reader: ReaderState = !nfc.scanning ? "off" : popup && BLOCKS.has(popup.result.status) ? "waiting" : "on";
 
   /** Answering or dismissing a question releases the stream. */
   const release = useCallback(() => {
@@ -286,9 +308,26 @@ export function AttendanceScreen({
       <div className="grid gap-3 sm:grid-cols-2">
         {nfc.support !== "unsupported" &&
           (nfc.scanning ? (
-            <div className="space-y-2 rounded-xl border border-dashed p-4 text-center sm:col-span-2">
-              <Loader2 className="text-primary mx-auto size-6 animate-spin" aria-hidden />
-              <p className="text-sm font-medium">Reader live — tap cards</p>
+            <div
+              className={`space-y-2 rounded-xl border-2 p-4 text-center sm:col-span-2 ${
+                reader === "waiting" ? "border-amber-400 bg-amber-50" : "border-emerald-400 bg-emerald-50"
+              }`}
+            >
+              {reader === "waiting" ? (
+                <>
+                  <Pause className="mx-auto size-6 text-amber-700" aria-hidden />
+                  <p className="text-sm font-medium text-amber-900">
+                    Reader OFF — answer the question first. Taps are ignored.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="mx-auto size-6 animate-spin text-emerald-700" aria-hidden />
+                  <p className="text-sm font-medium text-emerald-900">
+                    Reader ON — tap cards one after another
+                  </p>
+                </>
+              )}
               <Button variant="outline" size="sm" onClick={nfc.stop}>Stop reader</Button>
             </div>
           ) : (
@@ -298,7 +337,7 @@ export function AttendanceScreen({
               disabled={nfc.support === "unknown"}
             >
               <Nfc className="size-5" aria-hidden />
-              Tap card (NFC)
+              Start reader (NFC)
             </Button>
           ))}
 
@@ -311,12 +350,7 @@ export function AttendanceScreen({
           Scan QR
         </Button>
 
-        <div className="flex items-center justify-center rounded-xl border px-3">
-          <p className="text-muted-foreground text-xs">
-            {busy ? "Processing…" : "Ready"}
-            {buffered > 0 && ` · ${buffered} waiting`}
-          </p>
-        </div>
+        <ReaderLamp state={reader} busy={busy} />
       </div>
 
       <div className="rounded-xl border p-3">
@@ -443,6 +477,26 @@ function ConnectionBar({
       )}
 
       {message && queued === 0 && <p className="text-muted-foreground text-sm">{message}</p>}
+    </div>
+  );
+}
+
+/** The reader's state, always visible — it decides whether a tap does anything. */
+function ReaderLamp({ state, busy }: { state: ReaderState; busy: boolean }) {
+  const look =
+    state === "on"
+      ? { dot: "bg-emerald-500", text: "text-emerald-900", box: "border-emerald-300 bg-emerald-50", label: "Reader ON" }
+      : state === "waiting"
+        ? { dot: "bg-amber-500", text: "text-amber-900", box: "border-amber-300 bg-amber-50", label: "Reader OFF — taps ignored" }
+        : { dot: "bg-muted-foreground", text: "text-muted-foreground", box: "border-border bg-card", label: "Reader off" };
+
+  return (
+    <div className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 ${look.box}`}>
+      <span className={`size-2.5 rounded-full ${look.dot} ${state === "on" ? "animate-pulse" : ""}`} />
+      <p className={`text-xs font-medium ${look.text}`}>
+        {look.label}
+        {busy && state === "on" ? " · reading…" : ""}
+      </p>
     </div>
   );
 }

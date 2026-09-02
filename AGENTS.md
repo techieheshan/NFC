@@ -106,12 +106,16 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     `attendance-match.ts`, the paid/not-paid colour from `studentArrears`
     (`student-arrears.ts`), and every amount from `takePayment` — the popup only
     launches it, embedded via `PaymentScreen`'s `initialStudentId`. Never add a
-    second matcher, a second arrears rule or any money math here. ONE popup at a time — no trail,
+    second matcher, a second arrears rule or any money math here. The NFC reader is armed ONCE and stays on
+    (`useNfcScan(..., { continuous: true })`) — never make staff press a button
+    per student. ONE popup at a time — no trail,
     no list: the terminal must not scroll, so the next tap replaces what is
     showing. What blocks the reader is whether that popup is a QUESTION or a
     RESULT — a pick-list, an unrecognised card and the open till hold the line
     until answered; "marked", "already marked" and "no class open" are results
-    the next tap simply replaces. Two or more
+    the next tap simply replaces. While a question is
+    showing the reader is OFF and taps are IGNORED, never queued: banking taps
+    behind a question would mark students nobody verified. Two or more
     open classes STOP the stream for a manual pick: guessing the class is the
     one error the counter must never make. Arrears is billing-month based, so a
     July fee paid in August clears July.

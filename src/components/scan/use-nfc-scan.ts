@@ -31,11 +31,33 @@ const supportOnServer = (): NfcSupport => "unknown";
  * The card-tap reader, shared by Registration and Attendance so both behave
  * identically — one permission flow, one set of error messages, one abort path.
  */
-export function useNfcScan(onUid: (uid: string) => void) {
+export function useNfcScan(
+  onUid: (uid: string) => void,
+  options: { continuous?: boolean } = {},
+) {
+  /**
+   * One-shot (registration: identify one card, then get on with the form) or
+   * continuous (the attendance counter: armed once, then a queue of students
+   * taps one after another with no further button press).
+   *
+   * This used to abort unconditionally after the first reading, which meant a
+   * real reader stopped dead after one student — invisible in testing, because
+   * a stubbed NDEFReader ignores the abort signal and keeps firing.
+   */
+  const { continuous = false } = options;
   const support = useSyncExternalStore(subscribeToNothing, readSupport, supportOnServer);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * The scan loop outlives many renders, so its handler reads the callback
+   * through a ref — capturing it once would keep calling the first render's
+   * closure for every student in the queue.
+   */
+  const onUidRef = useRef(onUid);
+  useEffect(() => {
+    onUidRef.current = onUid;
+  }, [onUid]);
 
   // Stop an in-flight scan if the screen goes away mid-read.
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -53,11 +75,12 @@ export function useNfcScan(onUid: (uid: string) => void) {
       const reader = new Ctor();
       reader.onreading = (event) => {
         const uid = event.serialNumber;
-        if (uid) {
+        if (!uid) return;
+        if (!continuous) {
           controller.abort();
           setScanning(false);
-          onUid(uid);
         }
+        onUidRef.current(uid);
       };
       reader.onreadingerror = () => setError("Couldn't read that card. Try again.");
 

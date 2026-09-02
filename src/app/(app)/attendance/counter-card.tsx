@@ -273,7 +273,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`space-y-3 rounded-xl border-2 p-4 ${TONE[tone]}`}>
+    <div data-counter-popup className={`space-y-3 rounded-xl border-2 p-4 ${TONE[tone]}`}>
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-2 font-semibold">
           <Icon className="size-5 shrink-0" aria-hidden />
@@ -305,7 +305,7 @@ export function ChoiceCard({
   const isConfirm = result.status === "confirm";
 
   return (
-    <div className="border-primary bg-primary/5 space-y-4 rounded-xl border-2 p-4">
+    <div data-counter-popup className="border-primary bg-primary/5 space-y-4 rounded-xl border-2 p-4">
       <p className="flex items-center gap-2 font-semibold">
         <AlertTriangle className="size-5 shrink-0" aria-hidden />
         {isConfirm ? "Additional class — confirm" : "Which class?"}
