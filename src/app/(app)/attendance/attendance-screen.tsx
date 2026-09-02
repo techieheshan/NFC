@@ -56,8 +56,15 @@ type Tap = { input: { cardUid?: string; cardNumber?: string; studentId?: number 
 
 type StreamCard = { id: string; result: ScanResult };
 
-/** How many confirmations stay on screen. Older ones scroll out of the way. */
-const TRAIL = 6;
+/**
+ * Which outcomes are QUESTIONS rather than results.
+ *
+ * A confirmation reports something that already happened, so the next tap
+ * simply replaces it and the line keeps moving. A question — which class? whose
+ * card is this? — has no answer yet, so the reader holds until staff give one.
+ * That is the whole "click only when ambiguous" rule.
+ */
+const BLOCKS = new Set<ScanResult["status"]>(["choose", "confirm", "unknown"]);
 
 type Props = {
   resolveScan: (input: {
@@ -104,8 +111,9 @@ export function AttendanceScreen({
   takePayment,
   paymentSearch,
 }: Props) {
-  const [cards, setCards] = useState<StreamCard[]>([]);
-  const [blocking, setBlocking] = useState<StreamCard | null>(null);
+  // ONE popup. The device screen is small and must not scroll, so nothing
+  // accumulates: each outcome replaces the last.
+  const [popup, setPopup] = useState<StreamCard | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [buffered, setBuffered] = useState(0);
@@ -143,13 +151,9 @@ export function AttendanceScreen({
         playReject();
     }
 
-    if (result.status === "choose" || result.status === "confirm") {
-      // The stream stops here, on purpose. Never guess the class.
-      blocked.current = true;
-      setBlocking(card);
-      return;
-    }
-    setCards((prev) => [card, ...prev].slice(0, TRAIL));
+    // Questions hold the line; results just replace whatever was showing.
+    if (BLOCKS.has(result.status)) blocked.current = true;
+    setPopup(card);
   }, []);
 
   /** One tap, online-first with the offline path as the fallback. */
@@ -200,10 +204,10 @@ export function AttendanceScreen({
 
   const nfc = useNfcScan((cardUid) => tap({ cardUid }, "NFC"));
 
-  /** Resolving the blocking card releases the stream. */
+  /** Answering or dismissing a question releases the stream. */
   const release = useCallback(() => {
     blocked.current = false;
-    setBlocking(null);
+    setPopup(null);
     void drain();
   }, [drain]);
 
@@ -236,10 +240,9 @@ export function AttendanceScreen({
           );
         }
         setBusy(false);
-        // Never re-block on the card we just resolved.
+        // Never re-block on the question we just answered.
         blocked.current = false;
-        setBlocking(null);
-        setCards((prev) => [{ id: crypto.randomUUID(), result }, ...prev].slice(0, TRAIL));
+        setPopup({ id: crypto.randomUUID(), result });
         if (result.status === "marked" || result.status === "queued") {
           (result.arrears.status === "green" || result.arrears.status === "grey"
             ? playSuccess
@@ -320,40 +323,37 @@ export function AttendanceScreen({
         <StudentSearch search={search} busy={false} onPick={(s) => tap({ studentId: s.id }, "SEARCH")} />
       </div>
 
-      {/* --- the one thing that stops the stream --- */}
-      {blocking &&
-        (blocking.result.status === "choose" || blocking.result.status === "confirm") && (
+      {/*
+        One popup, replaced by the next tap. A pick-list is a question and holds
+        the line; everything else is a result and does not.
+      */}
+      {popup &&
+        (popup.result.status === "choose" || popup.result.status === "confirm" ? (
           <ChoiceCard
-            result={blocking.result}
+            result={popup.result}
             pending={busy}
             onChoose={(c) =>
               choose(
-                (blocking.result as Extract<ScanResult, { status: "choose" }>).student,
+                (popup.result as Extract<ScanResult, { status: "choose" }>).student,
                 c,
               )
             }
             onCancel={release}
           />
-        )}
-
-      {/* --- the trail: newest first, no click to advance --- */}
-      {cards.length > 0 && (
-        <ul className="space-y-3">
-          {cards.map((c) => (
-            <CounterCard
-              key={c.id}
-              result={c.result}
-              canPay={offline.connected}
-              onPay={(studentId, name) => {
-              // Hold the stream while the till is open: a confirmation card
-              // stacked behind a modal is a mark nobody saw. Taps still queue.
+        ) : (
+          <CounterCard
+            key={popup.id}
+            result={popup.result}
+            canPay={offline.connected}
+            onDismiss={popup.result.status === "unknown" ? release : undefined}
+            onPay={(studentId, name) => {
+              // The pay decision is a question too: it holds the line until the
+              // till closes. Taps keep queueing behind it.
               blocked.current = true;
               setPaying({ studentId, name });
             }}
-            />
-          ))}
-        </ul>
-      )}
+          />
+        ))}
 
       <QrScanner open={qrOpen} onOpenChange={setQrOpen} onDecode={(v) => tap({ cardNumber: v }, "QR")} />
 

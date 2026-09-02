@@ -52,9 +52,13 @@ export function StudentFace({
   photoUrl: string | null;
   name: string;
   cardNumber: string | null;
-  size?: "md" | "lg";
+  size?: "md" | "lg" | "verify";
 }) {
-  const box = size === "lg" ? "size-20" : "size-14";
+  // "verify" is the size the mark popup uses. The system cannot detect a
+  // sibling tapping their brother's card — only a person looking at the face
+  // can — so on the popup that reports a mark, the photo is the largest thing
+  // on screen rather than an avatar beside the name.
+  const box = size === "verify" ? "size-28" : size === "lg" ? "size-20" : "size-14";
   return (
     <span className={`bg-muted ${box} shrink-0 overflow-hidden rounded-xl border`}>
       {photoUrl ? (
@@ -65,8 +69,8 @@ export function StudentFace({
            offline appearance, not an error state. */
         <span className="text-muted-foreground grid size-full place-items-center text-center leading-none">
           <span>
-            <UserRound className="mx-auto size-6" aria-hidden />
-            <span className="mt-0.5 block px-0.5 text-[9px]">
+            <UserRound className={`mx-auto ${size === "verify" ? "size-10" : "size-6"}`} aria-hidden />
+            <span className={`mt-0.5 block px-0.5 ${size === "verify" ? "text-xs" : "text-[9px]"}`}>
               {cardNumber ?? name.slice(0, 8)}
             </span>
           </span>
@@ -99,17 +103,24 @@ function ClassLine({ c }: { c: Candidate }) {
 
 export type CardProps = {
   result: ScanResult;
-  /** Queued rather than written — offline. */
-  queued?: boolean;
   canPay: boolean;
   onPay: (studentId: number, name: string) => void;
+  /** Only passed for the popups that hold the line and must be dismissed. */
+  onDismiss?: () => void;
 };
 
-export function CounterCard({ result, canPay, onPay }: CardProps) {
+export function CounterCard({ result, canPay, onPay, onDismiss }: CardProps) {
   if (result.status === "unknown") {
+    // A question, not a result: the system does not know who this is, so the
+    // reader holds until staff acknowledge it. See the block rule.
     return (
       <Shell tone="error" icon={XCircle} title="Card not recognised">
         <p className="text-sm">Register this card first, or search by name.</p>
+        {onDismiss && (
+          <Button className="w-full" onClick={onDismiss}>
+            Dismiss — next card
+          </Button>
+        )}
       </Shell>
     );
   }
@@ -124,6 +135,26 @@ export function CounterCard({ result, canPay, onPay }: CardProps) {
 
   const { student, arrears } = result;
   const owes = arrears.status === "amber" || arrears.status === "red";
+
+  const verifyHeader = (
+    <div className="flex items-start gap-4">
+      <StudentFace
+        photoUrl={student.photoUrl}
+        name={student.name}
+        cardNumber={student.cardNumber}
+        size="verify"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xl font-semibold">{student.name}</p>
+        <p className="text-muted-foreground truncate font-mono text-xs">
+          {student.cardNumber ?? "no card number"}
+        </p>
+        <div className="mt-1.5">
+          <ArrearsChip arrears={arrears} />
+        </div>
+      </div>
+    </div>
+  );
 
   const header = (
     <div className="flex items-start gap-3">
@@ -178,7 +209,7 @@ export function CounterCard({ result, canPay, onPay }: CardProps) {
           title={result.status === "queued" ? "Marked — queued" : "Marked present"}
           right={<span className="text-sm font-medium tabular-nums">{to12Hour(at)}</span>}
         >
-          {header}
+          {verifyHeader}
           <div className="bg-background/70 rounded-lg border p-2.5">
             <ClassLine c={candidate} />
           </div>
@@ -242,7 +273,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <li className={`space-y-3 rounded-xl border-2 p-4 ${TONE[tone]}`}>
+    <div className={`space-y-3 rounded-xl border-2 p-4 ${TONE[tone]}`}>
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-2 font-semibold">
           <Icon className="size-5 shrink-0" aria-hidden />
@@ -251,7 +282,7 @@ function Shell({
         {right}
       </div>
       {children}
-    </li>
+    </div>
   );
 }
 
