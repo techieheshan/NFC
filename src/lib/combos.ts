@@ -24,6 +24,8 @@ export type ComboCourse = {
 export type ComboAttendance = {
   courseId: number;
   course: string;
+  /** Named per course: a combo can span teachers, so "5 days" needs an owner. */
+  teacher: string;
   days: number;
 };
 
@@ -77,11 +79,14 @@ const courseSelect = {
 } as const;
 
 /**
- * Which combos this student qualifies for — at most one per teacher.
+ * Which combos this student qualifies for, without offering the same course
+ * twice.
  *
- * When several qualify for the same teacher (a 2-way and a 3-way both matching),
- * the fullest set wins, so a student enrolled in all three is offered the 3-way.
- * Ties break on the lower combo id purely so the result is deterministic.
+ * This used to pick one combo per teacher, which stopped working once a combo
+ * could span teachers. The rule it was really enforcing is that no course may
+ * be priced by two combos at once — so that is what it now says: fullest set
+ * first, then skip any combo overlapping one already taken. Ties break on the
+ * lower combo id purely so the result is deterministic.
  */
 export async function applicableCombos(studentId: number): Promise<ApplicableCombo[]> {
   const enrolments = await db.enrollment.findMany({
@@ -91,10 +96,10 @@ export async function applicableCombos(studentId: number): Promise<ApplicableCom
   if (enrolments.length === 0) return [];
 
   const enrolledCourseIds = new Set(enrolments.map((e) => e.courseId));
-  const teacherIds = [...new Set(enrolments.map((e) => e.course.teacherId))];
-
+  // Not narrowed by teacher: a combo may span them, so the enrolment check
+  // below is the only thing that decides eligibility.
   const combos = await db.combo.findMany({
-    where: { active: true, teacherId: { in: teacherIds } },
+    where: { active: true, items: { some: { courseId: { in: [...enrolledCourseIds] } } } },
     include: {
       teacher: { select: { name: true } },
       items: { include: { course: { select: courseSelect } } },
@@ -107,19 +112,17 @@ export async function applicableCombos(studentId: number): Promise<ApplicableCom
       c.items.length > 0 && c.items.every((i) => enrolledCourseIds.has(i.courseId)),
   );
 
-  const bestByTeacher = new Map<number, (typeof qualifying)[number]>();
-  for (const combo of qualifying) {
-    const current = bestByTeacher.get(combo.teacherId);
-    if (
-      !current ||
-      combo.items.length > current.items.length ||
-      (combo.items.length === current.items.length && combo.id < current.id)
-    ) {
-      bestByTeacher.set(combo.teacherId, combo);
-    }
+  const ranked = [...qualifying].sort(
+    (a, b) => b.items.length - a.items.length || a.id - b.id,
+  );
+  const taken = new Set<number>();
+  const chosen: typeof qualifying = [];
+  for (const combo of ranked) {
+    if (combo.items.some((i) => taken.has(i.courseId))) continue;
+    for (const i of combo.items) taken.add(i.courseId);
+    chosen.push(combo);
   }
 
-  const chosen = [...bestByTeacher.values()];
   if (chosen.length === 0) return [];
 
   const window = lastCompletedMonth();
@@ -131,6 +134,7 @@ export async function applicableCombos(studentId: number): Promise<ApplicableCom
         combo.items.map(async (item) => ({
           courseId: item.courseId,
           course: courseDisplayName(item.course),
+          teacher: item.course.teacher.name,
           days: await db.attendance.count({
             where: { studentId, courseId: item.courseId, date: range },
           }),

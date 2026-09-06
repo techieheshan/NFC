@@ -2,7 +2,7 @@ import { requireNavAccess } from "@/lib/authz";
 import { db } from "@/lib/db";
 
 import {
-  coursesForTeacher,
+  comboCoursePool,
   createCombo,
   listCombos,
   setComboActive,
@@ -29,7 +29,7 @@ export default async function CombosPage() {
       initialRows={rows}
       teachers={teachers}
       listAction={listCombos}
-      coursesForTeacher={coursesForTeacher}
+      comboCoursePool={comboCoursePool}
       createAction={createCombo}
       updateAction={updateCombo}
       toggleAction={setComboActive}

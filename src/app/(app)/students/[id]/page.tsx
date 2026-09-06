@@ -13,10 +13,10 @@ export const metadata = { title: "Student profile" };
 
 /** The one place the arrears colour is turned into pixels. */
 const ARREARS_STYLE: Record<ArrearsStatus, { className: string; word: string }> = {
-  green: { className: "bg-emerald-100 text-emerald-900 border-emerald-300", word: "Up to date" },
-  amber: { className: "bg-amber-100 text-amber-900 border-amber-300", word: "Owes this month" },
-  red: { className: "bg-red-100 text-red-900 border-red-300", word: "In arrears" },
-  grey: { className: "bg-muted text-muted-foreground border-border", word: "Free tier" },
+  green: { className: "bg-emerald-600 text-white", word: "PAID UP" },
+  red: { className: "bg-red-600 text-white", word: "OWES THIS MONTH" },
+  darkred: { className: "bg-red-900 text-white", word: "IN ARREARS" },
+  grey: { className: "bg-neutral-400 text-white", word: "FREE TIER" },
 };
 
 const CELL: Record<MonthCell, string> = {
@@ -76,9 +76,9 @@ export default async function StudentProfilePage({ params }: PageProps<"/student
         <div className="min-w-56 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{student.name}</h1>
-            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>
+            <span className={`rounded-lg px-3 py-1 text-sm font-bold tracking-wide ${badge.className}`}>
               {badge.word}
-              {arrears.status !== "green" && arrears.status !== "grey" && ` · ${arrears.label}`}
+              {(arrears.status === "red" || arrears.status === "darkred") && ` · ${arrears.label}`}
             </span>
           </div>
 

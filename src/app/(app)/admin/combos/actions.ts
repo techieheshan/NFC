@@ -107,15 +107,18 @@ export async function listCombos(): Promise<ComboRow[]> {
   });
 }
 
-/** Active courses for one teacher — the pool a combo can be built from. */
-export async function coursesForTeacher(teacherId: number): Promise<CourseOption[]> {
+/**
+ * Every active course — the pool a combo can be built from.
+ *
+ * No longer scoped to one teacher: a combo may span them. The label carries the
+ * teacher's name (courseDisplayName does that), so a mixed combo is readable
+ * while it is being assembled.
+ */
+export async function comboCoursePool(): Promise<CourseOption[]> {
   await requireOperationalAccess();
 
-  const parsed = id.safeParse(teacherId);
-  if (!parsed.success) return [];
-
   const rows = await db.course.findMany({
-    where: { teacherId: parsed.data, active: true },
+    where: { active: true },
     select: {
       id: true,
       name: true,
@@ -140,19 +143,20 @@ export async function coursesForTeacher(teacherId: number): Promise<CourseOption
 // ---------------------------------------------------------------------------
 
 /**
- * Every course must belong to the combo's teacher. A combo spanning teachers
- * would be unpriceable — the payslip split is per teacher.
+ * A combo may now span teachers, so the only requirement is that every course
+ * is real and active.
+ *
+ * The old rule assumed a cross-teacher combo would be unpriceable. It isn't:
+ * the combo changes the PRICE COLLECTED, while each row still records its own
+ * course, its own teacher and that course's own frozen institute % — so payroll
+ * splits per course exactly as before, with no payslip changes at all.
+ * `Combo.teacherId` remains, as the teacher the combo is filed under.
  */
-async function assertOwnedByTeacher(
-  teacherId: number,
-  courseIds: number[],
-): Promise<string | null> {
-  const owned = await db.course.count({
-    where: { id: { in: courseIds }, teacherId, active: true },
+async function assertCoursesExist(courseIds: number[]): Promise<string | null> {
+  const found = await db.course.count({
+    where: { id: { in: courseIds }, active: true },
   });
-  return owned === courseIds.length
-    ? null
-    : "All courses in a combo must belong to the same teacher and be active.";
+  return found === courseIds.length ? null : "Every course in a combo must be active.";
 }
 
 function parseCombo(formData: FormData) {
@@ -190,11 +194,8 @@ export async function createCombo(
   const parsed = parseCombo(formData);
   if ("error" in parsed) return { ok: false, error: parsed.error };
 
-  const owned = await assertOwnedByTeacher(
-    parsed.teacherId,
-    parsed.items.map((i) => i.courseId),
-  );
-  if (owned) return { ok: false, error: owned };
+  const bad = await assertCoursesExist(parsed.items.map((i) => i.courseId));
+  if (bad) return { ok: false, error: bad };
 
   await db.combo.create({
     data: {
@@ -225,11 +226,8 @@ export async function updateCombo(
   const parsed = parseCombo(formData);
   if ("error" in parsed) return { ok: false, error: parsed.error };
 
-  const owned = await assertOwnedByTeacher(
-    parsed.teacherId,
-    parsed.items.map((i) => i.courseId),
-  );
-  if (owned) return { ok: false, error: owned };
+  const bad = await assertCoursesExist(parsed.items.map((i) => i.courseId));
+  if (bad) return { ok: false, error: bad };
 
   // Items are replaced wholesale — ComboItem carries no history of its own, and
   // past payments reference the Combo, not its items.

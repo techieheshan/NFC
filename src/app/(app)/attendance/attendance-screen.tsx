@@ -147,7 +147,7 @@ export function AttendanceScreen({
     const card = { id: crypto.randomUUID(), result };
 
     // Sound first: staff run this counter by ear.
-    const owing = "arrears" in result && (result.arrears.status === "amber" || result.arrears.status === "red");
+    const owing = "arrears" in result && (result.arrears.status === "red" || result.arrears.status === "darkred");
     switch (result.status) {
       case "marked":
       case "queued":
@@ -281,7 +281,7 @@ export function AttendanceScreen({
         blocked.current = false;
         setPopup({ id: crypto.randomUUID(), result });
         if (result.status === "marked" || result.status === "queued") {
-          const owes = result.arrears.status === "amber" || result.arrears.status === "red";
+          const owes = result.arrears.status === "red" || result.arrears.status === "darkred";
           (owes ? playMarkedButOwes : playSuccess)();
           (owes ? VOICE.markedOwing : VOICE.marked)();
         }

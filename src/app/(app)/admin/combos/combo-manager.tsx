@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
+import { startTransition, useActionState, useCallback, useEffect, useState } from "react";
 import { Layers, Pencil, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ type Props = {
   initialRows: ComboRow[];
   teachers: TeacherOption[];
   listAction: () => Promise<ComboRow[]>;
-  coursesForTeacher: (teacherId: number) => Promise<CourseOption[]>;
+  comboCoursePool: () => Promise<CourseOption[]>;
   createAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updateAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   toggleAction: (formData: FormData) => Promise<void>;
@@ -43,13 +43,12 @@ export function ComboManager({
   initialRows,
   teachers,
   listAction,
-  coursesForTeacher,
+  comboCoursePool,
   createAction,
   updateAction,
   toggleAction,
 }: Props) {
   const [rows, setRows] = useState(initialRows);
-  const [, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ComboRow | null>(null);
 
@@ -156,7 +155,7 @@ export function ComboManager({
         onDone={refresh}
         action={createAction}
         teachers={teachers}
-        coursesForTeacher={coursesForTeacher}
+        comboCoursePool={comboCoursePool}
         mode="create"
       />
 
@@ -167,7 +166,7 @@ export function ComboManager({
         onDone={refresh}
         action={updateAction}
         teachers={teachers}
-        coursesForTeacher={coursesForTeacher}
+        comboCoursePool={comboCoursePool}
         mode="edit"
         row={editing}
       />
@@ -181,7 +180,7 @@ function ComboDialog({
   onDone,
   action,
   teachers,
-  coursesForTeacher,
+  comboCoursePool,
   mode,
   row,
 }: {
@@ -190,7 +189,7 @@ function ComboDialog({
   onDone: () => void;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   teachers: TeacherOption[];
-  coursesForTeacher: (teacherId: number) => Promise<CourseOption[]>;
+  comboCoursePool: () => Promise<CourseOption[]>;
   mode: "create" | "edit";
   row?: ComboRow | null;
 }) {
@@ -200,34 +199,24 @@ function ComboDialog({
   const [picked, setPicked] = useState<Map<number, string>>(
     new Map(row?.items.map((i) => [i.courseId, i.comboFee]) ?? []),
   );
-  const [, startTransition] = useTransition();
 
-  // Courses depend on the chosen teacher, which is a user action rather than
-  // a render input, so this loads in the handler — not an effect.
-  const chooseTeacher = useCallback(
-    (value: number | null) => {
-      setTeacherId(value);
-      setPicked(new Map());
-      if (value === null) {
-        setCourses([]);
-        return;
-      }
-      startTransition(async () => setCourses(await coursesForTeacher(value)));
-    },
-    [coursesForTeacher],
-  );
+  // The teacher a combo is filed under no longer limits its courses — a combo
+  // may span teachers — so choosing one does not reload the pool.
+  const chooseTeacher = useCallback((value: number | null) => {
+    setTeacherId(value);
+  }, []);
 
-  // On open, load the teacher's courses for the row being edited.
+  // One pool: every active course, whoever teaches it.
   useEffect(() => {
-    if (!open || row?.teacherId === undefined) return;
+    if (!open) return;
     let cancelled = false;
-    void coursesForTeacher(row.teacherId).then((c) => {
+    void comboCoursePool().then((c) => {
       if (!cancelled) setCourses(c);
     });
     return () => {
       cancelled = true;
     };
-  }, [open, row?.teacherId, coursesForTeacher]);
+  }, [open, comboCoursePool]);
 
   useEffect(() => {
     if (state.ok) {

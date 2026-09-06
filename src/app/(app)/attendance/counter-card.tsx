@@ -28,11 +28,15 @@ import type { ScanResult } from "./actions";
  * `studentArrears`' verdict, passed through untouched.
  */
 
-const ARREARS: Record<ArrearsBadge["status"], { chip: string; word: string }> = {
-  green: { chip: "bg-emerald-100 text-emerald-900 border-emerald-300", word: "Paid up" },
-  amber: { chip: "bg-amber-100 text-amber-900 border-amber-300", word: "Owes" },
-  red: { chip: "bg-red-100 text-red-900 border-red-300", word: "In arrears" },
-  grey: { chip: "bg-muted text-muted-foreground border-border", word: "Free tier" },
+/**
+ * Read across a counter, not studied. Solid blocks of colour, not tints — this
+ * is the thing staff act on while the queue moves.
+ */
+const ARREARS: Record<ArrearsBadge["status"], { block: string; word: string }> = {
+  green: { block: "bg-emerald-600 text-white", word: "PAID UP" },
+  red: { block: "bg-red-600 text-white", word: "OWES THIS MONTH" },
+  darkred: { block: "bg-red-900 text-white", word: "IN ARREARS" },
+  grey: { block: "bg-neutral-400 text-white", word: "FREE TIER" },
 };
 
 const TONE = {
@@ -82,10 +86,13 @@ export function StudentFace({
 
 function ArrearsChip({ arrears }: { arrears: ArrearsBadge }) {
   const a = ARREARS[arrears.status];
+  const owes = arrears.status === "red" || arrears.status === "darkred";
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${a.chip}`}>
+    <span
+      className={`block rounded-lg px-3 py-1.5 text-center text-sm font-bold tracking-wide ${a.block}`}
+    >
       {a.word}
-      {arrears.status !== "green" && arrears.status !== "grey" ? ` · ${arrears.label}` : ""}
+      {owes ? ` · ${arrears.label}` : ""}
     </span>
   );
 }
@@ -134,7 +141,7 @@ export function CounterCard({ result, canPay, onPay, onDismiss }: CardProps) {
   }
 
   const { student, arrears } = result;
-  const owes = arrears.status === "amber" || arrears.status === "red";
+  const owes = arrears.status === "red" || arrears.status === "darkred";
 
   const verifyHeader = (
     <div className="flex items-start gap-4">

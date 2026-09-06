@@ -24,10 +24,17 @@ export function ReceiptView({
   receipt,
   onDone,
   doneLabel = "Next student",
+  auto = false,
 }: {
   receipt: Receipt;
   onDone: () => void;
   doneLabel?: string;
+  /**
+   * Counter mode: the terminal's own print dialog is the preview, so this
+   * renders the paper and nothing else — no review screen, no buttons to
+   * press. The caller drives printing and advances when the dialog closes.
+   */
+  auto?: boolean;
 }) {
   const voided = receipt.cancelled ?? null;
 
@@ -107,6 +114,7 @@ export function ReceiptView({
         </div>
       </div>
 
+      {!auto && (
       <div className="no-print mx-auto flex max-w-md gap-2">
         <Button variant="outline" className="flex-1 gap-2" onClick={() => window.print()}>
           <Printer className="size-4" aria-hidden />
@@ -116,6 +124,7 @@ export function ReceiptView({
           {doneLabel}
         </Button>
       </div>
+      )}
     </div>
   );
 }

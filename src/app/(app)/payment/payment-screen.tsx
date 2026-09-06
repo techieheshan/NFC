@@ -95,19 +95,11 @@ export function PaymentScreen({
           return;
         }
         setPanel(result.panel);
-        // Admission is pre-ticked when owed, and the current month per course —
-        // the two things the counter charges most often.
-        setAdmission(result.panel.admission.chargeable);
+        // NOTHING is pre-selected. A pre-ticked month is a charge nobody chose,
+        // and at a fast counter it would be paid without being read.
+        setAdmission(false);
         setSmartCard(false);
-        const preset = new Set<string>();
-        for (const c of result.panel.courses) {
-          if (c.free) continue;
-          const current = c.months[0];
-          if (current && !current.paid) {
-            preset.add(monthKey(c.courseId, current.year, current.month));
-          }
-        }
-        setSelected(preset);
+        setSelected(new Set());
       });
     },
     [loadPanel],
@@ -233,17 +225,10 @@ export function PaymentScreen({
 
   if (receipt) {
     return (
-      <div className="mx-auto max-w-lg space-y-5">
-        <p className="flex items-center justify-center gap-2 text-lg font-semibold text-emerald-700">
-          <CheckCircle2 className="size-6" aria-hidden />
-          Payment taken
-        </p>
-        <ReceiptView
-          receipt={receipt}
-          doneLabel={embedded ? "Back to the counter" : "Next student"}
-          onDone={embedded ? () => onFinished?.() : reset}
-        />
-      </div>
+      <AutoPrintReceipt
+        receipt={receipt}
+        onDone={embedded ? () => onFinished?.() : reset}
+      />
     );
   }
 
@@ -287,14 +272,17 @@ export function PaymentScreen({
         {/* Admission */}
         <div className="rounded-xl border p-4">
           {panel.admission.chargeable ? (
-            <label className="flex cursor-pointer items-center gap-3">
-              <Checkbox
-                checked={admission}
-                onCheckedChange={(c) => setAdmission(c === true)}
-              />
+            /* A <label> around a Radix checkbox does not forward clicks — the
+               tick was the only target. The row is the button now. */
+            <button
+              type="button"
+              onClick={() => setAdmission((v) => !v)}
+              className="hover:bg-accent -m-2 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-3 rounded-lg p-2 text-left transition-colors"
+            >
+              <Checkbox checked={admission} className="pointer-events-none" tabIndex={-1} />
               <span className="flex-1 font-medium">Admission fee</span>
               <span className="tabular-nums">{panel.admission.amount}</span>
-            </label>
+            </button>
           ) : (
             <div className="text-muted-foreground flex items-center gap-3">
               <CheckCircle2 className="size-5 text-emerald-600" aria-hidden />
@@ -306,11 +294,12 @@ export function PaymentScreen({
 
         {/* Smart card — stays chargeable; a reissue is a legitimate re-charge. */}
         <div className="rounded-xl border p-4">
-          <label className="flex cursor-pointer items-center gap-3">
-            <Checkbox
-              checked={smartCard}
-              onCheckedChange={(c) => setSmartCard(c === true)}
-            />
+          <button
+            type="button"
+            onClick={() => setSmartCard((v) => !v)}
+            className="hover:bg-accent -m-2 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-3 rounded-lg p-2 text-left transition-colors"
+          >
+            <Checkbox checked={smartCard} className="pointer-events-none" tabIndex={-1} />
             <span className="flex-1">
               <span className="block font-medium">Smart card</span>
               <span className="text-muted-foreground block text-xs">
@@ -320,7 +309,7 @@ export function PaymentScreen({
               </span>
             </span>
             <span className="tabular-nums">{panel.smartCard.amount}</span>
-          </label>
+          </button>
         </div>
 
         {/* Class fees */}
@@ -525,6 +514,58 @@ export function PaymentScreen({
         onOpenChange={setQrOpen}
         onDecode={(value) => identify({ cardNumber: value })}
       />
+    </div>
+  );
+}
+
+/**
+ * Print and move on, with no step in between.
+ *
+ * The terminal already has a print + PDF-preview dialog; building a second
+ * preview inside the app would only be a screen staff has to dismiss. So the
+ * receipt is rendered, `window.print()` opens the real dialog, and when that
+ * dialog closes the next payment appears on its own — no "next" button exists.
+ *
+ * Chrome blocks on `window.print()` until the dialog closes, and fires
+ * `afterprint` as well; both paths advance, guarded so it only happens once. A
+ * browser that can neither print nor fire the event still advances rather than
+ * stranding the counter on a receipt.
+ */
+function AutoPrintReceipt({ receipt, onDone }: { receipt: Receipt; onDone: () => void }) {
+  const advanced = useRef(false);
+
+  useEffect(() => {
+    const advance = () => {
+      if (advanced.current) return;
+      advanced.current = true;
+      onDone();
+    };
+
+    window.addEventListener("afterprint", advance, { once: true });
+
+    // One frame, so the paper is on screen before the dialog covers it.
+    const timer = window.setTimeout(() => {
+      try {
+        window.print();
+      } catch {
+        // No printing on this device — the payment is taken either way.
+      }
+      advance();
+    }, 60);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("afterprint", advance);
+    };
+  }, [onDone]);
+
+  return (
+    <div className="mx-auto max-w-lg space-y-5">
+      <p className="flex items-center justify-center gap-2 text-lg font-semibold text-emerald-700">
+        <CheckCircle2 className="size-6" aria-hidden />
+        Payment taken — printing
+      </p>
+      <ReceiptView receipt={receipt} auto onDone={onDone} />
     </div>
   );
 }

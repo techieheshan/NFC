@@ -66,8 +66,14 @@ export function ComboPrompt({
             </p>
             <ul className="mt-2 space-y-1.5 text-sm">
               {combo.attendance.map((a) => (
-                <li key={a.courseId} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate">{a.course}</span>
+                <li key={a.courseId} className="flex items-start justify-between gap-3">
+                  {/* A combo can span teachers, so "5 days" needs an owner. */}
+                  <span className="min-w-0">
+                    <span className="block truncate">{a.course}</span>
+                    <span className="text-muted-foreground block truncate text-xs">
+                      {a.teacher}
+                    </span>
+                  </span>
                   <span
                     className={`shrink-0 tabular-nums ${
                       a.days === 0 ? "text-destructive font-medium" : ""

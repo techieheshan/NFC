@@ -34,7 +34,7 @@ export type Candidate = {
  * because the offline client needs the type and that module is server-only.
  */
 export type ArrearsBadge = {
-  status: "green" | "amber" | "red" | "grey";
+  status: "green" | "red" | "darkred" | "grey";
   /** "Jul, Aug" · "Up to date" · "Free tier". */
   label: string;
 };

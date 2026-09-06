@@ -19,7 +19,14 @@ import { db } from "@/lib/db";
  * arrears for February.
  */
 
-export type ArrearsStatus = "green" | "amber" | "red" | "grey";
+/**
+ * Four states, read at a glance in a queue:
+ *   green    nothing owed
+ *   red      THIS month unpaid
+ *   darkred  a PAST month unpaid — worse, and it wins when both are true
+ *   grey     free tier: nothing to owe, which is not the same as paid up
+ */
+export type ArrearsStatus = "green" | "red" | "darkred" | "grey";
 
 /**
  * What counts as "this month is settled", in ONE place.
@@ -177,9 +184,9 @@ export async function studentArrearsMany(
     const status: ArrearsStatus = !hasChargeable
       ? "grey"
       : owesPast
-        ? "red"
+        ? "darkred"
         : owedMonths.length > 0
-          ? "amber"
+          ? "red"
           : "green";
 
     out.set(studentId, {
