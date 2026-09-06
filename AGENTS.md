@@ -119,6 +119,27 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     open classes STOP the stream for a manual pick: guessing the class is the
     one error the counter must never make. Arrears is billing-month based, so a
     July fee paid in August clears July.
+23. **Two report clocks, and never a third.** "Who owes?" is BILLING-month —
+    `/reports`, `/reports/not-paid` and the counter colour all go through
+    `SETTLED_PAYMENT_WHERE` / `student-arrears.ts`, so a July fee taken in
+    August clears July everywhere. "What came in?" is `paidAt` — Daily Summary
+    and `/reports/monthly-income`. Never mix the two in one figure, and never
+    write a third paid-check. By-teacher on the income report is GROSS
+    collected; the share belongs to Payslips. Every `/reports/*` screen is
+    read-only and guarded twice: `requireNavAccess("/reports")`, then
+    `notFound()` for TEACHER on the money ones (not-paid, monthly income);
+    the schedule report lets a teacher in but narrows them with
+    `courseScopeFor`, spread LAST in the `where` so a query-string filter can
+    only narrow. Validate an enum filter (a day, a month) ONCE and use that one
+    value for both the query and the grouping — junk in the URL must be
+    ignored, not silently render an empty report.
+24. **The Daily Summary cash-book is print-only.** Bring-forward, Prepared by
+    and Checked by are typed each day and flow straight into the PDF — no
+    table, no carry-over, no auto-fill from yesterday. Bring-forward + Collected
+    − Deductions = Drawer total answers "what should be in the drawer",
+    which is NOT Net (the institute's profit). Both signatures are mandatory
+    before the report can be printed, and both come from active accounts:
+    preparing is STAFF, checking is ADMIN or STAFF.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

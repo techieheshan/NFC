@@ -63,6 +63,18 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      {/* The other reports live under /reports/*; this is the way in. */}
+      <nav className="flex flex-wrap gap-2">
+        <Button asChild variant="secondary" size="sm"><Link href="/reports">Student list</Link></Button>
+        <Button asChild variant="outline" size="sm"><Link href="/reports/class-schedule">Class schedule</Link></Button>
+        {!isTeacher && (
+          <>
+            <Button asChild variant="outline" size="sm"><Link href="/reports/not-paid">Not paid</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/reports/monthly-income">Monthly income</Link></Button>
+          </>
+        )}
+      </nav>
+
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Student list report</h1>
         <p className="text-muted-foreground mt-1 text-sm">

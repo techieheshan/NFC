@@ -10,27 +10,62 @@ import {
 } from "@/components/ui/table";
 import type { DailySummary } from "@/lib/reports";
 
+import type { Signer } from "./actions";
+
+const FIELD = "border-input bg-background h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs";
+
+/**
+ * The cash-book lines are entered fresh each day, not stored: nothing here is
+ * persisted, the three inputs simply flow into the PDF that gets signed and
+ * filed — hence no new table. Money uses the same plain-number arithmetic, at
+ * 2dp, as the report it extends (lib/reports).
+ */
+const money = (n: number) => n.toFixed(2);
+const num = (v: string) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 export function SummaryScreen({
   report,
+  signers,
   filterUi,
 }: {
   report: DailySummary;
+  signers: { prepared: Signer[]; checked: Signer[] };
   filterUi: React.ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
   const [, startTransition] = useTransition();
 
+  // Cash-book: typed each day, never carried over automatically.
+  const [broughtForward, setBroughtForward] = useState("");
+  const [preparedBy, setPreparedBy] = useState("");
+  const [checkedBy, setCheckedBy] = useState("");
+
+  const bf = num(broughtForward);
+  const drawerTotal = money(bf + num(report.totalCollected) - num(report.deductions.total));
+
+  const prepared = signers.prepared.find((u) => u.id === preparedBy);
+  const checked = signers.checked.find((u) => u.id === checkedBy);
+  // Mandatory: an unsigned cash-book is not a cash-book.
+  const signed = Boolean(prepared && checked);
+
   const rangeLabel =
     report.from === report.to ? report.from : `${report.from} to ${report.to}`;
 
   const exportPdf = () => {
+    // Belt and braces: the button is already disabled until both are chosen.
+    if (!prepared || !checked) return;
     setBusy(true);
     startTransition(async () => {
       try {
         await downloadReportPdf({
           filename: `xenon-daily-summary-${report.from}_${report.to}.pdf`,
           title: "Xenon — Daily Summary",
-          subtitle: `Collected ${rangeLabel} (Asia/Colombo). Cancelled payments excluded.`,
+          subtitle:
+            `Collected ${rangeLabel} (Asia/Colombo). Cancelled payments excluded. ` +
+            `Prepared by ${prepared!.name} · Checked by ${checked!.name}`,
           tables: [
             {
               title: "Per course",
@@ -47,6 +82,18 @@ export function SummaryScreen({
                 ["Admission", report.admission.count, report.admission.total],
                 ["Smart card", report.smartCard.count, report.smartCard.total],
                 ["Class fees", "—", report.classTotal],
+              ],
+            },
+            {
+              title: "Cash book",
+              head: ["Item", "Amount"],
+              body: [
+                ["Bring-forward", money(bf)],
+                ["Total collected", report.totalCollected],
+                ["Deductions", `-${report.deductions.total}`],
+                ["Drawer total (expected cash)", drawerTotal],
+                ["Prepared by", prepared!.name],
+                ["Checked by", checked!.name],
               ],
             },
             {
@@ -78,10 +125,17 @@ export function SummaryScreen({
             Money collected {rangeLabel} · Asia/Colombo · cancelled excluded
           </p>
         </div>
-        <Button onClick={exportPdf} disabled={busy} className="gap-2">
-          <Download className="size-4" aria-hidden />
-          {busy ? "Preparing…" : "Download PDF"}
-        </Button>
+        <div className="text-right">
+          <Button onClick={exportPdf} disabled={busy || !signed} className="gap-2">
+            <Download className="size-4" aria-hidden />
+            {busy ? "Preparing…" : "Download PDF"}
+          </Button>
+          {!signed && (
+            <p className="text-muted-foreground mt-1.5 text-xs">
+              Choose Prepared by and Checked by first.
+            </p>
+          )}
+        </div>
       </div>
 
       {filterUi}
@@ -162,6 +216,93 @@ export function SummaryScreen({
           </div>
         </>
       )}
+
+      {/* Cash book — the drawer question, not the profit question. Outside the
+          empty-state branch on purpose: a day with no payments still has cash
+          in the drawer and still gets signed. */}
+      <div className="space-y-4 rounded-xl border p-4">
+        <div>
+          <h2 className="font-medium">Cash book</h2>
+          <p className="text-muted-foreground text-sm">
+            Entered fresh each day and printed on the report — nothing here is saved
+            or carried forward.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <label htmlFor="bf" className="block text-sm font-medium">Bring-forward</label>
+            <input
+              id="bf"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="0.00"
+              className={FIELD}
+              value={broughtForward}
+              onChange={(e) => setBroughtForward(e.target.value)}
+            />
+            <p className="text-muted-foreground text-xs">Cash already in the drawer.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="prepared" className="block text-sm font-medium">
+              Prepared by <span className="text-destructive">*</span>
+            </label>
+            <select
+              id="prepared"
+              className={FIELD}
+              value={preparedBy}
+              onChange={(e) => setPreparedBy(e.target.value)}
+              aria-invalid={!prepared}
+            >
+              <option value="">Select staff…</option>
+              {signers.prepared.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            {signers.prepared.length === 0 && (
+              <p className="text-destructive text-xs">No active staff account to prepare this.</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="checked" className="block text-sm font-medium">
+              Checked by <span className="text-destructive">*</span>
+            </label>
+            <select
+              id="checked"
+              className={FIELD}
+              value={checkedBy}
+              onChange={(e) => setCheckedBy(e.target.value)}
+              aria-invalid={!checked}
+            >
+              <option value="">Select admin or staff…</option>
+              {signers.checked.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.role === "ADMIN" ? "Admin" : "Staff"})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-2 border-t pt-3">
+          <Line label="Bring-forward" value={money(bf)} />
+          <Line label="Collected" value={report.totalCollected} />
+          <Line label="Deductions" value={`-${report.deductions.total}`} muted />
+          <div className="flex justify-between border-t pt-2 text-base font-semibold">
+            <span>Drawer total</span>
+            <span className="tabular-nums">{drawerTotal}</span>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            Bring-forward + Collected &minus; Deductions = the cash that should be in
+            the drawer. Net above is the institute&rsquo;s profit for the range — a
+            different question.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

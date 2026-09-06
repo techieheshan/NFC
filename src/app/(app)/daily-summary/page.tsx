@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { requireNavAccess } from "@/lib/authz";
 import { colomboNow } from "@/lib/colombo-time";
 
-import { loadDailySummary } from "./actions";
+import { listSigners, loadDailySummary } from "./actions";
 import { SummaryScreen } from "./summary-screen";
 
 export const metadata = { title: "Daily Summary" };
@@ -26,7 +26,10 @@ export default async function DailySummaryPage({
   const from = toStr(params.from) ?? today;
   const to = toStr(params.to) ?? today;
 
-  const report = await loadDailySummary(from, to);
+  const [report, signers] = await Promise.all([
+    loadDailySummary(from, to),
+    listSigners(),
+  ]);
 
   const filterUi = (
     <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
@@ -47,5 +50,14 @@ export default async function DailySummaryPage({
     </form>
   );
 
-  return <SummaryScreen report={report} filterUi={filterUi} />;
+  // Keyed on the range: a new range is a new cash-book, so the typed
+  // bring-forward and the two signatures must not survive it.
+  return (
+    <SummaryScreen
+      key={`${report.from}_${report.to}`}
+      report={report}
+      signers={signers}
+      filterUi={filterUi}
+    />
+  );
 }
