@@ -112,6 +112,30 @@ function ClassLine({ c, onColour = true }: { c: Candidate; onColour?: boolean })
   );
 }
 
+/** What the NFC reader is doing, mirrored onto the coloured screen. */
+export type ReaderState = "off" | "on" | "waiting";
+
+/**
+ * The lamp, on the colour.
+ *
+ * The result fills the whole screen, so the reader indicator has to come with
+ * it: staff must be able to see at a glance that the reader is still armed
+ * without dismissing what they are looking at. Same three states as the lamp on
+ * the idle screen, drawn for a coloured background.
+ */
+export function ReaderPill({ state, busy }: { state: ReaderState; busy?: boolean }) {
+  const label =
+    state === "on" ? "Reader ON" : state === "waiting" ? "Reader OFF — taps ignored" : "Reader off";
+  const dot = state === "on" ? "bg-emerald-300" : state === "waiting" ? "bg-amber-300" : "bg-white/50";
+  return (
+    <span className="flex items-center gap-2 rounded-full bg-black/25 px-3 py-1.5 text-xs font-medium text-white">
+      <span className={`size-2.5 rounded-full ${dot} ${state === "on" ? "animate-pulse" : ""}`} />
+      {label}
+      {busy && state === "on" ? " · reading…" : ""}
+    </span>
+  );
+}
+
 export type CardProps = {
   result: ScanResult;
   canPay: boolean;
@@ -120,14 +144,17 @@ export type CardProps = {
   onDismiss?: () => void;
   /** Closes a RESULT popup. Purely visual — it decides nothing. */
   onClose?: () => void;
+  reader: ReaderState;
+  busy?: boolean;
 };
 
-export function CounterCard({ result, canPay, onPay, onDismiss, onClose }: CardProps) {
+export function CounterCard({ result, canPay, onPay, onDismiss, onClose, reader, busy }: CardProps) {
+  const lamp = <ReaderPill state={reader} busy={busy} />;
   if (result.status === "unknown") {
     // A question, not a result: the system does not know who this is, so the
     // reader holds until staff acknowledge it. See the block rule.
     return (
-      <Screen colour={NO_STUDENT_SCREEN} icon={XCircle} title="Card not recognised">
+      <Screen colour={NO_STUDENT_SCREEN} icon={XCircle} title="Card not recognised" lamp={lamp}>
         <p className="text-lg text-white">Register this card first, or search by name.</p>
         {onDismiss && (
           <Button size="lg" variant="secondary" className="w-full" onClick={onDismiss}>
@@ -140,7 +167,7 @@ export function CounterCard({ result, canPay, onPay, onDismiss, onClose }: CardP
 
   if (result.status === "offline-blocked") {
     return (
-      <Screen colour={NO_STUDENT_SCREEN} icon={CloudOff} title="Can't mark offline yet" onClose={onClose}>
+      <Screen colour={NO_STUDENT_SCREEN} icon={CloudOff} title="Can't mark offline yet" onClose={onClose} lamp={lamp}>
         <p className="text-lg text-white">{result.message}</p>
       </Screen>
     );
@@ -202,11 +229,10 @@ export function CounterCard({ result, canPay, onPay, onDismiss, onClose }: CardP
           title={result.status === "queued" ? "Marked — queued" : "Marked present"}
           right={<span className="text-sm font-medium tabular-nums text-white">{to12Hour(at)}</span>}
           onClose={onClose}
+          lamp={lamp}
         >
           {identity}
-          <Panel>
-            <ClassLine c={candidate} />
-          </Panel>
+          <ClassLine c={candidate} />
           <p className="text-base font-medium text-white">
             {owes ? `Thank you — please settle ${arrears.label}.` : "Thank you!"}
           </p>
@@ -227,18 +253,17 @@ export function CounterCard({ result, canPay, onPay, onDismiss, onClose }: CardP
           icon={AlertTriangle}
           title={`Already marked at ${to12Hour(result.at)}`}
           onClose={onClose}
+          lamp={lamp}
         >
           {identity}
-          <Panel>
-            <ClassLine c={result.candidate} />
-          </Panel>
+          <ClassLine c={result.candidate} />
           {actions}
         </Screen>
       );
 
     case "no-class":
       return (
-        <Screen colour={colour} icon={XCircle} title="No class open right now" onClose={onClose}>
+        <Screen colour={colour} icon={XCircle} title="No class open right now" onClose={onClose} lamp={lamp}>
           {identity}
           {actions}
         </Screen>
@@ -246,7 +271,7 @@ export function CounterCard({ result, canPay, onPay, onDismiss, onClose }: CardP
 
     case "outside":
       return (
-        <Screen colour={colour} icon={Clock} title="Not open yet / already closed" onClose={onClose}>
+        <Screen colour={colour} icon={Clock} title="Not open yet / already closed" onClose={onClose} lamp={lamp}>
           {identity}
           <p className="text-base font-medium text-white">{result.message}</p>
           {actions}
@@ -256,11 +281,6 @@ export function CounterCard({ result, canPay, onPay, onDismiss, onClose }: CardP
     default:
       return null;
   }
-}
-
-/** A translucent block on the colour — readable without becoming a second card. */
-function Panel({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg bg-black/20 p-2.5">{children}</div>;
 }
 
 /**
@@ -277,6 +297,7 @@ function Screen({
   title,
   right,
   onClose,
+  lamp,
   children,
 }: {
   colour: string;
@@ -284,6 +305,7 @@ function Screen({
   title: string;
   right?: React.ReactNode;
   onClose?: () => void;
+  lamp?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -304,15 +326,18 @@ function Screen({
 
       <div className="flex min-h-0 flex-1 flex-col justify-center gap-3">{children}</div>
 
-      {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          className="shrink-0 rounded-lg bg-white/15 py-2 text-sm font-medium text-white"
-        >
-          Close — or just tap the next card
-        </button>
-      )}
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        {lamp}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg bg-white/15 px-4 py-2 text-sm font-medium text-white"
+          >
+            Close
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -326,11 +351,13 @@ export function ChoiceCard({
   pending,
   onChoose,
   onCancel,
+  reader,
 }: {
   result: Extract<ScanResult, { status: "choose" | "confirm" }>;
   pending: boolean;
   onChoose: (candidate: Candidate) => void;
   onCancel: () => void;
+  reader: ReaderState;
 }) {
   const candidates = result.status === "choose" ? result.candidates : [result.candidate];
   const isConfirm = result.status === "confirm";
@@ -343,10 +370,13 @@ export function ChoiceCard({
       aria-label={isConfirm ? "Additional class — confirm" : "Which class?"}
       className={`fixed inset-0 z-50 flex flex-col gap-3 overflow-hidden p-4 sm:p-6 ${colour}`}
     >
-      <p className="flex items-center gap-2 text-lg font-semibold text-white">
-        <AlertTriangle className="size-6 shrink-0" aria-hidden />
-        {isConfirm ? "Additional class — confirm" : "Which class?"}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-lg font-semibold text-white">
+          <AlertTriangle className="size-6 shrink-0" aria-hidden />
+          {isConfirm ? "Additional class — confirm" : "Which class?"}
+        </p>
+        <ReaderPill state={reader} />
+      </div>
 
       <div className="flex items-center gap-3">
         <StudentFace

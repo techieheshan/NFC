@@ -41,7 +41,7 @@ import type {
   SyncOutcome,
   WorkingSet,
 } from "./actions";
-import { ChoiceCard, CounterCard } from "./counter-card";
+import { ChoiceCard, CounterCard, type ReaderState } from "./counter-card";
 import {
   playAlreadyMarked,
   playMarkedButOwes,
@@ -75,7 +75,6 @@ const BLOCKS = new Set<ScanResult["status"]>(["choose", "confirm", "unknown"]);
  *   on       — armed and listening; students tap one after another
  *   waiting  — armed, but a choice is on screen, so taps are IGNORED
  */
-type ReaderState = "off" | "on" | "waiting";
 
 type Props = {
   resolveScan: (input: {
@@ -381,6 +380,7 @@ export function AttendanceScreen({
           <ChoiceCard
             result={popup.result}
             pending={busy}
+            reader={reader}
             onChoose={(c) =>
               choose(
                 (popup.result as Extract<ScanResult, { status: "choose" }>).student,
@@ -394,6 +394,8 @@ export function AttendanceScreen({
             key={popup.id}
             result={popup.result}
             canPay={offline.connected}
+            reader={reader}
+            busy={busy}
             onDismiss={popup.result.status === "unknown" ? release : undefined}
             // Results only. Closing one is a VIEW change: it neither marks nor
             // unmarks anything, and the reader was never blocked by it.
