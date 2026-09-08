@@ -63,10 +63,20 @@ export type PayslipCourseRow = {
   teacherShare: string;
 };
 
+/** One fee tier's share of a slip, labelled from the reference table. */
+export type PayslipTierCount = { code: string; label: string; students: number };
+
 export type Payslip = {
   teacherId: number;
   teacher: string;
   courses: PayslipCourseRow[];
+  /**
+   * Distinct students who paid this teacher this month — "how many cards came
+   * through", counted once even when one student pays for two of their courses.
+   */
+  payingStudents: number;
+  /** The same students split by the tier they were charged at, biggest first. */
+  tierCounts: PayslipTierCount[];
   totalCollected: string;
   totalInstituteShare: string;
   totalTeacherShare: string;
@@ -150,6 +160,9 @@ export async function buildPayslips(options: {
           studentId: true,
           amount: true,
           instituteSharePercentApplied: true,
+          // The tier is read for the voucher's "3 full, 25 half" line. Labels
+          // come from the reference table — never a hardcoded list of tiers.
+          feeTier: { select: { code: true, label: true } },
         },
       })
     : [];
@@ -196,6 +209,19 @@ export async function buildPayslips(options: {
       };
     });
 
+    // Counted across the teacher's courses, so a student who pays for two of
+    // them is one card, not two.
+    const mineAll = payments.filter((p) =>
+      teacher.courses.some((c) => c.id === p.courseId),
+    );
+    const perTier = new Map<string, { label: string; students: Set<number> }>();
+    for (const p of mineAll) {
+      if (!p.feeTier) continue;
+      const entry = perTier.get(p.feeTier.code) ?? { label: p.feeTier.label, students: new Set<number>() };
+      entry.students.add(p.studentId);
+      perTier.set(p.feeTier.code, entry);
+    }
+
     const totalCollected = rows.reduce((s, r) => s + Number(r.collected), 0);
     const totalInstituteShare = rows.reduce((s, r) => s + Number(r.instituteShare), 0);
     const totalTeacherShare = rows.reduce((s, r) => s + Number(r.teacherShare), 0);
@@ -208,6 +234,10 @@ export async function buildPayslips(options: {
       teacher: teacher.name,
       // Courses with no money this month are dropped — an empty slip is noise.
       courses: rows.filter((r) => Number(r.collected) > 0),
+      payingStudents: new Set(mineAll.map((p) => p.studentId)).size,
+      tierCounts: [...perTier]
+        .map(([code, v]) => ({ code, label: v.label, students: v.students.size }))
+        .sort((a, b) => b.students - a.students || a.label.localeCompare(b.label)),
       totalCollected: money(totalCollected),
       totalInstituteShare: money(totalInstituteShare),
       totalTeacherShare: money(totalTeacherShare),

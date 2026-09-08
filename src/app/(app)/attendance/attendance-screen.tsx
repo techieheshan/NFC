@@ -438,9 +438,12 @@ export function AttendanceScreen({
               loadPanel={loadPanel}
               takePayment={takePayment}
               searchStudents={paymentSearch}
+              // The tone and the spoken confirmation both fire from
+              // `onCharged`, i.e. when the money is recorded. `onFinished`
+              // only runs once the print dialog is dismissed, which is far too
+              // late to be feedback for the person at the counter.
+              onCharged={playPaymentSuccess}
               onFinished={() => {
-                playPaymentSuccess();
-                VOICE.paymentComplete();
                 setPaying(null);
                 release();
               }}

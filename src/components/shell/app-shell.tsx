@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { KeyRound } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 
 import { NavLink } from "@/components/shell/nav-link";
@@ -78,16 +77,11 @@ export function AppShell({
             <span className="bg-secondary text-secondary-foreground rounded-full px-2.5 py-1 text-xs font-medium lg:hidden">
               {ROLE_LABEL[role]}
             </span>
-            {/* Everyone can change their own password; the User Roles screen
-                is admin-only and is for changing OTHER people's. */}
-            <Link
-              href="/change-password"
-              title="Change my password"
-              className="text-muted-foreground hover:text-foreground hover:bg-secondary grid size-9 place-items-center rounded-md"
-            >
-              <KeyRound className="size-4" aria-hidden />
-              <span className="sr-only">Change my password</span>
-            </Link>
+            {/* No password control up here: this bar sits on a wall-mounted
+                terminal that is touched all day, and a mis-tap must not land
+                anyone on a password screen mid-queue. Changing your own
+                password lives in Settings; /change-password itself still
+                exists, and a forced change still routes straight to it. */}
             <SignOutButton />
           </div>
         </header>

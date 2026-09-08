@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { StudentBrief } from "@/lib/students";
+import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
 import type {
   ApplicableCombo,
@@ -57,6 +58,17 @@ type Props = {
   embedded?: boolean;
   /** Called after a receipt is closed, so the host can dismiss the dialog. */
   onFinished?: () => void;
+  /**
+   * Called the instant the charge succeeds, BEFORE the receipt renders — the
+   * counter plays its success tone here so the sound lands with the payment
+   * rather than with the print dialog closing.
+   */
+  onCharged?: () => void;
+  /**
+   * The Settings voice toggle. The embedded counter has already applied it
+   * process-wide, so it is only passed by the standalone screen.
+   */
+  voiceEnabled?: boolean;
 };
 
 const monthKey = (courseId: number, year: number, month: number) =>
@@ -69,7 +81,11 @@ export function PaymentScreen({
   initialStudentId,
   embedded = false,
   onFinished,
+  onCharged,
+  voiceEnabled,
 }: Props) {
+  if (voiceEnabled !== undefined) setVoiceEnabled(voiceEnabled);
+
   const [panel, setPanel] = useState<PaymentPanel | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -182,11 +198,18 @@ export function PaymentScreen({
           classMonths: selectedClassMonths(panel),
           comboDecisions: finalDecisions,
         });
-        if (res.ok) setReceipt(res.receipt);
-        else setError(res.error);
+        if (res.ok) {
+          // Feedback fires HERE, the instant the money is recorded — not from
+          // the receipt's onDone, which does not run until the print dialog is
+          // dismissed. Staff heard it late, or not at all when the dialog was
+          // left open. Speech is fire-and-forget, so nothing waits on it.
+          VOICE.paymentComplete();
+          onCharged?.();
+          setReceipt(res.receipt);
+        } else setError(res.error);
       });
     },
-    [panel, admission, smartCard, selectedClassMonths, takePayment],
+    [panel, admission, smartCard, selectedClassMonths, takePayment, onCharged],
   );
 
   const confirm = useCallback(() => {

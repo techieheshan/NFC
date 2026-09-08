@@ -19,6 +19,11 @@ import type { Receipt } from "./actions";
  * outside the receipt is hidden, so the same markup works on a thermal printer
  * driver today and a POS bridge later. Kept black-on-white — thermal paper has
  * no colour, and purple would render as mud.
+ *
+ * Thermal paper is the running cost here, so the layout is deliberately tight:
+ * the FONT SIZE is untouched (it has to be read across a counter), but the
+ * whitespace between rules, lines and blocks is cut to the minimum that still
+ * separates one block from the next. Every mm saved is paper on every receipt.
  */
 export function ReceiptView({
   receipt,
@@ -47,9 +52,11 @@ export function ReceiptView({
           #receipt, #receipt * { visibility: visible !important; }
           #receipt {
             position: absolute; left: 0; top: 0;
-            width: 58mm; padding: 3mm 2mm;
+            width: 58mm; padding: 1mm 2mm 2mm;
             font-size: 10pt; color: #000; background: #fff;
           }
+          /* The screen border is a preview affordance; on paper it is ink. */
+          #receipt { border: 0 !important; }
           .no-print { display: none !important; }
         }
       `}</style>
@@ -57,7 +64,7 @@ export function ReceiptView({
       <div className="flex justify-center">
         <div
           id="receipt"
-          className="w-[384px] max-w-full border bg-white p-4 font-mono text-[13px] leading-snug text-black"
+          className="w-[384px] max-w-full border bg-white px-3 py-2 font-mono text-[13px] leading-tight text-black"
         >
           <div className="text-center">
             <p className="text-base font-bold tracking-widest">XENON</p>
@@ -67,7 +74,7 @@ export function ReceiptView({
           {voided && (
             <>
               <Rule />
-              <div className="border-y-2 border-black py-1 text-center">
+              <div className="border-y-2 border-black py-0.5 text-center">
                 <p className="text-[15px] font-bold tracking-widest">*** CANCELLED ***</p>
                 <p className="text-[11px]">
                   {voided.date} {to12Hour(voided.at)} by {voided.by}
@@ -90,7 +97,7 @@ export function ReceiptView({
           <Rule />
 
           {receipt.lines.map((l, i) => (
-            <div key={i} className="mb-1">
+            <div key={i}>
               {/* Long course names wrap above their amount rather than
                   truncating — the amount must always be readable. */}
               <p className="break-words">{l.label}</p>
@@ -108,7 +115,7 @@ export function ReceiptView({
           <Rule />
 
           <Row left="Taken by" right={receipt.takenBy} />
-          <p className="mt-3 text-center text-[11px]">
+          <p className="mt-1 text-center text-[11px]">
             {voided ? "This receipt has been cancelled." : "Thank you"}
           </p>
         </div>
@@ -129,8 +136,12 @@ export function ReceiptView({
   );
 }
 
+/**
+ * A separator, drawn as one dashed line rather than a row of hyphens with a
+ * blank line either side of it: same visual break, a fraction of the height.
+ */
 function Rule() {
-  return <p className="my-2 overflow-hidden text-[11px] whitespace-nowrap">{"-".repeat(48)}</p>;
+  return <div className="my-1 border-t border-dashed border-black" />;
 }
 
 function Row({ left, right }: { left: string; right: string }) {

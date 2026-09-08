@@ -33,6 +33,12 @@ const MONTHS = [
  * the same frozen-percent computation the teacher's own view uses. There is no
  * second formula here to drift out of step, and institute profit is not merely
  * hidden — it is never computed.
+ *
+ * Deliberately NOT the admin payslip screen. This sheet is read across a
+ * counter and signed, so it is set at a size that survives that, and it carries
+ * only what a teacher checks: how many cards, at which tiers, and how the
+ * collected money became their salary. The per-course breakdown stays on
+ * /payslips, where the same numbers are already available in full.
  */
 export default async function VoucherPage({ searchParams }: PageProps<"/payslips/voucher">) {
   const user = await requireNavAccess("/payslips");
@@ -84,87 +90,76 @@ export default async function VoucherPage({ searchParams }: PageProps<"/payslips
         <PrintButton />
       </div>
 
-      <div id="voucher" className="space-y-5 rounded-xl border bg-white p-8 text-black">
+      <div id="voucher" className="space-y-6 rounded-xl border bg-white p-8 text-black">
         <header className="flex items-start justify-between gap-4 border-b pb-4">
           <div>
-            <p className="text-xl font-bold tracking-widest">XENON</p>
-            <p className="text-sm">Institute</p>
+            <p className="text-2xl font-bold tracking-widest">XENON</p>
+            <p>Institute</p>
           </div>
-          <div className="text-right text-sm">
-            <p className="font-semibold">Payslip voucher</p>
+          <div className="text-right">
+            <p className="text-lg font-semibold">Payslip voucher</p>
             <p>{monthLabel}</p>
           </div>
         </header>
 
-        <section className="grid gap-1 text-sm">
-          <div className="flex gap-2">
-            <span className="w-24 shrink-0 font-medium">Teacher</span>
-            <span>{teacher.name}</span>
+        <section className="grid gap-1 text-lg">
+          <div className="flex gap-3">
+            <span className="w-28 shrink-0 font-medium">Teacher</span>
+            <span className="font-semibold">{teacher.name}</span>
           </div>
           {teacher.nic && (
-            <div className="flex gap-2">
-              <span className="w-24 shrink-0 font-medium">NIC</span>
+            <div className="flex gap-3">
+              <span className="w-28 shrink-0 font-medium">NIC</span>
               <span>{teacher.nic}</span>
             </div>
           )}
           {teacher.phone && (
-            <div className="flex gap-2">
-              <span className="w-24 shrink-0 font-medium">Phone</span>
+            <div className="flex gap-3">
+              <span className="w-28 shrink-0 font-medium">Phone</span>
               <span>{teacher.phone}</span>
             </div>
           )}
         </section>
 
-        {!slip || slip.courses.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-4 text-sm">
+        {!slip || Number(slip.totalCollected) === 0 ? (
+          <p className="rounded-lg border border-dashed p-4 text-lg">
             No collections recorded for {teacher.name} in {monthLabel}.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b text-left">
-                <tr>
-                  <th className="py-2 pr-2 font-medium">Course</th>
-                  <th className="py-2 px-2 text-right font-medium">Share %</th>
-                  <th className="py-2 px-2 text-right font-medium">Students</th>
-                  <th className="py-2 px-2 text-right font-medium">Collected</th>
-                  <th className="py-2 px-2 text-right font-medium">Institute</th>
-                  <th className="py-2 pl-2 text-right font-medium">Teacher</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {slip.courses.map((c) => (
-                  <tr key={c.courseId}>
-                    <td className="py-2 pr-2">{c.course}</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{c.sharePercent}%</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{c.payingStudents}</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{c.collected}</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{c.instituteShare}</td>
-                    <td className="py-2 pl-2 text-right tabular-nums">{c.teacherShare}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <section className="border-y py-4 text-lg">
+              <div className="flex justify-between gap-4">
+                <span className="font-medium">Cards</span>
+                <span className="tabular-nums">
+                  {slip.payingStudents} {slip.payingStudents === 1 ? "student" : "students"}
+                </span>
+              </div>
+              {slip.tierCounts.length > 0 && (
+                <p className="mt-1 text-right">
+                  {/* Tier names come from the reference table, so a new tier
+                      appears here on its own. */}
+                  {slip.tierCounts.map((t) => `${t.students} ${t.label.toLowerCase()}`).join(", ")}
+                </p>
+              )}
+            </section>
+
+            <section className="space-y-2 text-xl">
+              <Row label="Collected" value={slip.totalCollected} />
+              <Row label="Institute share" value={slip.totalInstituteShare} />
+              <Row label="Teacher share" value={slip.totalTeacherShare} />
+              <Row label="Advances taken" value={`-${slip.advances}`} />
+              <div className="flex justify-between border-t-2 border-black pt-3 text-2xl font-bold">
+                <span>Final salary</span>
+                <span className="tabular-nums">{slip.finalSalary}</span>
+              </div>
+            </section>
+          </>
         )}
 
-        {slip && (
-          <section className="ml-auto w-full max-w-xs space-y-1 border-t pt-4 text-sm">
-            <Row label="Total collected" value={slip.totalCollected} />
-            <Row label="Institute share" value={slip.totalInstituteShare} />
-            <Row label="Teacher share" value={slip.totalTeacherShare} />
-            <Row label="Advances taken" value={`-${slip.advances}`} />
-            <div className="flex justify-between border-t pt-2 text-base font-bold">
-              <span>Final salary</span>
-              <span className="tabular-nums">{slip.finalSalary}</span>
-            </div>
-          </section>
-        )}
-
-        <footer className="border-t pt-4 text-xs">
-          <div className="mt-8 flex justify-between gap-8">
-            <span className="w-48 border-t pt-1 text-center">Teacher signature</span>
-            <span className="w-48 border-t pt-1 text-center">Issued by</span>
+        <footer className="border-t pt-4">
+          <div className="mt-10 flex justify-between gap-8 text-base">
+            <span className="w-56 border-t pt-1 text-center">Teacher signature</span>
+            <span className="w-56 border-t pt-1 text-center">Issued by</span>
           </div>
         </footer>
       </div>
