@@ -140,6 +140,19 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     which is NOT Net (the institute's profit). Both signatures are mandatory
     before the report can be printed, and both come from active accounts:
     preparing is STAFF, checking is ADMIN or STAFF.
+25. **One hall resolver: `hallForClassOnDate` / `classesForDate` in
+    `src/lib/halls.ts`.** Where a class meets on a date is "the override for
+    that class on that date, else its own default (`Schedule.defaultHallId` /
+    `AdditionalClass.hallId`), else unassigned" — and every screen, the
+    timetable and the class-schedule column read it from there. Reassigning a
+    hall writes a `HallAllocationOverride` for ONE date and must never touch
+    the class's default; that is what makes it a one-day change instead of an
+    edit to the timetable. A double-booking WARNS and still saves — two classes
+    really do share a room, and a system that refuses just gets worked around.
+    Halls are soft-deleted reference data with an icon KEY (`src/lib/hall-icons.tsx`),
+    never a hardcoded list. `/reports/class-schedule` shows the DEFAULT hall
+    (it is the recurring timetable); `/reports/timetable` is per-date and shows
+    what an override actually did.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

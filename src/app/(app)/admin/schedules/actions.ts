@@ -37,6 +37,9 @@ function fail(formData: FormData, error: string): ActionState {
   return { ok: false, error, values: echo(formData) };
 }
 
+/** A hall as the schedule forms need it: enough to name it and draw it. */
+export type HallOption = { id: number; name: string; icon: string };
+
 export type ScheduleRow = {
   id: number;
   courseId: number;
@@ -50,6 +53,8 @@ export type ScheduleRow = {
   attendanceOpensBeforeMin: number;
   attendanceClosesBeforeMin: number;
   active: boolean;
+  /** The room this class usually meets in; null until one is chosen. */
+  defaultHall: HallOption | null;
 };
 
 export type AdditionalRow = {
@@ -64,6 +69,8 @@ export type AdditionalRow = {
   attendanceOpensBeforeMin: number;
   attendanceClosesBeforeMin: number;
   note: string | null;
+  /** The room for this one-off class; null until one is chosen. */
+  hall: HallOption | null;
   /** Drives the delete-only-when-unused rule. */
   attendanceCount: number;
 };
@@ -96,6 +103,12 @@ const offset = z.coerce
 
 const dayOfWeek = z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]);
 
+/** A hall is optional everywhere: "no room yet" is a real state, not an error. */
+const optionalHallId = z
+  .union([z.literal(""), z.coerce.number().int().positive()])
+  .transform((v) => (v === "" ? null : v))
+  .nullable();
+
 const dateString = z
   .string()
   .trim()
@@ -121,6 +134,7 @@ const scheduleSchema = withOrderedTimes(
     attendanceOpensBeforeMin: offset,
     attendanceClosesBeforeMin: offset,
     active: z.boolean(),
+    defaultHallId: optionalHallId,
   }),
 );
 
@@ -138,6 +152,9 @@ const additionalSchema = withOrderedTimes(
       .max(300)
       .transform((v) => (v === "" ? null : v))
       .nullable(),
+    // Set here so a one-off class shows up in allocation and the timetable
+    // with no second step.
+    hallId: optionalHallId,
   }),
 );
 
@@ -186,7 +203,10 @@ export async function listSchedules(
           }
         : {}),
     },
-    include: { course: { select: { name: true, ...courseInclude } } },
+    include: {
+      course: { select: { name: true, ...courseInclude } },
+      defaultHall: { select: { id: true, name: true, icon: true } },
+    },
     // Postgres orders enums by declaration order, so MON..SUN sorts correctly.
     orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
   });
@@ -204,6 +224,7 @@ export async function listSchedules(
     attendanceOpensBeforeMin: s.attendanceOpensBeforeMin,
     attendanceClosesBeforeMin: s.attendanceClosesBeforeMin,
     active: s.active,
+    defaultHall: s.defaultHall,
   }));
 }
 
@@ -227,6 +248,7 @@ export async function listAdditionalClasses(
         : {},
     include: {
       course: { select: { name: true, ...courseInclude } },
+      hall: { select: { id: true, name: true, icon: true } },
       _count: { select: { attendances: true } },
     },
     orderBy: [{ date: "desc" }, { startTime: "asc" }],
@@ -243,6 +265,7 @@ export async function listAdditionalClasses(
     attendanceOpensBeforeMin: a.attendanceOpensBeforeMin,
     attendanceClosesBeforeMin: a.attendanceClosesBeforeMin,
     note: a.note,
+    hall: a.hall,
     attendanceCount: a._count.attendances,
   }));
 }
@@ -260,6 +283,7 @@ function readSchedule(formData: FormData) {
     ...readOffsets(formData),
     // An unchecked checkbox submits nothing at all.
     active: formData.get("active") === "on" || formData.get("active") === "true",
+    defaultHallId: formData.get("defaultHallId") ?? "",
   };
 }
 
@@ -334,6 +358,7 @@ function readAdditional(formData: FormData) {
     endTime: formData.get("endTime"),
     ...readOffsets(formData),
     note: formData.get("note") ?? "",
+    hallId: formData.get("hallId") ?? "",
   };
 }
 

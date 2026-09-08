@@ -55,7 +55,7 @@ export default async function SchedulesPage({
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [schedules, additional, courseRows, teachers, grades] = await Promise.all([
+  const [schedules, additional, courseRows, teachers, grades, halls] = await Promise.all([
     listSchedules(scheduleFilters),
     listAdditionalClasses(dateRange),
     db.course.findMany({
@@ -79,6 +79,13 @@ export default async function SchedulesPage({
       where: { active: true },
       select: { id: true, label: true },
       orderBy: { label: "asc" },
+    }),
+    // Only active halls are offered; a class already in a deactivated one keeps
+    // showing it (see HallField).
+    db.hall.findMany({
+      where: { active: true },
+      select: { id: true, name: true, icon: true },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -164,6 +171,7 @@ export default async function SchedulesPage({
       timetableFilterUi={timetableFilterUi}
       additionalFilterUi={additionalFilterUi}
       listSchedules={listSchedules}
+      halls={halls}
       listAdditionalClasses={listAdditionalClasses}
       createSchedule={createSchedule}
       updateSchedule={updateSchedule}

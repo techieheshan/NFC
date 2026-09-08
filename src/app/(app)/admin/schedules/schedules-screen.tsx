@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   ActionState,
   AdditionalRow,
+  HallOption,
   DateRange,
   ScheduleFilters,
   ScheduleRow,
@@ -17,6 +18,7 @@ type Props = {
   initialSchedules: ScheduleRow[];
   initialAdditional: AdditionalRow[];
   courses: CourseOption[];
+  halls: HallOption[];
   today: string;
   tab: string;
   scheduleFilters: ScheduleFilters;
@@ -45,6 +47,7 @@ export function SchedulesScreen({
   initialSchedules,
   initialAdditional,
   courses,
+  halls,
   today,
   tab,
   scheduleFilters,
@@ -81,6 +84,7 @@ export function SchedulesScreen({
             initialRows={initialSchedules}
             filterArgs={scheduleFilters}
             courses={courses}
+            halls={halls}
             filters={timetableFilterUi}
             listAction={listSchedules}
             createAction={createSchedule}
@@ -95,6 +99,7 @@ export function SchedulesScreen({
             initialRows={initialAdditional}
             filterArgs={dateRange}
             courses={courses}
+            halls={halls}
             filters={additionalFilterUi}
             today={today}
             listAction={listAdditionalClasses}

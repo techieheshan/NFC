@@ -79,6 +79,50 @@ model Stream {
   updatedAt DateTime @updatedAt
 }
 
+/// A classroom. Reference data like Subject/Grade — renamed and deactivated,
+/// never deleted, because schedules and past allocations point at it.
+model Hall {
+  id     Int     @id @default(autoincrement())
+  name   String  @unique // Blue Sky, Picasso, Tesla, ...
+  icon   String // a key into HALL_ICONS (src/lib/hall-icons.ts), not a URL
+  active Boolean @default(true)
+
+  schedules         Schedule[]
+  additionalClasses AdditionalClass[]
+  overrides         HallAllocationOverride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One day's exception to where a class meets. The schedule's own
+/// `defaultHallId` is never touched by a reassignment — resolution is
+/// "override for this date, else the default" and lives in one helper
+/// (`hallForClassOnDate`).
+model HallAllocationOverride {
+  id   Int      @id @default(autoincrement())
+  date DateTime @db.Date
+
+  // Exactly one of these two is set: a recurring class or a one-off.
+  schedule          Schedule?        @relation(fields: [scheduleId], references: [id])
+  scheduleId        Int?
+  additionalClass   AdditionalClass? @relation(fields: [additionalClassId], references: [id])
+  additionalClassId Int?
+
+  hall   Hall @relation(fields: [hallId], references: [id])
+  hallId Int
+
+  createdBy   User   @relation("HallOverrideBy", fields: [createdById], references: [id])
+  createdById String
+
+  createdAt DateTime @default(now())
+
+  // One class resolves to exactly one hall on one date.
+  @@unique([date, scheduleId])
+  @@unique([date, additionalClassId])
+  @@index([date])
+}
+
 model Subject {
   id        Int      @id @default(autoincrement())
   label     String   @unique // ICT, Chemistry, BTECH, ETECH, ...
@@ -183,6 +227,7 @@ model User {
   paymentsCancelled Payment[]    @relation("PaymentCancelledBy")
   attendanceMarked  Attendance[] @relation("AttendanceMarkedBy")
   expensesRecorded  Expense[]    @relation("ExpenseRecordedBy")
+  hallOverridesSet  HallAllocationOverride[] @relation("HallOverrideBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -297,6 +342,13 @@ model Schedule {
   attendanceClosesBeforeMin Int     @default(30) // e.g. 30 -> closes 4:30 for a 5:00 end
   active                    Boolean @default(true)
 
+  // Where this class usually meets. Nullable: a schedule may predate halls, or
+  // simply not have a room yet — it then resolves to "unassigned".
+  defaultHall   Hall? @relation(fields: [defaultHallId], references: [id])
+  defaultHallId Int?
+
+  hallOverrides HallAllocationOverride[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -316,7 +368,13 @@ model AdditionalClass {
   attendanceClosesBeforeMin Int      @default(30)
   note                      String?
 
-  attendances Attendance[]
+  // Set when the one-off class is created, so it appears in allocation and the
+  // timetable with no second step.
+  hall   Hall? @relation(fields: [hallId], references: [id])
+  hallId Int?
+
+  attendances   Attendance[]
+  hallOverrides HallAllocationOverride[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

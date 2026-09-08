@@ -67,6 +67,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       <nav className="flex flex-wrap gap-2">
         <Button asChild variant="secondary" size="sm"><Link href="/reports">Student list</Link></Button>
         <Button asChild variant="outline" size="sm"><Link href="/reports/class-schedule">Class schedule</Link></Button>
+        <Button asChild variant="outline" size="sm"><Link href="/reports/timetable">Timetable</Link></Button>
         {!isTeacher && (
           <>
             <Button asChild variant="outline" size="sm"><Link href="/reports/not-paid">Not paid</Link></Button>

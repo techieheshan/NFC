@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 
 import { downloadReportPdf } from "@/components/reports/report-pdf";
 import { Button } from "@/components/ui/button";
+import { HallIcon } from "@/lib/hall-icons";
 import { formatTime } from "@/lib/schedule-time";
 import type { ScheduleReport } from "@/lib/report-class-schedule";
 
@@ -23,11 +24,12 @@ export function ScheduleScreen({ report, subtitle }: { report: ScheduleReport; s
           .filter((d) => d.entries.length > 0)
           .map((d) => ({
             title: `${d.label} — ${d.entries.length} ${d.entries.length === 1 ? "class" : "classes"}`,
-            head: ["Time", "Course", "Teacher", "Attendance window"],
+            head: ["Time", "Course", "Teacher", "Hall", "Attendance window"],
             body: d.entries.map((e) => [
               `${formatTime(e.startTime)}–${formatTime(e.endTime)}`,
               e.course,
               e.teacher,
+              e.hall?.name ?? "—",
               `${formatTime(e.opens)}–${formatTime(e.closes)}`,
             ]),
           })),
@@ -76,6 +78,16 @@ export function ScheduleScreen({ report, subtitle }: { report: ScheduleReport; s
                   <span className="min-w-0">
                     <span className="block font-medium">{e.course}</span>
                     <span className="text-muted-foreground block text-sm">{e.teacher}</span>
+                    <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                      {e.hall ? (
+                        <>
+                          <HallIcon icon={e.hall.icon} className="size-3.5" />
+                          {e.hall.name}
+                        </>
+                      ) : (
+                        "no hall"
+                      )}
+                    </span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block tabular-nums">

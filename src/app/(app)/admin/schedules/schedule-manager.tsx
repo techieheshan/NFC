@@ -32,8 +32,9 @@ import {
   formatTime,
 } from "@/lib/schedule-time";
 
-import type { ActionState, ScheduleFilters, ScheduleRow } from "./actions";
+import type { ActionState, HallOption, ScheduleFilters, ScheduleRow } from "./actions";
 import { CoursePicker, type CourseOption } from "./course-picker";
+import { HallField } from "./hall-field";
 import { WindowFields } from "./window-fields";
 
 const EMPTY: ActionState = { ok: false };
@@ -45,6 +46,7 @@ type Props = {
   initialRows: ScheduleRow[];
   filterArgs: ScheduleFilters;
   courses: CourseOption[];
+  halls: HallOption[];
   filters: React.ReactNode;
   listAction: (filters: ScheduleFilters) => Promise<ScheduleRow[]>;
   createAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -56,6 +58,7 @@ export function ScheduleManager({
   initialRows,
   filterArgs,
   courses,
+  halls,
   filters,
   listAction,
   createAction,
@@ -193,6 +196,7 @@ export function ScheduleManager({
         onDone={onChanged}
         action={createAction}
         courses={courses}
+        halls={halls}
         mode="create"
       />
 
@@ -203,6 +207,7 @@ export function ScheduleManager({
         onDone={onChanged}
         action={updateAction}
         courses={courses}
+        halls={halls}
         mode="edit"
         row={editing}
       />
@@ -216,6 +221,7 @@ function ScheduleDialog({
   onDone,
   action,
   courses,
+  halls,
   mode,
   row,
 }: {
@@ -224,6 +230,7 @@ function ScheduleDialog({
   onDone: () => void;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   courses: CourseOption[];
+  halls: HallOption[];
   mode: "create" | "edit";
   row?: ScheduleRow | null;
 }) {
@@ -315,6 +322,14 @@ function ScheduleDialog({
                 />
               </div>
             </div>
+
+            <HallField
+              name="defaultHallId"
+              label="Default hall"
+              value={v?.defaultHallId ?? (row?.defaultHall ? String(row.defaultHall.id) : "")}
+              halls={halls}
+              current={row?.defaultHall}
+            />
 
             <WindowFields
               opensBefore={Number(v?.attendanceOpensBeforeMin ?? row?.attendanceOpensBeforeMin ?? 30)}

@@ -26,6 +26,12 @@ export type ScheduleEntry = {
   /** When attendance opens and closes for this slot, for the counter's benefit. */
   opens: string;
   closes: string;
+  /**
+   * The class's DEFAULT hall. This report is the recurring timetable, not a
+   * particular date, so a one-day reassignment does not belong here — that is
+   * what /reports/timetable and the allocation screen are for.
+   */
+  hall: { id: number; name: string; icon: string } | null;
 };
 
 export type ScheduleDay = { day: string; label: string; entries: ScheduleEntry[] };
@@ -66,6 +72,7 @@ export async function buildClassSchedule(
     select: {
       id: true, courseId: true, dayOfWeek: true, startTime: true, endTime: true,
       attendanceOpensBeforeMin: true, attendanceClosesBeforeMin: true,
+      defaultHall: { select: { id: true, name: true, icon: true } },
       course: {
         select: {
           name: true,
@@ -91,6 +98,7 @@ export async function buildClassSchedule(
       endTime: r.endTime,
       opens: w.opens,
       closes: w.closes,
+      hall: r.defaultHall,
     });
     byDay.set(r.dayOfWeek, list);
   }

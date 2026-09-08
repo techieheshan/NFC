@@ -3,6 +3,7 @@ import {
   Banknote,
   BookOpen,
   CalendarClock,
+  DoorOpen,
   ClipboardList,
   GraduationCap,
   LayoutDashboard,
@@ -96,6 +97,17 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["terminal", "desktop"],
   },
   {
+    key: "hall-allocation",
+    label: "Hall Allocation",
+    href: "/hall-allocation",
+    icon: DoorOpen,
+    // Changes hour to hour, so it is on the same footing as Attendance and
+    // Payment: ADMIN + STAFF, on both surfaces. TEACHER is blocked — they read
+    // rooms off the timetable, they do not reassign them.
+    roles: OPERATIONAL,
+    surfaces: ["terminal", "desktop"],
+  },
+  {
     key: "daily-summary",
     label: "Daily Summary",
     href: "/daily-summary",
@@ -178,6 +190,15 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Schedules",
     href: "/admin/schedules",
     icon: CalendarClock,
+    roles: OPERATIONAL,
+    surfaces: ["desktop"],
+    group: "Setup",
+  },
+  {
+    key: "halls",
+    label: "Halls",
+    href: "/admin/halls",
+    icon: DoorOpen,
     roles: OPERATIONAL,
     surfaces: ["desktop"],
     group: "Setup",
