@@ -54,10 +54,9 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
     ? (await db.teacher.findUnique({ where: { id: teacherScoped }, select: { name: true } }))?.name ?? null
     : null;
 
-  const report = courseId
-    ? await buildStudentList(user, { courseId, year, month })
-    : { course: null, year, month, label: "", rows: [], blocked,
-        totals: { registered: 0, paid: 0, notPaid: 0, free: 0, reconciles: true } };
+  // "All courses" is a real selection now, so the report is always built —
+  // there is no "pick a course first" state to fall back to.
+  const report = await buildStudentList(user, { courseId, teacherId, year, month });
 
   const monthValue = `${year}-${String(month).padStart(2, "0")}`;
 
@@ -71,7 +70,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
         {!isTeacher && (
           <>
             <Button asChild variant="outline" size="sm"><Link href="/reports/not-paid">Not paid</Link></Button>
-            <Button asChild variant="outline" size="sm"><Link href="/reports/monthly-income">Monthly income</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link href="/reports/monthly-income">Month-end</Link></Button>
           </>
         )}
       </nav>
@@ -108,8 +107,10 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
         <div className="min-w-56 flex-1 space-y-2">
           <label htmlFor="courseId" className="block text-sm font-medium">Course</label>
-          <select id="courseId" name="courseId" className={`${FIELD} w-full`} defaultValue={courseId ?? ""} required>
-            <option value="" disabled>Select a course…</option>
+          <select id="courseId" name="courseId" className={`${FIELD} w-full`} defaultValue={courseId ?? ""}>
+            {/* A teacher's "all" is all of THEIR courses: the option submits an
+                empty courseId and the scope in the library does the narrowing. */}
+            <option value="">All courses</option>
             {courses.map((c) => (
               <option key={c.id} value={c.id}>{courseDisplayName(c)}</option>
             ))}
@@ -126,7 +127,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       </form>
 
       {/* Keyed on the selection: a new selection remounts rather than syncing. */}
-      <ReportScreen key={`${courseId ?? ""}|${monthValue}`} report={report} />
+      <ReportScreen key={`${courseId ?? ""}|${teacherId ?? ""}|${monthValue}`} report={report} />
     </div>
   );
 }

@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import type { ActionState, ExpenseRow } from "./actions";
+import type { ActionState, Authorizer, ExpenseRow } from "./actions";
 
 const EMPTY: ActionState = { ok: false };
 
@@ -62,6 +62,50 @@ function AmountAndReason({
   );
 }
 
+/**
+ * Who gave permission for the spend.
+ *
+ * Required on every expense: the institute's rule is that money leaves only on
+ * someone's say-so, and the books have to name them. It is a record, not a live
+ * approval — the person at the keyboard states who authorised it, and the
+ * server re-checks that the id is an active admin or staff account.
+ */
+function AuthorizedByField({
+  authorizers,
+  value,
+  idPrefix = "",
+}: {
+  authorizers: Authorizer[];
+  value: string;
+  idPrefix?: string;
+}) {
+  const id = `${idPrefix}authorizedById`;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Authorized by</Label>
+      {/* Keyed on the echoed value for the usual reason: a <select>'s
+          defaultValue only applies at mount and React resets the form. */}
+      <select
+        key={`a-${id}-${value}`}
+        id={id}
+        name="authorizedById"
+        className={SELECT_CLASS}
+        defaultValue={value}
+        required
+      >
+        <option value="" disabled>
+          Select who approved this…
+        </option>
+        {authorizers.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name} ({a.role === "ADMIN" ? "Admin" : "Staff"})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 /** Record a teacher advance — always tied to a teacher. */
 export function TeacherAdvanceDialog({
   open,
@@ -69,6 +113,7 @@ export function TeacherAdvanceDialog({
   onDone,
   action,
   teachers,
+  authorizers,
   today,
 }: {
   open: boolean;
@@ -76,6 +121,7 @@ export function TeacherAdvanceDialog({
   onDone: () => void;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   teachers: Option[];
+  authorizers: Authorizer[];
   today: string;
 }) {
   const [state, formAction, pending] = useActionState(action, EMPTY);
@@ -130,6 +176,8 @@ export function TeacherAdvanceDialog({
 
             <AmountAndReason values={v} />
 
+            <AuthorizedByField authorizers={authorizers} value={v?.authorizedById ?? ""} />
+
             {state.error && (
               <p role="alert" className="text-destructive text-sm">
                 {state.error}
@@ -158,6 +206,7 @@ export function XenonExpenseDialog({
   onDone,
   action,
   staff,
+  authorizers,
   today,
 }: {
   open: boolean;
@@ -165,6 +214,7 @@ export function XenonExpenseDialog({
   onDone: () => void;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   staff: Option[];
+  authorizers: Authorizer[];
   today: string;
 }) {
   const [state, formAction, pending] = useActionState(action, EMPTY);
@@ -197,6 +247,8 @@ export function XenonExpenseDialog({
             </div>
 
             <AmountAndReason values={v} />
+
+            <AuthorizedByField authorizers={authorizers} value={v?.authorizedById ?? ""} />
 
             <div className="space-y-3 rounded-lg border p-3">
               <div className="flex items-center gap-2">
@@ -268,6 +320,7 @@ export function EditExpenseDialog({
   action,
   teachers,
   staff,
+  authorizers,
 }: {
   row: ExpenseRow | null;
   onOpenChange: (open: boolean) => void;
@@ -275,6 +328,7 @@ export function EditExpenseDialog({
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   teachers: Option[];
   staff: Option[];
+  authorizers: Authorizer[];
 }) {
   const [state, formAction, pending] = useActionState(action, EMPTY);
   const v = state.values;
@@ -352,6 +406,12 @@ export function EditExpenseDialog({
             </div>
 
             <AmountAndReason values={v} amount={row.amount} reason={row.reason} />
+
+            <AuthorizedByField
+              authorizers={authorizers}
+              value={v?.authorizedById ?? row.authorizedById}
+              idPrefix="edit-"
+            />
 
             {state.error && (
               <p role="alert" className="text-destructive text-sm">

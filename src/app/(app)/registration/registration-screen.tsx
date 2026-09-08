@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
 import type { ActionState, Identifier, LookupResult, StudentView } from "./actions";
@@ -39,6 +38,34 @@ type Props = {
  * scan -> (new | existing) -> back to scan. There is no student list here by
  * design; browsing students belongs to the Search tag.
  */
+/**
+ * Confirm, then get out of the way — the same shape as the payment screen's
+ * auto-advance. There is no "next card" button because there is no decision to
+ * make: registration is finished, and the next student is a tap away. The beat
+ * on screen is long enough to read the line about admission still being unpaid.
+ */
+function SavedThenScan({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const timer = window.setTimeout(onDone, 2200);
+    return () => window.clearTimeout(timer);
+  }, [onDone]);
+
+  return (
+    <div className="mx-auto max-w-md space-y-6 text-center">
+      <span className="mx-auto grid size-16 place-items-center rounded-full bg-emerald-100 text-emerald-700">
+        <CheckCircle2 className="size-8" aria-hidden />
+      </span>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Student saved</h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Admission is still unpaid — take payment on the Payment screen.
+        </p>
+      </div>
+      <p className="text-muted-foreground text-sm">Ready for the next student…</p>
+    </div>
+  );
+}
+
 export function RegistrationScreen({
   courses,
   feeTiers,
@@ -117,22 +144,7 @@ export function RegistrationScreen({
   }, [refreshStudent, showStudent]);
 
   if (phase.kind === "saved") {
-    return (
-      <div className="mx-auto max-w-md space-y-6 text-center">
-        <span className="mx-auto grid size-16 place-items-center rounded-full bg-emerald-100 text-emerald-700">
-          <CheckCircle2 className="size-8" aria-hidden />
-        </span>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Student saved</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Admission is still unpaid — take payment on the Payment screen.
-          </p>
-        </div>
-        <Button onClick={backToScan} className="w-full">
-          Scan next card
-        </Button>
-      </div>
-    );
+    return <SavedThenScan onDone={backToScan} />;
   }
 
   if (phase.kind === "new") {

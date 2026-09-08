@@ -66,6 +66,39 @@ export type PayslipCourseRow = {
 /** One fee tier's share of a slip, labelled from the reference table. */
 export type PayslipTierCount = { code: string; label: string; students: number };
 
+/**
+ * One line of a payslip sheet: a course, a billing month, and one rate.
+ *
+ * Payments are grouped by the amount actually charged, so a course where some
+ * students pay full and some pay half becomes two lines — which is what makes
+ * "cards × rate = gross" true on every line instead of an average that matches
+ * nothing. The institute cut is summed from each payment's own snapshot
+ * percentage, so a line's split is exact even if the course's % was edited
+ * between two payments.
+ */
+export type PayslipLineRow = {
+  courseId: number;
+  course: string;
+  /** "Aug 2026", or "—" for a legacy row with no billing month. */
+  billingLabel: string;
+  /** Sort key: billingYear * 12 + billingMonth, 0 when unknown. */
+  billingOrder: number;
+  cards: number;
+  rate: string;
+  gross: string;
+  sharePercent: string;
+  instituteShare: string;
+  teacherShare: string;
+};
+
+/** One advance, itemised — the deduction has to be explainable to the teacher. */
+export type PayslipAdvanceRow = {
+  date: string;
+  reason: string;
+  amount: string;
+  authorizedBy: string;
+};
+
 export type Payslip = {
   teacherId: number;
   teacher: string;
@@ -77,6 +110,12 @@ export type Payslip = {
   payingStudents: number;
   /** The same students split by the tier they were charged at, biggest first. */
   tierCounts: PayslipTierCount[];
+  /** The sheet's body: one line per course × billing month × rate. */
+  lines: PayslipLineRow[];
+  /** Cards counted line by line — a student paying two months counts twice. */
+  lineCards: number;
+  /** The advances behind the `advances` total. */
+  advanceLines: PayslipAdvanceRow[];
   totalCollected: string;
   totalInstituteShare: string;
   totalTeacherShare: string;
@@ -160,6 +199,10 @@ export async function buildPayslips(options: {
           studentId: true,
           amount: true,
           instituteSharePercentApplied: true,
+          // The billing month is what puts a payment on the right LINE of the
+          // sheet; the month the slip covers is still `paidAt` (cash basis).
+          billingYear: true,
+          billingMonth: true,
           // The tier is read for the voucher's "3 full, 25 half" line. Labels
           // come from the reference table — never a hardcoded list of tiers.
           feeTier: { select: { code: true, label: true } },
@@ -173,7 +216,14 @@ export async function buildPayslips(options: {
       teacherId: teacherIds ? { in: teacherIds } : { not: null },
       date: dateWindow,
     },
-    select: { teacherId: true, amount: true },
+    select: {
+      teacherId: true,
+      amount: true,
+      date: true,
+      reason: true,
+      authorizedBy: { select: { username: true, staff: { select: { name: true } } } },
+    },
+    orderBy: [{ date: "asc" }, { id: "asc" }],
   });
 
   const slips: Payslip[] = teachers.map((teacher) => {
@@ -222,6 +272,61 @@ export async function buildPayslips(options: {
       perTier.set(p.feeTier.code, entry);
     }
 
+    // --- the sheet's lines: course × billing month × rate ------------------
+    const lineMap = new Map<
+      string,
+      { courseId: number; course: string; billingLabel: string; billingOrder: number;
+        rate: number; cards: number; gross: number; institute: number }
+    >();
+    for (const p of mineAll) {
+      const course = teacher.courses.find((c) => c.id === p.courseId);
+      if (!course) continue;
+      const amount = num(p.amount);
+      const pct =
+        p.instituteSharePercentApplied !== null
+          ? num(p.instituteSharePercentApplied)
+          : num(course.instituteSharePercent);
+      const hasMonth = p.billingYear !== null && p.billingMonth !== null;
+      const key = `${p.courseId}:${p.billingYear ?? 0}:${p.billingMonth ?? 0}:${amount.toFixed(2)}`;
+      const entry =
+        lineMap.get(key) ??
+        {
+          courseId: course.id,
+          course: courseDisplayName(course),
+          billingLabel: hasMonth ? monthLabel(p.billingYear!, p.billingMonth!) : "—",
+          billingOrder: hasMonth ? p.billingYear! * 12 + p.billingMonth! : 0,
+          rate: amount,
+          cards: 0,
+          gross: 0,
+          institute: 0,
+        };
+      entry.cards += 1;
+      entry.gross += amount;
+      entry.institute += (amount * pct) / 100;
+      lineMap.set(key, entry);
+    }
+
+    const lines: PayslipLineRow[] = [...lineMap.values()]
+      .map((l) => ({
+        courseId: l.courseId,
+        course: l.course,
+        billingLabel: l.billingLabel,
+        billingOrder: l.billingOrder,
+        cards: l.cards,
+        rate: money(l.rate),
+        gross: money(l.gross),
+        // The effective rate actually applied across this line's money.
+        sharePercent: (l.gross > 0 ? (l.institute / l.gross) * 100 : 0).toFixed(2),
+        instituteShare: money(l.institute),
+        teacherShare: money(l.gross - l.institute),
+      }))
+      .sort(
+        (a, b) =>
+          a.course.localeCompare(b.course) ||
+          a.billingOrder - b.billingOrder ||
+          Number(b.rate) - Number(a.rate),
+      );
+
     const totalCollected = rows.reduce((s, r) => s + Number(r.collected), 0);
     const totalInstituteShare = rows.reduce((s, r) => s + Number(r.instituteShare), 0);
     const totalTeacherShare = rows.reduce((s, r) => s + Number(r.teacherShare), 0);
@@ -235,6 +340,16 @@ export async function buildPayslips(options: {
       // Courses with no money this month are dropped — an empty slip is noise.
       courses: rows.filter((r) => Number(r.collected) > 0),
       payingStudents: new Set(mineAll.map((p) => p.studentId)).size,
+      lines,
+      lineCards: lines.reduce((s, l) => s + l.cards, 0),
+      advanceLines: advances
+        .filter((a) => a.teacherId === teacher.id)
+        .map((a) => ({
+          date: colomboNow(a.date).date,
+          reason: a.reason,
+          amount: money(num(a.amount)),
+          authorizedBy: a.authorizedBy.staff?.name ?? a.authorizedBy.username,
+        })),
       tierCounts: [...perTier]
         .map(([code, v]) => ({ code, label: v.label, students: v.students.size }))
         .sort((a, b) => b.students - a.students || a.label.localeCompare(b.label)),

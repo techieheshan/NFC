@@ -1,56 +1,67 @@
 "use client";
 
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 
 import { downloadReportPdf } from "@/components/reports/report-pdf";
 import { Button } from "@/components/ui/button";
 import type { MonthlyIncome } from "@/lib/report-monthly-income";
 
 /**
- * One month, sliced. Every slice is derived from the same rows the total is, so
- * the reconciliation line below is a real check rather than decoration.
+ * The month closed off on one screen: who earned what, what the institute kept,
+ * and every rupee that left — each with the person who authorised it.
+ *
+ * Nothing is computed here beyond laying out what the server sent. The shares
+ * are the payslip's shares and the profit line is the Payslips admin summary's
+ * own figure, so this screen cannot disagree with either.
  */
 export function IncomeScreen({ report }: { report: MonthlyIncome }) {
   const [exporting, setExporting] = useState(false);
+  const i = report.institute;
 
   async function exportPdf() {
     setExporting(true);
     try {
       await downloadReportPdf({
-        filename: `xenon-income-${report.year}-${String(report.month).padStart(2, "0")}.pdf`,
-        title: `Monthly income — ${report.label}`,
-        subtitle: `By date received (Asia/Colombo) · cancelled excluded · total ${report.total}`,
+        filename: `xenon-month-end-${report.year}-${String(report.month).padStart(2, "0")}.pdf`,
+        title: `Month-end roll-up — ${report.label}`,
+        subtitle: `By date received (Asia/Colombo) · cancelled excluded · profit ${i.instituteProfit}`,
         tables: [
           {
-            title: "Totals",
-            head: ["Class fees", "Admission", "Smart card", "Month total"],
-            body: [[report.classTotal, report.admission.total, report.smartCard.total, report.total]],
+            title: "Per teacher",
+            head: ["Teacher", "Students", "Collected", "Institute share", "Teacher share", "Advances", "Final salary"],
+            body: report.byTeacher.map((t) => [
+              t.teacher, t.students, t.collected, t.instituteShare, t.teacherShare, t.advances, t.finalSalary,
+            ]),
           },
           {
-            title: "Day by day",
-            head: ["Day", "Collected"],
-            body: report.days.map((d) => [d.label, d.total]),
-          },
-          {
-            title: "By teacher (gross collected on their courses)",
-            head: ["Teacher", "Collected"],
+            title: "Institute",
+            head: ["Line", "Amount"],
             body: [
-              ...report.byTeacher.map((t) => [t.teacher, t.total]),
-              ...(report.unattributed === "0.00"
-                ? []
-                : [["Not attributed to a course", report.unattributed]]),
+              ["Course collections", i.totalCollected],
+              ["Teacher share (paid out)", i.totalTeacherShare],
+              ["Institute share (kept)", i.totalInstituteShare],
+              ["Admission income", i.admissionIncome],
+              ["Smart-card income", i.smartCardIncome],
+              ["Xenon expenses", `-${i.xenonExpenses}`],
+              ["Institute profit", i.instituteProfit],
             ],
           },
           {
-            title: "By course",
-            head: ["Course", "Teacher", "Collected"],
-            body: report.byCourse.map((c) => [c.course, c.teacher, c.total]),
+            title: "Teacher advances",
+            head: ["Date", "Teacher", "Reason", "Authorized by", "Amount"],
+            body: report.advances.length
+              ? report.advances.map((a) => [a.date, a.teacher, a.reason, a.authorizedBy, a.amount])
+              : [["—", "No advances this month", "", "", "0.00"]],
           },
           {
-            title: "By teacher × day",
-            head: ["Teacher", ...report.days.map((d) => d.label), "Total"],
-            body: report.matrix.map((m) => [m.teacher, ...m.byDay, m.total]),
+            title: "Xenon expenses",
+            head: ["Date", "Reason", "Authorized by", "Staff advance", "Amount"],
+            body: report.expenses.length
+              ? report.expenses.map((e) => [
+                  e.date, e.reason, e.authorizedBy, e.isStaffAdvance ? (e.staff ?? "yes") : "—", e.amount,
+                ])
+              : [["—", "No expenses this month", "", "", "0.00"]],
           },
         ],
       });
@@ -59,15 +70,18 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
     }
   }
 
+  const broken = !report.reconciles.shares || !report.reconciles.profit;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border p-4">
         <div>
-          <p className="text-muted-foreground text-sm">Total collected in {report.label}</p>
-          <p className="text-3xl font-semibold tabular-nums">{report.total}</p>
+          <p className="text-muted-foreground text-sm">Institute profit for {report.label}</p>
+          <p className="text-3xl font-semibold tabular-nums">{i.instituteProfit}</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            By date received (Asia/Colombo), cancelled excluded.{" "}
-            {report.reconciles ? "Day totals sum to the month ✓" : "DAY TOTALS DO NOT RECONCILE"}
+            Institute share + admission + smart card − Xenon expenses. Teacher
+            advances are not in it: they reduce a teacher&rsquo;s own salary, not
+            institute profit.
           </p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={exportPdf} disabled={exporting}>
@@ -76,109 +90,136 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
         </Button>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <Tile label="Class fees" value={report.classTotal} />
-        <Tile label={`Admission (${report.admission.count})`} value={report.admission.total} />
-        <Tile label={`Smart card (${report.smartCard.count})`} value={report.smartCard.total} />
-      </section>
+      {broken && (
+        <p className="border-destructive/40 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
+          <AlertTriangle className="size-4" aria-hidden />
+          {!report.reconciles.shares
+            ? "Teacher shares + institute keep do not equal course collections."
+            : "The profit line does not rebuild from its parts."}
+        </p>
+      )}
 
-      <Section title="Day by day">
-        <div className="overflow-x-auto p-3">
-          <table className="text-sm">
-            <tbody>
-              <tr>
-                {report.days.map((d) => (
-                  <th key={d.date} className="text-muted-foreground px-2 pb-1 text-xs font-medium">
-                    {d.label}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {report.days.map((d) => (
-                  <td
-                    key={d.date}
-                    className={`px-2 py-1 text-right tabular-nums ${d.total === "0.00" ? "text-muted-foreground/40" : ""}`}
-                  >
-                    {d.total}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Section>
-
-      <Section title="By teacher — gross collected on their courses">
-        <ul className="divide-y text-sm">
-          {report.byTeacher.map((t) => (
-            <li key={t.teacherId} className="flex justify-between gap-3 p-3">
-              <span>{t.teacher}</span>
-              <span className="tabular-nums">{t.total}</span>
-            </li>
-          ))}
-          {report.unattributed !== "0.00" && (
-            <li className="text-muted-foreground flex justify-between gap-3 p-3">
-              <span>Not attributed to a course</span>
-              <span className="tabular-nums">{report.unattributed}</span>
-            </li>
-          )}
-          {report.byTeacher.length === 0 && <li className="text-muted-foreground p-3">No class fees.</li>}
-        </ul>
-      </Section>
-
-      <Section title="By course">
-        <ul className="divide-y text-sm">
-          {report.byCourse.map((c) => (
-            <li key={c.courseId} className="flex justify-between gap-3 p-3">
-              <span className="min-w-0">
-                <span className="block truncate">{c.course}</span>
-                <span className="text-muted-foreground block text-xs">{c.teacher}</span>
-              </span>
-              <span className="shrink-0 tabular-nums">{c.total}</span>
-            </li>
-          ))}
-          {report.byCourse.length === 0 && <li className="text-muted-foreground p-3">No class fees.</li>}
-        </ul>
-      </Section>
-
-      <Section title="By teacher × day">
-        <div className="overflow-x-auto p-3">
+      <Section title="Per teacher — the same figures as their payslip">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-muted-foreground text-left">
+            <thead className="text-muted-foreground border-b text-left">
               <tr>
-                <th className="p-2 font-medium">Teacher</th>
-                {report.days.map((d) => (
-                  <th key={d.date} className="p-1 text-right text-xs font-medium">{d.label}</th>
-                ))}
-                <th className="p-2 text-right font-medium">Total</th>
+                <th className="p-3 font-medium">Teacher</th>
+                <th className="p-3 text-right font-medium">Students</th>
+                <th className="p-3 text-right font-medium">Collected</th>
+                <th className="p-3 text-right font-medium">Institute</th>
+                <th className="p-3 text-right font-medium">Teacher</th>
+                <th className="p-3 text-right font-medium">Advances</th>
+                <th className="p-3 text-right font-medium">Final salary</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {report.matrix.map((m) => (
-                <tr key={m.teacherId}>
-                  <td className="p-2 whitespace-nowrap">{m.teacher}</td>
-                  {m.byDay.map((v, i) => (
-                    <td key={i} className={`p-1 text-right tabular-nums ${v === "0.00" ? "text-muted-foreground/30" : ""}`}>
-                      {v === "0.00" ? "·" : v}
-                    </td>
-                  ))}
-                  <td className="p-2 text-right font-medium tabular-nums">{m.total}</td>
+              {report.byTeacher.map((t) => (
+                <tr key={t.teacherId}>
+                  <td className="p-3">{t.teacher}</td>
+                  <td className="p-3 text-right tabular-nums">{t.students}</td>
+                  <td className="p-3 text-right tabular-nums">{t.collected}</td>
+                  <td className="text-muted-foreground p-3 text-right tabular-nums">{t.instituteShare}</td>
+                  <td className="p-3 text-right tabular-nums">{t.teacherShare}</td>
+                  <td className="text-muted-foreground p-3 text-right tabular-nums">
+                    {Number(t.advances) > 0 ? `-${t.advances}` : "—"}
+                  </td>
+                  <td className="p-3 text-right font-medium tabular-nums">{t.finalSalary}</td>
                 </tr>
               ))}
+              {report.byTeacher.length === 0 && (
+                <tr><td className="text-muted-foreground p-3" colSpan={7}>No collections this month.</td></tr>
+              )}
             </tbody>
+            <tfoot className="bg-muted/40 border-t">
+              <tr className="font-medium">
+                <td className="p-3" colSpan={2}>Totals</td>
+                <td className="p-3 text-right tabular-nums">{i.totalCollected}</td>
+                <td className="p-3 text-right tabular-nums">{i.totalInstituteShare}</td>
+                <td className="p-3 text-right tabular-nums">{i.totalTeacherShare}</td>
+                <td className="p-3 text-right tabular-nums">{report.advancesTotal}</td>
+                <td className="p-3" />
+              </tr>
+            </tfoot>
           </table>
         </div>
+        <p className="text-muted-foreground p-3 pt-0 text-xs">
+          {report.reconciles.shares
+            ? "Teacher shares + institute keep = course collections ✓"
+            : "TOTALS DO NOT RECONCILE"}
+          {report.roundingDelta !== "0.00" && (
+            <>
+              {" "}
+              (rounding {report.roundingDelta}: each slip rounds its two halves
+              separately)
+            </>
+          )}
+        </p>
+      </Section>
+
+      <Section title="Institute">
+        <ul className="divide-y text-sm">
+          <Line label="Course collections" value={i.totalCollected} />
+          <Line label="Teacher share (paid out)" value={i.totalTeacherShare} muted />
+          <Line label="Institute share (kept)" value={i.totalInstituteShare} />
+          <Line label="Admission income" value={i.admissionIncome} />
+          <Line label="Smart-card income" value={i.smartCardIncome} />
+          <Line label="Xenon expenses" value={`-${i.xenonExpenses}`} muted />
+          <li className="flex justify-between gap-3 p-3 text-base font-semibold">
+            <span>Institute profit</span>
+            <span className="tabular-nums">{i.instituteProfit}</span>
+          </li>
+        </ul>
+      </Section>
+
+      <Section title={`Teacher advances — ${report.advancesTotal}`}>
+        <ul className="divide-y text-sm">
+          {report.advances.map((a, n) => (
+            <li key={n} className="flex flex-wrap justify-between gap-2 p-3">
+              <span className="min-w-0">
+                <span className="block font-medium">{a.teacher}</span>
+                <span className="text-muted-foreground block text-xs">
+                  {a.date} · {a.reason} · authorized by {a.authorizedBy}
+                </span>
+              </span>
+              <span className="tabular-nums">{a.amount}</span>
+            </li>
+          ))}
+          {report.advances.length === 0 && (
+            <li className="text-muted-foreground p-3">No advances this month.</li>
+          )}
+        </ul>
+      </Section>
+
+      <Section title={`Xenon expenses — ${report.expensesTotal}`}>
+        <ul className="divide-y text-sm">
+          {report.expenses.map((e, n) => (
+            <li key={n} className="flex flex-wrap justify-between gap-2 p-3">
+              <span className="min-w-0">
+                <span className="block">{e.reason}</span>
+                <span className="text-muted-foreground block text-xs">
+                  {e.date} · authorized by {e.authorizedBy}
+                  {e.isStaffAdvance ? ` · staff advance${e.staff ? ` to ${e.staff}` : ""}` : ""}
+                </span>
+              </span>
+              <span className="tabular-nums">{e.amount}</span>
+            </li>
+          ))}
+          {report.expenses.length === 0 && (
+            <li className="text-muted-foreground p-3">No expenses this month.</li>
+          )}
+        </ul>
       </Section>
     </div>
   );
 }
 
-function Tile({ label, value }: { label: string; value: string }) {
+function Line({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div className="rounded-xl border p-4">
-      <p className="text-muted-foreground text-sm">{label}</p>
-      <p className="text-xl font-semibold tabular-nums">{value}</p>
-    </div>
+    <li className={`flex justify-between gap-3 p-3 ${muted ? "text-muted-foreground" : ""}`}>
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </li>
   );
 }
 

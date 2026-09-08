@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import type {
   ActionState,
+  Authorizer,
   DateRange,
   ExpenseFilters,
   ExpenseRow,
@@ -34,6 +35,7 @@ type Props = {
   initialExpenses: ExpenseRow[];
   initialReport: StaffAdvanceReport;
   teachers: Option[];
+  authorizers: Authorizer[];
   staff: Option[];
   today: string;
   tab: string;
@@ -55,6 +57,7 @@ export function ExpensesScreen({
   initialExpenses,
   initialReport,
   teachers,
+  authorizers,
   staff,
   today,
   tab,
@@ -133,7 +136,7 @@ export function ExpensesScreen({
                       <TableHead>Person</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>By</TableHead>
+                      <TableHead>Authorized by</TableHead>
                       {canEdit && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -158,8 +161,11 @@ export function ExpensesScreen({
                         </TableCell>
                         <TableCell className="max-w-56 truncate">{r.reason}</TableCell>
                         <TableCell className="text-right tabular-nums">{r.amount}</TableCell>
-                        <TableCell className="text-muted-foreground text-xs">
-                          {r.recordedBy}
+                        <TableCell className="text-xs">
+                          <span className="block font-medium">{r.authorizedBy}</span>
+                          <span className="text-muted-foreground block">
+                            entered by {r.recordedBy}
+                          </span>
                         </TableCell>
                         {canEdit && (
                           <TableCell>
@@ -240,6 +246,7 @@ export function ExpensesScreen({
                       <TableHead className="w-28">Date</TableHead>
                       <TableHead>Staff</TableHead>
                       <TableHead>Reason</TableHead>
+                      <TableHead>Authorized by</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -249,6 +256,7 @@ export function ExpensesScreen({
                         <TableCell className="whitespace-nowrap tabular-nums">{r.date}</TableCell>
                         <TableCell className="font-medium">{r.staff}</TableCell>
                         <TableCell className="max-w-64 truncate">{r.reason}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{r.authorizedBy}</TableCell>
                         <TableCell className="text-right tabular-nums">{r.amount}</TableCell>
                       </TableRow>
                     ))}
@@ -267,6 +275,7 @@ export function ExpensesScreen({
         onDone={refresh}
         action={createTeacherAdvance}
         teachers={teachers}
+        authorizers={authorizers}
         today={today}
       />
 
@@ -277,6 +286,7 @@ export function ExpensesScreen({
         onDone={refresh}
         action={createXenonExpense}
         staff={staff}
+        authorizers={authorizers}
         today={today}
       />
 
@@ -290,6 +300,7 @@ export function ExpensesScreen({
             action={updateExpense}
             teachers={teachers}
             staff={staff}
+            authorizers={authorizers}
           />
           <DeleteExpenseDialog
             key={deleting ? `del-${deleting.id}` : "del-closed"}

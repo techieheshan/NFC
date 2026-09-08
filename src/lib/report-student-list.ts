@@ -25,11 +25,19 @@ export type StudentListRow = {
   studentId: number;
   name: string;
   cardNumber: string | null;
+  /** Which course this row is about — the same student can appear per course. */
+  courseId: number;
+  course: string;
   status: "paid" | "not-paid" | "free";
 };
 
 export type StudentListReport = {
+  /** The single course asked for; null when the report covers several. */
   course: { id: number; name: string; teacher: string } | null;
+  /** What the report is actually showing — one course, or the whole scope. */
+  heading: string | null;
+  /** True when "all courses" was asked for, so the screen shows a course column. */
+  allCourses: boolean;
   year: number;
   month: number;
   label: string;
@@ -70,57 +78,89 @@ export async function reportableCourses(user: { id: string; role: UserRole }, te
 
 export async function buildStudentList(
   user: { id: string; role: UserRole },
-  input: { courseId: number; year: number; month: number },
+  input: {
+    /** Omitted or null = every course this viewer may see (a teacher's "all"
+     *  is their own courses, because the scope is applied to the query). */
+    courseId?: number | null;
+    /** Narrows "all courses" to one teacher's; ignored for a TEACHER login. */
+    teacherId?: number;
+    year: number;
+    month: number;
+  },
 ): Promise<StudentListReport> {
   const { year, month } = input;
   const label = `${MONTHS[month - 1]} ${year}`;
   const empty = {
-    course: null, year, month, label, rows: [],
+    course: null, heading: null, allCourses: false, year, month, label, rows: [],
     totals: { registered: 0, paid: 0, notPaid: 0, free: 0, reconciles: true },
   };
 
   const scope = await courseScopeFor(user);
   if (scope === null) return { ...empty, blocked: true };
+  const teacherScoped = "teacherId" in scope ? scope.teacherId : null;
+
+  const courseSelect = {
+    id: true, name: true,
+    grade: { select: { label: true } },
+    subject: { select: { label: true } },
+    classType: { select: { label: true } },
+    teacher: { select: { name: true } },
+  } as const;
 
   // The scope is part of the WHERE, not a check afterwards: a course the viewer
-  // may not see is simply not found.
-  const course = await db.course.findFirst({
-    where: { id: input.courseId, ...scope },
-    select: {
-      id: true, name: true,
-      grade: { select: { label: true } },
-      subject: { select: { label: true } },
-      classType: { select: { label: true } },
-      teacher: { select: { name: true } },
+  // may not see is simply not found — and for "all courses" it is never even
+  // listed, so a teacher's "all" can only ever be their own.
+  const courses = await db.course.findMany({
+    where: {
+      active: true,
+      ...(input.courseId ? { id: input.courseId } : {}),
+      ...(!input.courseId && input.teacherId && teacherScoped === null
+        ? { teacherId: input.teacherId }
+        : {}),
+      ...scope,
     },
+    select: courseSelect,
+    orderBy: { id: "asc" },
   });
-  if (!course) return { ...empty, blocked: false };
+  if (courses.length === 0) return { ...empty, blocked: false };
 
-  const [enrolments, paid] = await Promise.all([
+  const allCourses = !input.courseId;
+  const courseIds = courses.map((c) => c.id);
+
+  const [enrolments, paidPerCourse] = await Promise.all([
     db.enrollment.findMany({
-      where: { courseId: course.id, status: "ACTIVE" },
+      where: { courseId: { in: courseIds }, status: "ACTIVE" },
       select: {
+        courseId: true,
         feeTier: { select: { multiplier: true } },
         student: { select: { id: true, name: true, cardNumber: true } },
       },
     }),
-    paidStudentsForCourseMonth(course.id, year, month),
+    // One paid-set per course, through the same billing-month check as always.
+    Promise.all(courseIds.map((id) => paidStudentsForCourseMonth(id, year, month))),
   ]);
+
+  const paidByCourse = new Map(courseIds.map((id, i) => [id, paidPerCourse[i]]));
+  const nameByCourse = new Map(courses.map((c) => [c.id, courseDisplayName(c)]));
 
   const rows: StudentListRow[] = enrolments
     .map((e) => ({
       studentId: e.student.id,
       name: e.student.name,
       cardNumber: e.student.cardNumber,
+      courseId: e.courseId,
+      course: nameByCourse.get(e.courseId) ?? "",
       // A free-tier student generates no payment row, so calling them
       // "not paid" would be an accusation rather than a fact.
       status: (Number(String(e.feeTier.multiplier)) === 0
         ? "free"
-        : paid.has(e.student.id)
+        : paidByCourse.get(e.courseId)?.has(e.student.id)
           ? "paid"
           : "not-paid") as StudentListRow["status"],
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(
+      (a, b) => a.course.localeCompare(b.course) || a.name.localeCompare(b.name),
+    );
 
   const totals = {
     registered: rows.length,
@@ -131,8 +171,16 @@ export async function buildStudentList(
   };
   totals.reconciles = totals.registered === totals.paid + totals.notPaid + totals.free;
 
+  const single = courses.length === 1 && !allCourses ? courses[0] : null;
+
   return {
-    course: { id: course.id, name: courseDisplayName(course), teacher: course.teacher.name },
+    course: single
+      ? { id: single.id, name: courseDisplayName(single), teacher: single.teacher.name }
+      : null,
+    heading: single
+      ? `${courseDisplayName(single)} · ${single.teacher.name}`
+      : `All courses (${courses.length})`,
+    allCourses,
     year, month, label, rows, totals, blocked: false,
   };
 }

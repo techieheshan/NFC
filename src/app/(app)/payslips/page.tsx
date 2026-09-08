@@ -58,23 +58,26 @@ export default async function PayslipsPage({ searchParams }: PageProps<"/payslip
       )}
 
       {/*
-        Print one teacher's voucher, for handing to a teacher who doesn't log
-        in. A plain GET to the voucher route — teachers have no card to scan, so
-        they are picked from a list. The route re-checks the role itself.
+        Print payslip sheets, for handing to teachers who don't log in. A plain
+        GET to the sheet route — teachers have no card to scan, so they are
+        picked from a list, and "All teachers" submits no teacherId at all,
+        which the route reads as one page per teacher. The route re-checks the
+        role itself.
       */}
       {view.report.slips.length > 0 && (
         <div className="ml-auto flex flex-wrap items-end gap-2 border-l pl-3">
           <div className="space-y-1.5">
             <label htmlFor="teacherId" className="block text-sm font-medium">
-              Voucher for
+              Payslip for
             </label>
-            <select id="teacherId" name="teacherId" className={FIELD} form="voucher-form" required>
+            <select id="teacherId" name="teacherId" className={FIELD} form="voucher-form">
+              <option value="">All teachers (one page each)</option>
               {view.report.slips.map((s) => (
                 <option key={s.teacherId} value={s.teacherId}>{s.teacher}</option>
               ))}
             </select>
           </div>
-          <Button type="submit" form="voucher-form">Print voucher</Button>
+          <Button type="submit" form="voucher-form">Print payslip</Button>
         </div>
       )}
     </form>

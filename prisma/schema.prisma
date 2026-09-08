@@ -228,6 +228,7 @@ model User {
   attendanceMarked  Attendance[] @relation("AttendanceMarkedBy")
   expensesRecorded  Expense[]    @relation("ExpenseRecordedBy")
   hallOverridesSet  HallAllocationOverride[] @relation("HallOverrideBy")
+  expensesAuthorized Expense[]   @relation("ExpenseAuthorizedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -563,6 +564,13 @@ model Expense {
 
   recordedBy   User   @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
   recordedById String
+
+  // Who gave permission for this spend — usually an admin, sometimes staff.
+  // Recorded, not a live approval handshake: the person at the keyboard states
+  // who authorised it, and every screen that shows the expense shows this too.
+  // Required; rows predating the column were backfilled with `recordedById`.
+  authorizedBy   User   @relation("ExpenseAuthorizedBy", fields: [authorizedById], references: [id])
+  authorizedById String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

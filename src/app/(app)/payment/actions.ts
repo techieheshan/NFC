@@ -25,6 +25,16 @@ export type { StudentBrief };
 
 /** How many months back the catch-up selector will ever offer. */
 const MONTH_WINDOW = 6;
+/**
+ * How many months AHEAD may be paid.
+ *
+ * A student who was registered late still has to settle the months before they
+ * had a card, and a parent settling a term in one visit pays ahead — so the
+ * picker offers both directions. Bounded on purpose: an unbounded list is
+ * unusable at a counter, and a typo'd year must not become a payment stamped
+ * for 2031.
+ */
+const MONTH_AHEAD = 3;
 
 export type MonthOption = {
   year: number;
@@ -32,6 +42,8 @@ export type MonthOption = {
   /** "Sep 2026" */
   label: string;
   paid: boolean;
+  /** Which side of today this month is — the chips label the two ends. */
+  kind: "past" | "current" | "future";
 };
 
 export type CourseLine = {
@@ -110,18 +122,23 @@ async function settingAmount(key: string, fallback: string): Promise<string> {
   return money(Number(row?.value ?? fallback));
 }
 
-/** Walk back from the current Colombo month, newest first. */
-function monthsBackFrom(year: number, month: number, count: number) {
-  const out: { year: number; month: number }[] = [];
-  let y = year;
-  let m = month;
-  for (let i = 0; i < count; i++) {
-    out.push({ year: y, month: m });
-    m -= 1;
-    if (m === 0) {
-      m = 12;
-      y -= 1;
-    }
+/** Month arithmetic on a plain ordinal — no Date, no timezone to get wrong. */
+const ordinal = (year: number, month: number) => year * 12 + (month - 1);
+const fromOrdinal = (o: number) => ({ year: Math.floor(o / 12), month: (o % 12) + 1 });
+
+/**
+ * The billing months on offer: `back` months of catch-up, the current month,
+ * and `ahead` months of paying forward — oldest first, so the arrears a student
+ * owes are the first thing staff see.
+ */
+function monthWindow(year: number, month: number, back: number, ahead: number) {
+  const here = ordinal(year, month);
+  const out: { year: number; month: number; kind: MonthOption["kind"] }[] = [];
+  for (let o = here - (back - 1); o <= here + ahead; o++) {
+    out.push({
+      ...fromOrdinal(o),
+      kind: o < here ? "past" : o === here ? "current" : "future",
+    });
   }
   return out;
 }
@@ -201,7 +218,7 @@ export async function loadPanel(input: {
     }
   }
 
-  const window = monthsBackFrom(y, m, MONTH_WINDOW);
+  const window = monthWindow(y, m, MONTH_WINDOW, MONTH_AHEAD);
 
   const courses: CourseLine[] = enrolments.map((e) => {
     const free = Number(String(e.feeTier.multiplier)) === 0;
@@ -212,12 +229,13 @@ export async function loadPanel(input: {
     // MONTH_WINDOW — charging a month before the student was enrolled is never
     // right, and an unbounded list is unusable at the counter.
     const months = window
-      .filter((w) => w.year * 12 + w.month >= ey * 12 + em)
+      .filter((w) => ordinal(w.year, w.month) >= ordinal(ey, em))
       .map((w) => ({
         year: w.year,
         month: w.month,
         label: monthLabel(w.year, w.month),
         paid: paidKey.has(`${e.course.id}:${w.year}:${w.month}`),
+        kind: w.kind,
       }));
 
     // The combo rate is shown for information; it only becomes the charged
@@ -355,10 +373,18 @@ export async function takePayment(input: {
     if (Number(String(e.feeTier.multiplier)) === 0) {
       return { ok: false, error: "Free-tier courses are not charged." };
     }
-    // Never bill ahead of the current Colombo month.
+    // The month is the client's to choose, but only inside the same window the
+    // panel offered: paying ahead is legitimate, paying for 2031 is a typo, and
+    // billing a month before the student was even enrolled never is.
     const [cy, cm] = now.date.split("-").map(Number);
-    if (row.year * 12 + row.month > cy * 12 + cm) {
-      return { ok: false, error: "Cannot charge a future month." };
+    const asked = ordinal(row.year, row.month);
+    const here = ordinal(cy, cm);
+    if (asked > here + MONTH_AHEAD) {
+      return { ok: false, error: `Cannot charge more than ${MONTH_AHEAD} months ahead.` };
+    }
+    const enrolled = colomboNow(e.createdAt).date.split("-").map(Number);
+    if (asked < ordinal(enrolled[0], enrolled[1])) {
+      return { ok: false, error: "That month is before the student was enrolled." };
     }
   }
 

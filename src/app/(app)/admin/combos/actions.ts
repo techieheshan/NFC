@@ -17,6 +17,9 @@ export type CourseOption = {
   id: number;
   label: string;
   defaultFee: string;
+  /** Whose course it is — the picker filters on this. */
+  teacherId: number;
+  teacher: string;
 };
 
 export type ComboItemRow = {
@@ -123,6 +126,7 @@ export async function comboCoursePool(): Promise<CourseOption[]> {
       id: true,
       name: true,
       defaultFee: true,
+      teacherId: true,
       teacher: { select: { name: true } },
       subject: { select: { label: true } },
       grade: { select: { label: true } },
@@ -135,6 +139,8 @@ export async function comboCoursePool(): Promise<CourseOption[]> {
     id: c.id,
     label: courseDisplayName(c),
     defaultFee: money(Number(String(c.defaultFee))),
+    teacherId: c.teacherId,
+    teacher: c.teacher.name,
   }));
 }
 

@@ -395,6 +395,11 @@ export function AttendanceScreen({
             result={popup.result}
             canPay={offline.connected}
             onDismiss={popup.result.status === "unknown" ? release : undefined}
+            // Results only. Closing one is a VIEW change: it neither marks nor
+            // unmarks anything, and the reader was never blocked by it.
+            onClose={
+              popup.result.status === "unknown" ? undefined : () => setPopup(null)
+            }
             onPay={(studentId, name) => {
               // The pay decision is a question too: it holds the line until the
               // till closes. Taps keep queueing behind it.

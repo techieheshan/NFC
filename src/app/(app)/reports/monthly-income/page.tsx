@@ -7,7 +7,7 @@ import { buildMonthlyIncome, currentColomboMonth } from "@/lib/report-monthly-in
 
 import { IncomeScreen } from "./income-report";
 
-export const metadata = { title: "Monthly income" };
+export const metadata = { title: "Month-end roll-up" };
 
 const FIELD = "border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs";
 
@@ -30,11 +30,11 @@ export default async function MonthlyIncomePage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Monthly income</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Month-end roll-up</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          What actually came in, by the date it was received — the Daily Summary
-          question over a whole month, not the billing-month one the arrears
-          screens answer.
+          The month closed off: each teacher&rsquo;s share, what the institute kept,
+          and every advance and expense with the person who authorised it. By the
+          date money was received — the same basis as the payslips.
         </p>
       </div>
 

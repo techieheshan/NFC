@@ -9,6 +9,7 @@ import {
   createTeacherAdvance,
   createXenonExpense,
   deleteExpense,
+  listAuthorizers,
   listExpenses,
   listStaffAdvances,
   updateExpense,
@@ -44,7 +45,7 @@ export default async function ExpensesPage({
   const range: DateRange = { from: toStr(params.rfrom), to: toStr(params.rto) };
   const tab = toStr(params.tab) === "staff" ? "staff" : "all";
 
-  const [expenses, report, teachers, staff] = await Promise.all([
+  const [expenses, report, teachers, staff, authorizers] = await Promise.all([
     listExpenses(filters),
     listStaffAdvances(range),
     db.teacher.findMany({
@@ -57,6 +58,7 @@ export default async function ExpensesPage({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
+    listAuthorizers(),
   ]);
 
   const anyFilter =
@@ -138,6 +140,7 @@ export default async function ExpensesPage({
       initialExpenses={expenses}
       initialReport={report}
       teachers={teachers}
+      authorizers={authorizers}
       staff={staff}
       today={colomboNow().date}
       tab={tab}

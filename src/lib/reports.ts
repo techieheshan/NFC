@@ -97,6 +97,16 @@ export type DailySummary = {
     xenonExpenses: string;
     total: string;
   };
+  /** Every deduction, itemised: what it was for and who authorised it. */
+  deductionLines: {
+    date: string;
+    kind: "TEACHER_ADVANCE" | "XENON";
+    person: string | null;
+    reason: string;
+    authorizedBy: string;
+    isStaffAdvance: boolean;
+    amount: string;
+  }[];
   net: string;
 };
 
@@ -119,7 +129,17 @@ export async function dailySummary(from: string, to: string): Promise<DailySumma
       where: {
         date: { gte: colomboDateValue(from), lt: colomboDateValue(colomboNextDay(to)) },
       },
-      select: { amount: true, type: { select: { code: true } } },
+      select: {
+        amount: true,
+        reason: true,
+        date: true,
+        type: { select: { code: true } },
+        isStaffAdvance: true,
+        teacher: { select: { name: true } },
+        staff: { select: { name: true } },
+        // Money leaves on someone's say-so, and the day's book says whose.
+        authorizedBy: { select: { username: true, staff: { select: { name: true } } } },
+      },
     }),
   ]);
 
@@ -209,6 +229,17 @@ export async function dailySummary(from: string, to: string): Promise<DailySumma
     smartCard,
     classTotal: money(classTotal),
     totalCollected: money(totalCollected),
+    deductionLines: expenses
+      .map((e) => ({
+        date: e.date.toISOString().slice(0, 10),
+        kind: e.type.code as "TEACHER_ADVANCE" | "XENON",
+        person: e.teacher?.name ?? e.staff?.name ?? null,
+        reason: e.reason,
+        authorizedBy: e.authorizedBy.staff?.name ?? e.authorizedBy.username,
+        isStaffAdvance: e.isStaffAdvance,
+        amount: money(num(e.amount)),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind)),
     deductions: {
       teacherAdvances: money(advances),
       xenonExpenses: money(xenon),

@@ -398,11 +398,26 @@ export function PaymentScreen({
                             ? "bg-muted text-muted-foreground cursor-not-allowed"
                             : on
                               ? "border-primary bg-primary text-primary-foreground"
-                              : "hover:bg-accent",
+                              : // A month that is neither paid nor current is
+                                // still perfectly payable — past months are
+                                // catch-up, future ones are paying ahead.
+                                m.kind === "past"
+                                ? "border-amber-300 bg-amber-50 hover:bg-accent"
+                                : m.kind === "future"
+                                  ? "border-dashed hover:bg-accent"
+                                  : "hover:bg-accent",
                         ].join(" ")}
+                        title={
+                          m.kind === "future"
+                            ? "Paying ahead"
+                            : m.kind === "past"
+                              ? "Catch-up for a past month"
+                              : undefined
+                        }
                       >
                         {m.label}
                         {m.paid && " ✓"}
+                        {!m.paid && m.kind === "future" && " →"}
                       </button>
                     );
                   })}

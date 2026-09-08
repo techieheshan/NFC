@@ -200,8 +200,10 @@ function ComboDialog({
     new Map(row?.items.map((i) => [i.courseId, i.comboFee]) ?? []),
   );
 
-  // The teacher a combo is filed under no longer limits its courses — a combo
-  // may span teachers — so choosing one does not reload the pool.
+  // The teacher a combo is FILED under no longer limits which courses it may
+  // contain — a combo may span teachers. What the teacher select does is filter
+  // the list you are browsing: pick teacher A, tick their courses, switch to
+  // teacher B, tick theirs. Nothing already ticked is dropped by switching.
   const chooseTeacher = useCallback((value: number | null) => {
     setTeacherId(value);
   }, []);
@@ -238,6 +240,14 @@ function ComboDialog({
   const total = [...picked.values()].reduce((s, v) => s + (Number(v) || 0), 0);
   const isCreate = mode === "create";
 
+  // What the list shows: this teacher's courses. What the combo HOLDS may be
+  // wider, so anything picked from another teacher is listed separately rather
+  // than disappearing when the filter changes.
+  const visible = courses.filter((c) => c.teacherId === teacherId);
+  const pickedElsewhere = courses.filter(
+    (c) => picked.has(c.id) && c.teacherId !== teacherId,
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
@@ -245,7 +255,8 @@ function ComboDialog({
           <DialogHeader>
             <DialogTitle>{isCreate ? "Add combo" : "Edit combo"}</DialogTitle>
             <DialogDescription>
-              Two or more courses from one teacher, each at a discounted fee.
+              Two or more courses at a discounted fee. Pick a teacher to browse
+              their courses; a combo may span more than one.
             </DialogDescription>
           </DialogHeader>
 
@@ -278,13 +289,13 @@ function ComboDialog({
             {teacherId !== null && (
               <div className="space-y-2">
                 <Label>Courses (pick at least two)</Label>
-                {courses.length === 0 ? (
+                {visible.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
                     This teacher has no active courses.
                   </p>
                 ) : (
                   <ul className="divide-y rounded-lg border">
-                    {courses.map((c) => {
+                    {visible.map((c) => {
                       const on = picked.has(c.id);
                       return (
                         <li key={c.id} className="flex items-center gap-3 p-3">
@@ -322,6 +333,43 @@ function ComboDialog({
                     })}
                   </ul>
                 )}
+              </div>
+            )}
+
+            {/* Courses already in this combo that belong to a different teacher.
+                They MUST stay mounted: the hidden courseId/comboFee inputs live
+                on the row, so filtering them out of the DOM would silently drop
+                them from the submission. */}
+            {pickedElsewhere.length > 0 && (
+              <div className="space-y-2">
+                <Label>Also in this combo (other teachers)</Label>
+                <ul className="divide-y rounded-lg border">
+                  {pickedElsewhere.map((c) => (
+                    <li key={c.id} className="flex items-center gap-3 p-3">
+                      <Checkbox checked onCheckedChange={() => toggle(c)} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{c.label}</span>
+                        <span className="text-muted-foreground block text-xs">
+                          {c.teacher} · normal {c.defaultFee}
+                        </span>
+                      </span>
+                      <input type="hidden" name="courseId" value={c.id} />
+                      <Input
+                        name="comboFee"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={picked.get(c.id) ?? ""}
+                        onChange={(e) =>
+                          setPicked((prev) => new Map(prev).set(c.id, e.target.value))
+                        }
+                        className="w-28 shrink-0"
+                        aria-label={`Combo fee for ${c.label}`}
+                        required
+                      />
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

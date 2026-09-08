@@ -47,6 +47,9 @@ export type ExpenseRow = {
   person: PersonRef;
   isStaffAdvance: boolean;
   recordedBy: string;
+  /** Who gave permission for the spend. Never null — see the backfill. */
+  authorizedBy: string;
+  authorizedById: string;
 };
 
 export type StaffAdvanceRow = {
@@ -56,7 +59,11 @@ export type StaffAdvanceRow = {
   amount: string;
   date: string;
   reason: string;
+  authorizedBy: string;
 };
+
+/** An account that may be named as having authorised a spend. */
+export type Authorizer = { id: string; name: string; role: "ADMIN" | "STAFF" };
 
 export type StaffAdvanceReport = {
   rows: StaffAdvanceRow[];
@@ -126,6 +133,7 @@ const expenseInclude = {
   teacher: { select: { id: true, name: true } },
   staff: { select: { id: true, name: true } },
   recordedBy: { select: { username: true } },
+  authorizedBy: { select: { id: true, username: true, staff: { select: { name: true } } } },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -175,6 +183,8 @@ export async function listExpenses(
         : null,
     isStaffAdvance: e.isStaffAdvance,
     recordedBy: e.recordedBy.username,
+    authorizedBy: e.authorizedBy.staff?.name ?? e.authorizedBy.username,
+    authorizedById: e.authorizedBy.id,
   }));
 }
 
@@ -197,7 +207,10 @@ export async function listStaffAdvances(
       staffId: { not: null },
       ...dateWhere(range.from, range.to),
     },
-    include: { staff: { select: { id: true, name: true } } },
+    include: {
+      staff: { select: { id: true, name: true } },
+      authorizedBy: { select: { username: true, staff: { select: { name: true } } } },
+    },
     orderBy: [{ date: "desc" }, { id: "desc" }],
   });
 
@@ -208,6 +221,7 @@ export async function listStaffAdvances(
     amount: money(Number(String(e.amount))),
     date: e.date.toISOString().slice(0, 10),
     reason: e.reason,
+    authorizedBy: e.authorizedBy.staff?.name ?? e.authorizedBy.username,
   }));
 
   const byStaff = new Map<number, { staff: string; total: number; count: number }>();
@@ -230,6 +244,42 @@ export async function listStaffAdvances(
       .sort((a, b) => Number(b.total) - Number(a.total)),
     grandTotal: money(mapped.reduce((s, r) => s + Number(r.amount), 0)),
   };
+}
+
+/**
+ * The accounts that may be named as authorising a spend: active ADMIN or STAFF
+ * logins. A deactivated account is not offered — an expense must not be
+ * authorised by a login nobody can use.
+ */
+export async function listAuthorizers(): Promise<Authorizer[]> {
+  await requireOperationalAccess();
+
+  const users = await db.user.findMany({
+    where: { active: true, role: { in: ["ADMIN", "STAFF"] } },
+    select: { id: true, username: true, role: true, staff: { select: { name: true } } },
+    orderBy: [{ role: "asc" }, { username: "asc" }],
+  });
+
+  return users.map((u) => ({
+    id: u.id,
+    name: u.staff?.name ?? u.username,
+    role: u.role as "ADMIN" | "STAFF",
+  }));
+}
+
+/**
+ * Validates the "Authorized by" field: it must be an active admin or staff
+ * account. Checked server-side on every write, because the select is only a
+ * convenience — the id arrives from the browser.
+ */
+async function readAuthorizer(formData: FormData): Promise<string | null> {
+  const value = formData.get("authorizedById");
+  if (typeof value !== "string" || value === "") return null;
+  const user = await db.user.findFirst({
+    where: { id: value, active: true, role: { in: ["ADMIN", "STAFF"] } },
+    select: { id: true },
+  });
+  return user?.id ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,10 +321,14 @@ export async function createTeacherAdvance(
   });
   if (!teacher) return fail(formData, "Select an active teacher.");
 
+  const authorizedById = await readAuthorizer(formData);
+  if (!authorizedById) return fail(formData, "Select who authorized this advance.");
+
   const type = await typeByCode("TEACHER_ADVANCE");
 
   await db.expense.create({
     data: {
+      authorizedById,
       expenseTypeId: type.id,
       amount: money(parsed.data.amount),
       reason: parsed.data.reason,
@@ -325,10 +379,14 @@ export async function createXenonExpense(
     staffId = staff.id;
   }
 
+  const authorizedById = await readAuthorizer(formData);
+  if (!authorizedById) return fail(formData, "Select who authorized this expense.");
+
   const type = await typeByCode("XENON");
 
   await db.expense.create({
     data: {
+      authorizedById,
       expenseTypeId: type.id,
       amount: money(parsed.data.amount),
       reason: parsed.data.reason,
@@ -370,10 +428,14 @@ export async function updateExpense(
   if (!existing) return fail(formData, "That expense no longer exists.");
 
   // The person can be corrected, but only within the shape the type allows.
+  const authorizedById = await readAuthorizer(formData);
+  if (!authorizedById) return fail(formData, "Select who authorized this expense.");
+
   const data: {
     amount: string;
     reason: string;
     date: Date;
+    authorizedById: string;
     teacherId?: number | null;
     staffId?: number | null;
     isStaffAdvance?: boolean;
@@ -381,6 +443,8 @@ export async function updateExpense(
     amount: money(parsed.data.amount),
     reason: parsed.data.reason,
     date: colomboDateValue(parsed.data.date),
+    // The expense TYPE stays immutable; who authorised it can be corrected.
+    authorizedById,
   };
 
   if (existing.type.code === "TEACHER_ADVANCE") {

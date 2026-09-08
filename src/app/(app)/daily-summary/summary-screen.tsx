@@ -85,6 +85,18 @@ export function SummaryScreen({
               ],
             },
             {
+              title: "Deductions — what and on whose authority",
+              head: ["Date", "Kind", "Person", "Reason", "Authorized by", "Amount"],
+              body: report.deductionLines.map((d) => [
+                d.date,
+                d.kind === "TEACHER_ADVANCE" ? "Teacher advance" : d.isStaffAdvance ? "Staff advance" : "Xenon",
+                d.person ?? "—",
+                d.reason,
+                d.authorizedBy,
+                d.amount,
+              ]),
+            },
+            {
               title: "Cash book",
               head: ["Item", "Amount"],
               body: [
@@ -212,6 +224,26 @@ export function SummaryScreen({
               <p className="text-muted-foreground text-xs">
                 Staff advances sit inside Xenon expenses and are counted once.
               </p>
+              {report.deductionLines.length > 0 && (
+                <ul className="space-y-1.5 border-t pt-2">
+                  {report.deductionLines.map((d, i) => (
+                    <li key={i} className="text-xs">
+                      <span className="flex justify-between gap-2">
+                        <span className="min-w-0 truncate">
+                          {d.person ? `${d.person} — ` : ""}
+                          {d.reason}
+                        </span>
+                        <span className="tabular-nums">{d.amount}</span>
+                      </span>
+                      <span className="text-muted-foreground block">
+                        {d.kind === "TEACHER_ADVANCE" ? "Teacher advance" : d.isStaffAdvance ? "Staff advance" : "Xenon"}
+                        {" · authorized by "}
+                        {d.authorizedBy}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </>

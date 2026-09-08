@@ -153,6 +153,26 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     never a hardcoded list. `/reports/class-schedule` shows the DEFAULT hall
     (it is the recurring timetable); `/reports/timetable` is per-date and shows
     what an override actually did.
+26. **One payroll calculation: `buildPayslips`.** The teacher's screen, the
+    printed A4 sheet and the month-end roll-up all render ITS numbers —
+    `paidAt` month basis, per-course `instituteSharePercentApplied` frozen on
+    each payment. Never add a second way to compute a share: if the roll-up and
+    a payslip could disagree, the teacher holding the slip is right. Sheet lines
+    group payments by course × billing month × RATE so `cards × rate = gross`
+    is true on every line; a slip rounds its two halves separately, so a
+    multi-teacher total can be a cent out — show that rounding, never hide it.
+    A teacher sheet never carries institute profit.
+27. **An expense names who authorised it.** `Expense.authorizedById` is required
+    and re-checked server-side against active ADMIN/STAFF accounts; the type
+    stays immutable on edit but the authoriser can be corrected. It shows
+    wherever the expense does — list, staff-advance report, Daily Summary
+    deductions, month-end roll-up. Rows predating the column were backfilled
+    with `recordedById`.
+28. **Any billing month is payable.** The picker offers catch-up months back to
+    the enrolment's own start and a bounded few ahead; `takePayment` re-checks
+    both ends. The chosen month is what `billingYear`/`billingMonth` stamp, so
+    arrears, not-paid and the student list follow it — while `paidAt` stays the
+    day the cash arrived.
 
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code

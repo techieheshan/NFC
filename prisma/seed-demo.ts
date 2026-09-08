@@ -1019,6 +1019,7 @@ async function seed() {
         date: daysAgo(6),
         teacherId: teacher[CHEM],
         recordedById: actor.id,
+        authorizedById: actor.id,
       },
     });
     await db.expense.create({
@@ -1028,6 +1029,7 @@ async function seed() {
         reason: `${DEMO}Printer toner and A4 paper`,
         date: daysAgo(4),
         recordedById: actor.id,
+        authorizedById: actor.id,
       },
     });
     // A staff advance lives INSIDE Xenon expenses, flagged — counted once.
@@ -1038,6 +1040,7 @@ async function seed() {
         reason: `${DEMO}Staff advance — Ms. K. Dias`,
         date: daysAgo(2),
         isStaffAdvance: true,
+        authorizedById: actor.id,
         staffId: staff["Ms. K. Dias"],
         recordedById: actor.id,
       },

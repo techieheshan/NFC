@@ -23,17 +23,23 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
   const [exporting, setExporting] = useState(false);
 
   async function exportPdf() {
-    if (!report.course) return;
+    if (!report.heading) return;
     setExporting(true);
     try {
       await downloadReportPdf({
         filename: `xenon-student-list-${report.year}-${String(report.month).padStart(2, "0")}.pdf`,
         title: "Student list — paid / not paid",
-        subtitle: `${report.course.name} · ${report.course.teacher} · ${report.label} (Asia/Colombo)`,
+        subtitle: `${report.heading} · ${report.label} (Asia/Colombo)`,
         tables: [
           {
-            head: ["Student", "Card number", "Status"],
-            body: report.rows.map((r) => [r.name, r.cardNumber ?? "—", STATUS[r.status].label]),
+            head: report.allCourses
+              ? ["Course", "Student", "Card number", "Status"]
+              : ["Student", "Card number", "Status"],
+            body: report.rows.map((r) =>
+              report.allCourses
+                ? [r.course, r.name, r.cardNumber ?? "—", STATUS[r.status].label]
+                : [r.name, r.cardNumber ?? "—", STATUS[r.status].label],
+            ),
           },
           {
             title: "Totals",
@@ -50,12 +56,12 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
     }
   }
 
-  if (!report.course) {
+  if (!report.heading) {
     return (
       <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
         {report.blocked
           ? "This login is not linked to a teacher record, so it has no courses."
-          : "Pick a course and a month."}
+          : "No courses to report on."}
       </p>
     );
   }
@@ -64,10 +70,8 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-medium">{report.course.name}</h2>
-          <p className="text-muted-foreground text-sm">
-            {report.course.teacher} · {report.label}
-          </p>
+          <h2 className="font-medium">{report.heading}</h2>
+          <p className="text-muted-foreground text-sm">{report.label}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={exportPdf} disabled={exporting}>
           <Download className="size-3.5" aria-hidden />
@@ -77,13 +81,14 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
 
       {report.rows.length === 0 ? (
         <p className="text-muted-foreground rounded-xl border p-4 text-sm">
-          Nobody is actively enrolled in this course.
+          Nobody is actively enrolled.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border">
           <table className="w-full text-sm">
             <thead className="text-muted-foreground border-b text-left">
               <tr>
+                {report.allCourses && <th className="p-3 font-medium">Course</th>}
                 <th className="p-3 font-medium">Student</th>
                 <th className="p-3 font-medium">Card number</th>
                 <th className="p-3 text-right font-medium">{report.label}</th>
@@ -91,7 +96,13 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
             </thead>
             <tbody className="divide-y">
               {report.rows.map((r) => (
-                <tr key={r.studentId}>
+                // The same student appears once per course, so the key is both.
+                <tr key={`${r.courseId}:${r.studentId}`}>
+                  {report.allCourses && (
+                    <td className="p-3">
+                      <span className="block max-w-64 truncate" title={r.course}>{r.course}</span>
+                    </td>
+                  )}
                   <td className="p-3">{r.name}</td>
                   <td className="p-3 font-mono text-xs">{r.cardNumber ?? "—"}</td>
                   <td className="p-3 text-right">
@@ -104,7 +115,7 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
             </tbody>
             <tfoot className="bg-muted/40 border-t">
               <tr>
-                <td className="p-3 font-medium" colSpan={3}>
+                <td className="p-3 font-medium" colSpan={report.allCourses ? 4 : 3}>
                   <span className="flex flex-wrap items-center gap-3">
                     <span>Registered {report.totals.registered}</span>
                     <Badge variant="secondary">Paid {report.totals.paid}</Badge>

@@ -8,8 +8,9 @@ import { db } from "@/lib/db";
 import { buildPayslips } from "@/lib/payslips";
 
 import { PrintButton } from "./print-button";
+import { PayslipSheet } from "./sheet";
 
-export const metadata = { title: "Payslip voucher" };
+export const metadata = { title: "Payslip" };
 
 function toStr(v: string | string[] | undefined): string | undefined {
   const raw = Array.isArray(v) ? v[0] : v;
@@ -21,8 +22,14 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
 /**
- * A single teacher's payslip, laid out to be handed over on paper.
+ * Payslips as paper: ONE A4 page per teacher.
+ *
+ * `?teacherId=` prints one teacher's sheet; omitting it prints every teacher
+ * who has a slip for the month, one page each with a page break between them —
+ * so a single print run produces a stack that can be handed out individually.
  *
  * ADMIN + STAFF only: staff hand slips out, which is the same reasoning that
  * lets them see individual slips but not institute profit. A TEACHER reaching
@@ -32,20 +39,13 @@ const MONTHS = [
  * The figures come from `buildPayslips` with `includeInstitute: false`, i.e.
  * the same frozen-percent computation the teacher's own view uses. There is no
  * second formula here to drift out of step, and institute profit is not merely
- * hidden — it is never computed.
- *
- * Deliberately NOT the admin payslip screen. This sheet is read across a
- * counter and signed, so it is set at a size that survives that, and it carries
- * only what a teacher checks: how many cards, at which tiers, and how the
- * collected money became their salary. The per-course breakdown stays on
- * /payslips, where the same numbers are already available in full.
+ * hidden from the sheet — it is never computed.
  */
 export default async function VoucherPage({ searchParams }: PageProps<"/payslips/voucher">) {
   const user = await requireNavAccess("/payslips");
   if (user.role === "TEACHER") notFound();
 
   const params = await searchParams;
-  const teacherId = Number(toStr(params.teacherId));
   const asked = toStr(params.month);
   const now = colomboNow();
   const [y, m] =
@@ -53,125 +53,89 @@ export default async function VoucherPage({ searchParams }: PageProps<"/payslips
       ? asked.split("-").map(Number)
       : now.date.split("-").map(Number);
 
-  if (!Number.isInteger(teacherId) || teacherId <= 0) notFound();
+  const rawTeacher = toStr(params.teacherId);
+  const teacherId = rawTeacher === undefined ? null : Number(rawTeacher);
+  if (teacherId !== null && (!Number.isInteger(teacherId) || teacherId <= 0)) notFound();
 
-  const teacher = await db.teacher.findUnique({
-    where: { id: teacherId },
+  const teachers = await db.teacher.findMany({
+    where: teacherId !== null ? { id: teacherId } : {},
     select: { id: true, name: true, nic: true, phone: true },
+    orderBy: { name: "asc" },
   });
-  if (!teacher) notFound();
+  if (teachers.length === 0) notFound();
 
   const report = await buildPayslips({
     year: y,
     month: m,
-    teacherIds: [teacher.id],
+    teacherIds: teachers.map((t) => t.id),
     includeInstitute: false,
   });
-  const slip = report.slips[0];
 
   const monthLabel = `${MONTHS[m - 1]} ${y}`;
+  const daysInMonth = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 0)).getUTCDate();
+  const range = `${y}-${pad(m)}-01 → ${y}-${pad(m)}-${pad(daysInMonth)}`;
+
+  // One sheet per teacher, in the report's order. A teacher with no collections
+  // still gets a sheet when asked for by name (it says so), but the
+  // all-teachers run only prints teachers who actually have one.
+  const sheets = teachers
+    .map((t) => ({ teacher: t, slip: report.slips.find((s) => s.teacherId === t.id) }))
+    .filter((x) => x.slip !== undefined)
+    .filter((x) => teacherId !== null || x.slip!.lines.length > 0);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4">
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 14mm; }
+          @page { size: A4 portrait; margin: 12mm; }
           body * { visibility: hidden !important; }
-          #voucher, #voucher * { visibility: visible !important; }
-          #voucher { position: absolute; left: 0; top: 0; width: 100%; }
+          #sheets, #sheets * { visibility: visible !important; }
+          #sheets { position: absolute; left: 0; top: 0; width: 100%; }
+          /* Each teacher's sheet stands alone on its own page. */
+          .payslip-sheet { padding: 0 !important; }
+          .break-after-page { break-after: page; }
           .no-print { display: none !important; }
         }
       `}</style>
 
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
         <Button asChild variant="ghost">
-          <Link href={`/payslips?month=${y}-${String(m).padStart(2, "0")}`}>← Back to payslips</Link>
+          <Link href={`/payslips?month=${y}-${pad(m)}`}>← Back to payslips</Link>
         </Button>
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          {teacherId !== null && (
+            <Button asChild variant="outline">
+              <Link href={`/payslips/voucher?month=${y}-${pad(m)}`}>All teachers</Link>
+            </Button>
+          )}
+          <PrintButton />
+        </div>
       </div>
 
-      <div id="voucher" className="space-y-6 rounded-xl border bg-white p-8 text-black">
-        <header className="flex items-start justify-between gap-4 border-b pb-4">
-          <div>
-            <p className="text-2xl font-bold tracking-widest">XENON</p>
-            <p>Institute</p>
-          </div>
-          <div className="text-right">
-            <p className="text-lg font-semibold">Payslip voucher</p>
-            <p>{monthLabel}</p>
-          </div>
-        </header>
+      <p className="no-print text-muted-foreground text-sm">
+        {sheets.length === 1
+          ? "One A4 page."
+          : `${sheets.length} sheets — one A4 page per teacher, page break between them.`}
+      </p>
 
-        <section className="grid gap-1 text-lg">
-          <div className="flex gap-3">
-            <span className="w-28 shrink-0 font-medium">Teacher</span>
-            <span className="font-semibold">{teacher.name}</span>
+      <div id="sheets" className="space-y-6">
+        {sheets.map((x, i) => (
+          <div key={x.teacher.id} className="overflow-x-auto rounded-xl border">
+            <PayslipSheet
+              slip={x.slip!}
+              teacher={x.teacher}
+              monthLabel={monthLabel}
+              range={range}
+              last={i === sheets.length - 1}
+            />
           </div>
-          {teacher.nic && (
-            <div className="flex gap-3">
-              <span className="w-28 shrink-0 font-medium">NIC</span>
-              <span>{teacher.nic}</span>
-            </div>
-          )}
-          {teacher.phone && (
-            <div className="flex gap-3">
-              <span className="w-28 shrink-0 font-medium">Phone</span>
-              <span>{teacher.phone}</span>
-            </div>
-          )}
-        </section>
-
-        {!slip || Number(slip.totalCollected) === 0 ? (
-          <p className="rounded-lg border border-dashed p-4 text-lg">
-            No collections recorded for {teacher.name} in {monthLabel}.
+        ))}
+        {sheets.length === 0 && (
+          <p className="rounded-xl border border-dashed p-6 text-center text-sm">
+            No teacher has collections in {monthLabel}.
           </p>
-        ) : (
-          <>
-            <section className="border-y py-4 text-lg">
-              <div className="flex justify-between gap-4">
-                <span className="font-medium">Cards</span>
-                <span className="tabular-nums">
-                  {slip.payingStudents} {slip.payingStudents === 1 ? "student" : "students"}
-                </span>
-              </div>
-              {slip.tierCounts.length > 0 && (
-                <p className="mt-1 text-right">
-                  {/* Tier names come from the reference table, so a new tier
-                      appears here on its own. */}
-                  {slip.tierCounts.map((t) => `${t.students} ${t.label.toLowerCase()}`).join(", ")}
-                </p>
-              )}
-            </section>
-
-            <section className="space-y-2 text-xl">
-              <Row label="Collected" value={slip.totalCollected} />
-              <Row label="Institute share" value={slip.totalInstituteShare} />
-              <Row label="Teacher share" value={slip.totalTeacherShare} />
-              <Row label="Advances taken" value={`-${slip.advances}`} />
-              <div className="flex justify-between border-t-2 border-black pt-3 text-2xl font-bold">
-                <span>Final salary</span>
-                <span className="tabular-nums">{slip.finalSalary}</span>
-              </div>
-            </section>
-          </>
         )}
-
-        <footer className="border-t pt-4">
-          <div className="mt-10 flex justify-between gap-8 text-base">
-            <span className="w-56 border-t pt-1 text-center">Teacher signature</span>
-            <span className="w-56 border-t pt-1 text-center">Issued by</span>
-          </div>
-        </footer>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <span>{label}</span>
-      <span className="tabular-nums">{value}</span>
     </div>
   );
 }
