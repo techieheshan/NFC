@@ -48,3 +48,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Filled course sheets and the reference sheet carry real teacher names.
+prisma/import/reference-values*.csv
+prisma/import/*filled*.csv
+prisma/import/*-real*.csv

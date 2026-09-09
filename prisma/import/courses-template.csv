@@ -1,0 +1,4 @@
+teacher,subject,grade,stream,class_type,fee,institute_share_percent,day,start_time,end_time,hall,course_name
+EXAMPLE - Mr. K. Silva,ICT,A/L 2027,Tech,THEORY,2500,25,MON,15:00,17:00,Blue Sky,
+EXAMPLE - Mr. K. Silva,ICT,A/L 2027,Tech,THEORY,2500,25,THU,15:00,17:00,Blue Sky,
+EXAMPLE - Mrs. R. Fernando,Science,Grade 11,Grade 6-11,REVISION,2000,30,SAT,08:00,10:00,,Grade 11 Science (revision batch)
