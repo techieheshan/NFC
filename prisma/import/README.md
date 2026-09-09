@@ -1,8 +1,20 @@
 # Course import — how the institute fills this in
 
-Send the institute TWO files: `courses-template.csv` to fill in, and a
-`reference-values.csv` generated from the live database so they copy the
-spellings the system already uses (teachers, subjects, grades and streams are
+Send the institute ONE file: `Xenon-Courses.xlsx`. Staff are not coders, so
+they get an Excel workbook — a **Courses** sheet to fill in, and a **Reference**
+sheet driving a dropdown on every column that must match something already in
+the system. Nobody there types a teacher's name; they pick it.
+
+Build it, then convert what comes back — both are our job, not theirs:
+
+```bash
+npx tsx prisma/import-courses.ts ~/reference.csv --reference     # today's names from the live DB
+python3 prisma/import/make-template.py ~/reference.csv ~/Xenon-Courses.xlsx
+python3 prisma/import/xlsx-to-csv.py ~/filled.xlsx ~/filled.csv  # when it comes back
+```
+
+The CSV template below is the same shape, for anyone who prefers it. Both end
+up in the same importer, which reads the spellings the system already uses (teachers, subjects, grades and streams are
 already entered — a retyped name creates a duplicate teacher, not a match):
 
 ```bash
