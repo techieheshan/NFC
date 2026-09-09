@@ -97,6 +97,17 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["terminal", "desktop"],
   },
   {
+    key: "schedules",
+    label: "Class Schedule",
+    href: "/admin/schedules",
+    icon: CalendarClock,
+    // Daily work, not setup: staff add a one-off class in the middle of the
+    // day, from the terminal. ADMIN + STAFF for both the recurring schedule and
+    // additional classes; TEACHER never.
+    roles: OPERATIONAL,
+    surfaces: ["terminal", "desktop"],
+  },
+  {
     key: "hall-allocation",
     label: "Hall Allocation",
     href: "/hall-allocation",
@@ -181,15 +192,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Combine Payment",
     href: "/admin/combos",
     icon: Layers,
-    roles: OPERATIONAL,
-    surfaces: ["desktop"],
-    group: "Setup",
-  },
-  {
-    key: "schedules",
-    label: "Schedules",
-    href: "/admin/schedules",
-    icon: CalendarClock,
     roles: OPERATIONAL,
     surfaces: ["desktop"],
     group: "Setup",
