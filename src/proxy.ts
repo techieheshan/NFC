@@ -20,8 +20,11 @@ export const config = {
    *   - PWA files that must be fetchable before a session exists
    *   - /offline, which the service worker precaches and serves when there is
    *     no server to redirect anyone anywhere
+   *   - /api/health, the splash's reachability probe. It must answer BEFORE a
+   *     session exists — that is the moment it is asked about — and it returns
+   *     nothing but "the server and its database are up"
    */
   matcher: [
-    "/((?!api/auth|offline|_next/static|_next/image|icons/|favicon.ico|manifest.webmanifest|sw.js).*)",
+    "/((?!api/auth|api/health|offline|_next/static|_next/image|icons/|favicon.ico|manifest.webmanifest|sw.js).*)",
   ],
 };

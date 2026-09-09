@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { RegisterServiceWorker } from "@/components/pwa/register-service-worker";
+import { Splash } from "@/components/splash/splash";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -49,6 +50,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
+        {/* Rendered before anything else and taken down the moment the page
+            has loaded, so it covers the startup gap without ever adding to it.
+            It carries its own dismissal — a React component would need the
+            bundle that a broken start is missing. */}
+        <Splash />
         {children}
         <RegisterServiceWorker />
       </body>
