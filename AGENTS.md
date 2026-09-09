@@ -110,7 +110,13 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     (`useNfcScan(..., { continuous: true })`) — never make staff press a button
     per student. ONE popup at a time — no trail,
     no list: the terminal must not scroll, so the next tap replaces what is
-    showing. What blocks the reader is whether that popup is a QUESTION or a
+    showing. That popup renders INSIDE the reader box, taking the place of the
+    "Reader ON" line, so the reader controls and the lamp stay visible and
+    staff's eyes never move; the arrears verdict is a solid BADGE on the
+    student, never the whole screen. A full-bleed coloured result was tried and
+    reverted — it hid the reader controls and made a routine mark read as an
+    alarm. Only the pick-list renders as its own card below the box, because it
+    is a question with its own buttons. What blocks the reader is whether that popup is a QUESTION or a
     RESULT — a pick-list, an unrecognised card and the open till hold the line
     until answered; "marked", "already marked" and "no class open" are results
     the next tap simply replaces. While a question is

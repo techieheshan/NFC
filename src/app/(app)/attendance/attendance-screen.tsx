@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Banknote,
   CloudOff,
-  Loader2,
   Nfc,
   QrCode,
   Pause,
@@ -41,7 +40,7 @@ import type {
   SyncOutcome,
   WorkingSet,
 } from "./actions";
-import { ChoiceCard, CounterCard, type ReaderState } from "./counter-card";
+import { ChoiceCard, CounterCard } from "./counter-card";
 import {
   playAlreadyMarked,
   playMarkedButOwes,
@@ -66,6 +65,8 @@ type StreamCard = { id: string; result: ScanResult };
  * card is this? — has no answer yet, so the reader holds until staff give one.
  * That is the whole "click only when ambiguous" rule.
  */
+type ReaderState = "off" | "on" | "waiting";
+
 const BLOCKS = new Set<ScanResult["status"]>(["choose", "confirm", "unknown"]);
 
 /**
@@ -306,6 +307,13 @@ export function AttendanceScreen({
     [searchStudents, offline],
   );
 
+  // What the box shows instead of the reader line: every popup except the
+  // pick-list, which needs its own card below.
+  const cardPopup =
+    popup && popup.result.status !== "choose" && popup.result.status !== "confirm"
+      ? popup
+      : null;
+
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <ConnectionBar
@@ -318,42 +326,71 @@ export function AttendanceScreen({
         onSync={() => void offline.flush()}
       />
 
-      {/* --- the reader: always live, never replaced by a result --- */}
+      {/*
+        ONE box. It shows what the reader is doing, and when a card lands the
+        result takes its place inside the same border — nothing pops up over the
+        screen, nothing appears further down, so staff's eyes never move and the
+        terminal never grows a second card to scroll past.
+      */}
       <div className="grid gap-3 sm:grid-cols-2">
-        {nfc.support !== "unsupported" &&
-          (nfc.scanning ? (
-            <div
-              className={`space-y-2 rounded-xl border-2 p-4 text-center sm:col-span-2 ${
-                reader === "waiting" ? "border-amber-400 bg-amber-50" : "border-emerald-400 bg-emerald-50"
-              }`}
-            >
-              {reader === "waiting" ? (
-                <>
-                  <Pause className="mx-auto size-6 text-amber-700" aria-hidden />
-                  <p className="text-sm font-medium text-amber-900">
-                    Reader OFF — answer the question first. Taps are ignored.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <Loader2 className="mx-auto size-6 animate-spin text-emerald-700" aria-hidden />
-                  <p className="text-sm font-medium text-emerald-900">
-                    Reader ON — tap cards one after another
-                  </p>
-                </>
-              )}
+        {(cardPopup || (nfc.support !== "unsupported" && nfc.scanning)) && (
+          <div
+            className={`space-y-2 rounded-xl border-2 p-4 text-center sm:col-span-2 ${
+              !nfc.scanning
+                ? "border-border bg-card"
+                : reader === "waiting"
+                  ? "border-amber-400 bg-amber-50"
+                  : "border-emerald-400 bg-emerald-50"
+            }`}
+          >
+            {cardPopup ? (
+              <CounterCard
+                key={cardPopup.id}
+                result={cardPopup.result}
+                canPay={offline.connected}
+                onDismiss={cardPopup.result.status === "unknown" ? release : undefined}
+                // Results only. Closing one is a VIEW change: it neither marks
+                // nor unmarks anything, and the reader was never blocked by it.
+                onClose={
+                  cardPopup.result.status === "unknown" ? undefined : () => setPopup(null)
+                }
+                onPay={(studentId, name) => {
+                  // The pay decision is a question too: it holds the line until
+                  // the till closes. Taps keep queueing behind it.
+                  blocked.current = true;
+                  setPaying({ studentId, name });
+                }}
+              />
+            ) : reader === "waiting" ? (
+              <p className="flex items-center justify-center gap-2 text-sm font-medium text-amber-900">
+                <Pause className="size-4 shrink-0" aria-hidden />
+                Reader OFF — answer the question first. Taps are ignored.
+              </p>
+            ) : (
+              /* A dot, not a spinner: the same "it is live" signal in one line
+                 instead of six, which is the room the result needs. */
+              <p className="flex items-center justify-center gap-2 text-sm font-medium text-emerald-900">
+                <span className="size-2.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+                Reader ON — tap cards one after another
+              </p>
+            )}
+
+            {nfc.scanning && (
               <Button variant="outline" size="sm" onClick={nfc.stop}>Stop reader</Button>
-            </div>
-          ) : (
-            <Button
-              onClick={() => { primeAudio(); void nfc.start(); }}
-              className="h-16 gap-2 text-base sm:col-span-2"
-              disabled={nfc.support === "unknown"}
-            >
-              <Nfc className="size-5" aria-hidden />
-              Start reader (NFC)
-            </Button>
-          ))}
+            )}
+          </div>
+        )}
+
+        {nfc.support !== "unsupported" && !nfc.scanning && (
+          <Button
+            onClick={() => { primeAudio(); void nfc.start(); }}
+            className="h-16 gap-2 text-base sm:col-span-2"
+            disabled={nfc.support === "unknown"}
+          >
+            <Nfc className="size-5" aria-hidden />
+            Start reader (NFC)
+          </Button>
+        )}
 
         <Button
           onClick={() => { primeAudio(); setQrOpen(true); }}
@@ -372,44 +409,20 @@ export function AttendanceScreen({
       </div>
 
       {/*
-        One popup, replaced by the next tap. A pick-list is a question and holds
-        the line; everything else is a result and does not.
+        The one thing that does NOT live in the reader box: a pick-list is a
+        question with its own buttons, and the box above it is already saying
+        "Reader OFF". Everything else is a result and renders in the box.
       */}
-      {popup &&
-        (popup.result.status === "choose" || popup.result.status === "confirm" ? (
-          <ChoiceCard
-            result={popup.result}
-            pending={busy}
-            reader={reader}
-            onChoose={(c) =>
-              choose(
-                (popup.result as Extract<ScanResult, { status: "choose" }>).student,
-                c,
-              )
-            }
-            onCancel={release}
-          />
-        ) : (
-          <CounterCard
-            key={popup.id}
-            result={popup.result}
-            canPay={offline.connected}
-            reader={reader}
-            busy={busy}
-            onDismiss={popup.result.status === "unknown" ? release : undefined}
-            // Results only. Closing one is a VIEW change: it neither marks nor
-            // unmarks anything, and the reader was never blocked by it.
-            onClose={
-              popup.result.status === "unknown" ? undefined : () => setPopup(null)
-            }
-            onPay={(studentId, name) => {
-              // The pay decision is a question too: it holds the line until the
-              // till closes. Taps keep queueing behind it.
-              blocked.current = true;
-              setPaying({ studentId, name });
-            }}
-          />
-        ))}
+      {popup && (popup.result.status === "choose" || popup.result.status === "confirm") && (
+        <ChoiceCard
+          result={popup.result}
+          pending={busy}
+          onChoose={(c) =>
+            choose((popup.result as Extract<ScanResult, { status: "choose" }>).student, c)
+          }
+          onCancel={release}
+        />
+      )}
 
       <QrScanner open={qrOpen} onOpenChange={setQrOpen} onDecode={(v) => tap({ cardNumber: v }, "QR")} />
 
