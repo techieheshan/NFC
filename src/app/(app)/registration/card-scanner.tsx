@@ -31,7 +31,7 @@ export function CardScanner({
     error: nfcError,
     start: startScan,
     stop: stopScan,
-  } = useNfcScan((uid) => onIdentify({ cardUid: uid }));
+  } = useNfcScan((uid) => onIdentify({ cardUid: uid }), { autoStart: true });
 
   const [qrOpen, setQrOpen] = useState(false);
   const [manualUid, setManualUid] = useState("");
@@ -46,29 +46,35 @@ export function CardScanner({
           <Nfc className="size-8" aria-hidden />
         </span>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Registration</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="text-muted-foreground mt-1 text-base">
           Tap the card, scan its QR, or type an identifier. New cards start a
           registration; known cards open the student.
         </p>
       </div>
 
       <div className="space-y-3">
+        {/* Armed on arrival: staff walk up holding a card, and a button press
+            per student is a press per student across thousands. The button is
+            only the fallback for a browser that refused the automatic start
+            (Chrome wants a gesture for the first scan on an origin). */}
         {nfcSupport !== "unsupported" &&
           (scanning ? (
-            <div className="space-y-3 rounded-xl border border-dashed p-6 text-center">
-              <Loader2 className="text-primary mx-auto size-6 animate-spin" aria-hidden />
-              <p className="text-sm font-medium">Hold the card against the phone…</p>
-              <Button variant="outline" size="sm" onClick={stopScan}>
-                Cancel
+            <div className="space-y-2 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4 text-center">
+              <p className="flex items-center justify-center gap-2 text-base font-medium text-emerald-900">
+                <span className="size-2.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+                Reader ON — tap the card
+              </p>
+              <Button variant="outline" size="sm" className="h-10 px-4" onClick={stopScan}>
+                Stop reader
               </Button>
             </div>
           ) : (
             <Button
               onClick={startScan}
-              className="h-14 w-full gap-2 text-base"
+              className="h-16 w-full gap-2 text-lg"
               disabled={busy || nfcSupport === "unknown"}
             >
-              <Nfc className="size-5" aria-hidden />
+              <Nfc className="size-6" aria-hidden />
               Tap card (NFC)
             </Button>
           ))}
@@ -76,10 +82,10 @@ export function CardScanner({
         <Button
           onClick={() => setQrOpen(true)}
           variant={nfcSupport === "unsupported" ? "default" : "secondary"}
-          className="h-14 w-full gap-2 text-base"
+          className="h-16 w-full gap-2 text-lg"
           disabled={busy}
         >
-          <QrCode className="size-5" aria-hidden />
+          <QrCode className="size-6" aria-hidden />
           Scan QR code
         </Button>
       </div>
@@ -142,7 +148,7 @@ export function CardScanner({
           </p>
         </div>
 
-        <Button type="submit" variant="secondary" className="w-full gap-2" disabled={busy || !canSubmitManual}>
+        <Button type="submit" variant="secondary" className="h-14 w-full gap-2 text-base" disabled={busy || !canSubmitManual}>
           {busy ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />
           ) : (

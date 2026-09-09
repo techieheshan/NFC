@@ -61,7 +61,7 @@ export function CardFields({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-cardNumber`}>Card number</Label>
+        <Label className="text-base" htmlFor={`${idPrefix}-cardNumber`}>Card number</Label>
         <div className="flex gap-2">
           <Input
             id={`${idPrefix}-cardNumber`}
@@ -71,23 +71,23 @@ export function CardFields({
             placeholder="0186-0001-2000"
             autoComplete="off"
             spellCheck={false}
-            className="font-mono"
+            className="h-12 font-mono text-base"
           />
           <Button
             type="button"
             variant="secondary"
-            className="shrink-0 gap-1.5"
+            className="h-12 shrink-0 gap-1.5 px-4"
             onClick={() => setQrOpen(true)}
           >
             <QrCode className="size-4" aria-hidden />
             Scan
           </Button>
         </div>
-        <p className="text-muted-foreground text-xs">Printed on the card, or scan its QR.</p>
+        <p className="text-muted-foreground text-sm">Printed on the card, or scan its QR.</p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-cardUid`}>Card UID</Label>
+        <Label className="text-base" htmlFor={`${idPrefix}-cardUid`}>Card UID</Label>
         <div className="flex gap-2">
           <Input
             id={`${idPrefix}-cardUid`}
@@ -98,7 +98,7 @@ export function CardFields({
             autoCapitalize="characters"
             autoComplete="off"
             spellCheck={false}
-            className="font-mono"
+            className="h-12 font-mono text-base"
           />
           {/* Hidden rather than disabled where NFC doesn't exist: a dead button
               on every office desktop is just noise. */}
@@ -126,7 +126,7 @@ export function CardFields({
               </Button>
             ))}
         </div>
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-sm">
           {scanning ? "Hold the card against the phone…" : "The NFC chip serial."}
         </p>
       </div>

@@ -33,7 +33,7 @@ const supportOnServer = (): NfcSupport => "unknown";
  */
 export function useNfcScan(
   onUid: (uid: string) => void,
-  options: { continuous?: boolean } = {},
+  options: { continuous?: boolean; autoStart?: boolean } = {},
 ) {
   /**
    * One-shot (registration: identify one card, then get on with the form) or
@@ -44,7 +44,7 @@ export function useNfcScan(
    * real reader stopped dead after one student — invisible in testing, because
    * a stubbed NDEFReader ignores the abort signal and keeps firing.
    */
-  const { continuous = false } = options;
+  const { continuous = false, autoStart = false } = options;
   const support = useSyncExternalStore(subscribeToNothing, readSupport, supportOnServer);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +61,26 @@ export function useNfcScan(
 
   // Stop an in-flight scan if the screen goes away mid-read.
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  /**
+   * Arm on arrival, where the browser allows it.
+   *
+   * Registration and Payment open with a card already in someone's hand, so
+   * making staff press a button first is a step per student across thousands of
+   * them. Chrome requires a user gesture for the FIRST `scan()` on an origin —
+   * the permission prompt — so this attempt can fail; when it does, `start()`
+   * sets `error` and the screen falls back to showing the button. Once the
+   * permission is granted, arriving on the screen is enough.
+   */
+  const armed = useRef(false);
+  useEffect(() => {
+    if (!autoStart || armed.current || support !== "supported") return;
+    armed.current = true;
+    void start();
+    // `start` is stable for this component's lifetime; re-arming on every
+    // render would restart the reader mid-queue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, support]);
 
   async function start() {
     setError(null);

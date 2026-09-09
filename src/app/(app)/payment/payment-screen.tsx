@@ -121,7 +121,8 @@ export function PaymentScreen({
     [loadPanel],
   );
 
-  const nfc = useNfcScan((cardUid) => identify({ cardUid }));
+  // Armed on arrival, like Registration: the card is already in their hand.
+  const nfc = useNfcScan((cardUid) => identify({ cardUid }), { autoStart: true });
 
   // Embedded: load the student the counter already identified, once, on mount.
   // `initialStudentId` is a mount-time input, never synced back in — a

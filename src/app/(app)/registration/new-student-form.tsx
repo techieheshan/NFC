@@ -89,24 +89,24 @@ export function NewStudentForm({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" name="name" defaultValue={v?.name ?? ""} autoComplete="off" required />
+                <Label className="text-base" htmlFor="name">Name</Label>
+                <Input className="h-12 text-base" id="name" name="name" defaultValue={v?.name ?? ""} autoComplete="off" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phone" defaultValue={v?.phone ?? ""} autoComplete="off" required />
+                <Label className="text-base" htmlFor="phone">Phone</Label>
+                <Input className="h-12 text-base" id="phone" name="phone" defaultValue={v?.phone ?? ""} autoComplete="off" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="school">School</Label>
-                <Input id="school" name="school" defaultValue={v?.school ?? ""} autoComplete="off" required />
+                <Label className="text-base" htmlFor="school">School</Label>
+                <Input className="h-12 text-base" id="school" name="school" defaultValue={v?.school ?? ""} autoComplete="off" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nic">NIC (optional)</Label>
-                <Input id="nic" name="nic" defaultValue={v?.nic ?? ""} autoComplete="off" />
+                <Input className="h-12 text-base" id="nic" name="nic" defaultValue={v?.nic ?? ""} autoComplete="off" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="address">Address (optional)</Label>
-                <Input id="address" name="address" defaultValue={v?.address ?? ""} autoComplete="off" />
+                <Input className="h-12 text-base" id="address" name="address" defaultValue={v?.address ?? ""} autoComplete="off" />
               </div>
             </div>
 
@@ -125,11 +125,13 @@ export function NewStudentForm({
         </p>
       )}
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onBack}>
+      {/* The save button is the one staff hit thousands of times: it gets the
+          room, and Cancel does not compete with it for a thumb. */}
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" className="h-14 px-5 text-base" onClick={onBack}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pending || courses.length === 0}>
+        <Button type="submit" className="h-14 flex-1 text-base" disabled={pending || courses.length === 0}>
           {pending ? "Saving…" : "Save student"}
         </Button>
       </div>

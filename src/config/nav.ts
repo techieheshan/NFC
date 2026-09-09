@@ -195,6 +195,15 @@ export const NAV_ITEMS: NavItem[] = [
     group: "Setup",
   },
   {
+    key: "streams",
+    label: "Streams & Subjects",
+    href: "/admin/streams",
+    icon: Layers,
+    roles: OPERATIONAL,
+    surfaces: ["desktop"],
+    group: "Setup",
+  },
+  {
     key: "halls",
     label: "Halls",
     href: "/admin/halls",

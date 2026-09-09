@@ -22,15 +22,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Picker } from "@/components/ui/picker";
 import { formatCardUid } from "@/lib/card-uid";
 
 import type { ActionState, Identifier, StudentView } from "./actions";
 import { CardFields } from "./card-fields";
-import {
-  SELECT_CLASS,
-  type CourseOption,
-  type FeeTierOption,
-} from "./enrolment-picker";
+import { type CourseOption, type FeeTierOption } from "./enrolment-picker";
 import { PhotoCapture } from "./photo-capture";
 
 const EMPTY: ActionState = { ok: false };
@@ -62,6 +59,10 @@ export function ExistingStudent({
 }) {
   const [editing, setEditing] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
+  // The two pickers are controlled, so the dialog keeps what was chosen while
+  // the action runs — and is keyed on `enrolling`, which resets them on reopen.
+  const [addCourseId, setAddCourseId] = useState("");
+  const [addTierId, setAddTierId] = useState(() => String(feeTiers[0]?.id ?? ""));
   const [changingPhoto, setChangingPhoto] = useState(false);
   const [attaching, setAttaching] = useState<"cardUid" | "cardNumber" | null>(null);
 
@@ -196,34 +197,32 @@ export function ExistingStudent({
       >
         <input type="hidden" name="studentId" value={student.id} />
         <div className="space-y-2">
-          <Label htmlFor="courseId">Course</Label>
-          <select id="courseId" name="courseId" className={SELECT_CLASS} required defaultValue="">
-            <option value="" disabled>
-              Select course…
-            </option>
-            {courses.map((c) => (
-              <option key={c.id} value={c.id} disabled={activeCourseIds.includes(c.id)}>
-                {c.label}
-                {activeCourseIds.includes(c.id) ? " — already enrolled" : ""}
-              </option>
-            ))}
-          </select>
+          <Label className="text-base">Course</Label>
+          <Picker
+            name="courseId"
+            title="Choose the course"
+            placeholder="Select course…"
+            required
+            value={addCourseId}
+            onChange={setAddCourseId}
+            options={courses.map((c) => ({
+              value: String(c.id),
+              label: c.label,
+              hint: activeCourseIds.includes(c.id) ? "already enrolled" : c.hint,
+              disabled: activeCourseIds.includes(c.id),
+            }))}
+          />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="feeTierId">Fee tier</Label>
-          <select
-            id="feeTierId"
+          <Label className="text-base">Fee tier</Label>
+          <Picker
             name="feeTierId"
-            className={SELECT_CLASS}
+            title="Fee tier"
             required
-            defaultValue={feeTiers[0]?.id ?? ""}
-          >
-            {feeTiers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+            value={addTierId}
+            onChange={setAddTierId}
+            options={feeTiers.map((t) => ({ value: String(t.id), label: t.label }))}
+          />
         </div>
       </ActionDialog>
 

@@ -5,8 +5,9 @@ import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Picker } from "@/components/ui/picker";
 
-export type CourseOption = { id: number; label: string };
+export type CourseOption = { id: number; label: string; hint?: string };
 export type FeeTierOption = { id: number; label: string; multiplier: string };
 
 export const SELECT_CLASS =
@@ -51,12 +52,12 @@ export function EnrolmentPicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label>Enrolments</Label>
+        <Label className="text-base">Enrolments</Label>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="gap-1.5"
+          className="h-11 gap-1.5 px-4 text-base"
           disabled={available.length === 0}
           onClick={() =>
             setRows((rs) => [
@@ -65,67 +66,58 @@ export function EnrolmentPicker({
             ])
           }
         >
-          <Plus className="size-3.5" aria-hidden />
+          <Plus className="size-4" aria-hidden />
           Add course
         </Button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {rows.map((row) => (
-          <div key={row.key} className="flex items-start gap-2">
-            <select
+          <div key={row.key} className="space-y-2 rounded-lg border p-2">
+            <Picker
               name="courseId"
-              className={SELECT_CLASS}
+              title="Choose the course"
+              placeholder="Select course…"
+              required
               value={row.courseId}
-              onChange={(e) => update(row.key, { courseId: e.target.value })}
-              required
-            >
-              <option value="" disabled>
-                Select course…
-              </option>
-              {courses.map((c) => {
-                const taken =
+              onChange={(courseId) => update(row.key, { courseId })}
+              options={courses.map((c) => ({
+                value: String(c.id),
+                label: c.label,
+                hint: disabledCourseIds.includes(c.id) ? "already enrolled" : c.hint,
+                disabled:
                   disabledCourseIds.includes(c.id) ||
-                  (chosen.has(String(c.id)) && row.courseId !== String(c.id));
-                return (
-                  <option key={c.id} value={c.id} disabled={taken}>
-                    {c.label}
-                    {disabledCourseIds.includes(c.id) ? " — already enrolled" : ""}
-                  </option>
-                );
-              })}
-            </select>
+                  (chosen.has(String(c.id)) && row.courseId !== String(c.id)),
+              }))}
+            />
 
-            <select
-              name="feeTierId"
-              className={`${SELECT_CLASS} max-w-40`}
-              value={row.feeTierId}
-              onChange={(e) => update(row.key, { feeTierId: e.target.value })}
-              required
-            >
-              {feeTiers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              disabled={rows.length === 1}
-              onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
-              aria-label="Remove this enrolment"
-            >
-              <X className="size-4" aria-hidden />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Picker
+                name="feeTierId"
+                title="Fee tier"
+                required
+                className="flex-1"
+                value={row.feeTierId}
+                onChange={(feeTierId) => update(row.key, { feeTierId })}
+                options={feeTiers.map((t) => ({ value: String(t.id), label: t.label }))}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-12 shrink-0"
+                disabled={rows.length === 1}
+                onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
+                aria-label="Remove this enrolment"
+              >
+                <X className="size-5" aria-hidden />
+              </Button>
+            </div>
           </div>
         ))}
       </div>
 
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-sm">
         A student must be enrolled in at least one course to be saved.
       </p>
     </div>

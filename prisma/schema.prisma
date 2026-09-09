@@ -75,6 +75,11 @@ model Stream {
   label     String   @unique // Science, Maths, Tech, Commerce, Art, 6-11, Primary, A/L, Other
   active    Boolean  @default(true)
   courses   Course[]
+  /// Which subjects this stream offers. Many-to-many on purpose: ICT belongs
+  /// to A/L Tech AND A/L Arts, and registration narrows the subject list by
+  /// stream. Grade is deliberately NOT part of this — a student may sit in
+  /// another grade's class to catch up.
+  subjects  Subject[] @relation("StreamSubjects")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -128,6 +133,8 @@ model Subject {
   label     String   @unique // ICT, Chemistry, BTECH, ETECH, ...
   active    Boolean  @default(true)
   courses   Course[]
+  /// The streams that offer this subject. See Stream.subjects.
+  streams   Stream[] @relation("StreamSubjects")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

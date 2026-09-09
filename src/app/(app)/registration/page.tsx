@@ -53,7 +53,13 @@ export default async function RegistrationPage({
 
   return (
     <RegistrationScreen
-      courses={courses.map((c) => ({ id: c.id, label: courseDisplayName(c) }))}
+      courses={courses.map((c) => ({
+        id: c.id,
+        label: courseDisplayName(c),
+        // Second line in the picker: the teacher is how staff tell two
+        // same-named courses apart at a glance.
+        hint: c.teacher.name,
+      }))}
       feeTiers={feeTiers.map((t) => ({
         id: t.id,
         label: t.label,
