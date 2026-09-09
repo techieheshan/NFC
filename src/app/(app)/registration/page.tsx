@@ -1,10 +1,11 @@
 import { requireNavAccess } from "@/lib/authz";
 import { getToggle } from "@/lib/settings";
-import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 
 import {
   addEnrolment,
+  loadCoursesForCascade,
+  loadSubjectsForStream,
   attachIdentifier,
   createStudent,
   lookupCard,
@@ -30,19 +31,15 @@ export default async function RegistrationPage({
   const initialStudent =
     Number.isInteger(studentId) && studentId > 0 ? await refreshStudent(studentId) : null;
 
-  const [courses, feeTiers] = await Promise.all([
-    db.course.findMany({
+  // Only step 1 ships with the page. Subjects and courses are fetched per
+  // step, so a terminal never downloads every course to show three of them.
+  const [streams, courseCount, feeTiers] = await Promise.all([
+    db.stream.findMany({
       where: { active: true },
-      select: {
-        id: true,
-        name: true,
-        grade: { select: { label: true } },
-        subject: { select: { label: true } },
-        classType: { select: { label: true } },
-        teacher: { select: { name: true } },
-      },
-      orderBy: { id: "asc" },
+      select: { id: true, label: true },
+      orderBy: { label: "asc" },
     }),
+    db.course.count({ where: { active: true } }),
     // Fee tiers are institute-configurable rows, never hardcoded.
     db.feeTier.findMany({
       where: { active: true },
@@ -53,13 +50,10 @@ export default async function RegistrationPage({
 
   return (
     <RegistrationScreen
-      courses={courses.map((c) => ({
-        id: c.id,
-        label: courseDisplayName(c),
-        // Second line in the picker: the teacher is how staff tell two
-        // same-named courses apart at a glance.
-        hint: c.teacher.name,
-      }))}
+      streams={streams}
+      courseCount={courseCount}
+      loadSubjects={loadSubjectsForStream}
+      loadCourses={loadCoursesForCascade}
       feeTiers={feeTiers.map((t) => ({
         id: t.id,
         label: t.label,

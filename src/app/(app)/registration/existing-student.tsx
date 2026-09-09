@@ -25,9 +25,16 @@ import { Label } from "@/components/ui/label";
 import { Picker } from "@/components/ui/picker";
 import { formatCardUid } from "@/lib/card-uid";
 
-import type { ActionState, Identifier, StudentView } from "./actions";
+import type {
+  ActionState,
+  CoursePick,
+  Identifier,
+  StudentView,
+  SubjectPick,
+} from "./actions";
 import { CardFields } from "./card-fields";
-import { type CourseOption, type FeeTierOption } from "./enrolment-picker";
+import { type FeeTierOption } from "./enrolment-picker";
+import { CourseCascade, type StreamPick } from "./course-cascade";
 import { PhotoCapture } from "./photo-capture";
 
 const EMPTY: ActionState = { ok: false };
@@ -42,7 +49,9 @@ type Actions = {
 export function ExistingStudent({
   student,
   captured,
-  courses,
+  streams,
+  loadSubjects,
+  loadCourses,
   feeTiers,
   actions,
   onChanged,
@@ -51,7 +60,9 @@ export function ExistingStudent({
   student: StudentView;
   /** What this visit's scan captured, so a missing identifier can be filled. */
   captured: Identifier;
-  courses: CourseOption[];
+  streams: StreamPick[];
+  loadSubjects: (streamId: number) => Promise<SubjectPick[]>;
+  loadCourses: (input: { subjectId?: number; all?: boolean }) => Promise<CoursePick[]>;
   feeTiers: FeeTierOption[];
   actions: Actions;
   onChanged: () => void;
@@ -198,19 +209,13 @@ export function ExistingStudent({
         <input type="hidden" name="studentId" value={student.id} />
         <div className="space-y-2">
           <Label className="text-base">Course</Label>
-          <Picker
-            name="courseId"
-            title="Choose the course"
-            placeholder="Select course…"
-            required
+          <CourseCascade
+            streams={streams}
             value={addCourseId}
             onChange={setAddCourseId}
-            options={courses.map((c) => ({
-              value: String(c.id),
-              label: c.label,
-              hint: activeCourseIds.includes(c.id) ? "already enrolled" : c.hint,
-              disabled: activeCourseIds.includes(c.id),
-            }))}
+            loadSubjects={loadSubjects}
+            loadCourses={loadCourses}
+            unavailable={(id) => (activeCourseIds.includes(id) ? "already enrolled" : null)}
           />
         </div>
         <div className="space-y-2">

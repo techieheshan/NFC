@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Picker } from "@/components/ui/picker";
 
+import type { CoursePick, SubjectPick } from "./actions";
+import { CourseCascade, type StreamPick } from "./course-cascade";
+
 export type CourseOption = { id: number; label: string; hint?: string };
 export type FeeTierOption = { id: number; label: string; multiplier: string };
 
@@ -25,12 +28,16 @@ let nextKey = 1;
  * only makes that obvious rather than being the guarantee.
  */
 export function EnrolmentPicker({
-  courses,
+  streams,
   feeTiers,
+  loadSubjects,
+  loadCourses,
   disabledCourseIds = [],
 }: {
-  courses: CourseOption[];
+  streams: StreamPick[];
   feeTiers: FeeTierOption[];
+  loadSubjects: (streamId: number) => Promise<SubjectPick[]>;
+  loadCourses: (input: { subjectId?: number; all?: boolean }) => Promise<CoursePick[]>;
   /** Courses the student is already actively enrolled in. */
   disabledCourseIds?: number[];
 }) {
@@ -45,10 +52,6 @@ export function EnrolmentPicker({
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
 
-  const available = courses.filter(
-    (c) => !disabledCourseIds.includes(c.id) && !chosen.has(String(c.id)),
-  );
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -58,7 +61,6 @@ export function EnrolmentPicker({
           variant="outline"
           size="sm"
           className="h-11 gap-1.5 px-4 text-base"
-          disabled={available.length === 0}
           onClick={() =>
             setRows((rs) => [
               ...rs,
@@ -74,21 +76,19 @@ export function EnrolmentPicker({
       <div className="space-y-3">
         {rows.map((row) => (
           <div key={row.key} className="space-y-2 rounded-lg border p-2">
-            <Picker
-              name="courseId"
-              title="Choose the course"
-              placeholder="Select course…"
-              required
+            <CourseCascade
+              streams={streams}
               value={row.courseId}
               onChange={(courseId) => update(row.key, { courseId })}
-              options={courses.map((c) => ({
-                value: String(c.id),
-                label: c.label,
-                hint: disabledCourseIds.includes(c.id) ? "already enrolled" : c.hint,
-                disabled:
-                  disabledCourseIds.includes(c.id) ||
-                  (chosen.has(String(c.id)) && row.courseId !== String(c.id)),
-              }))}
+              loadSubjects={loadSubjects}
+              loadCourses={loadCourses}
+              unavailable={(id) =>
+                disabledCourseIds.includes(id)
+                  ? "already enrolled"
+                  : chosen.has(String(id)) && row.courseId !== String(id)
+                    ? "already on this form"
+                    : null
+              }
             />
 
             <div className="flex items-center gap-2">

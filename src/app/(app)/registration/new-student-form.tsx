@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCardUid } from "@/lib/card-uid";
 
-import type { ActionState, Identifier } from "./actions";
+import type { ActionState, CoursePick, Identifier, SubjectPick } from "./actions";
+import type { StreamPick } from "./course-cascade";
 import { CardFields } from "./card-fields";
 import {
   EnrolmentPicker,
-  type CourseOption,
   type FeeTierOption,
 } from "./enrolment-picker";
 import { PhotoCapture } from "./photo-capture";
@@ -21,14 +21,21 @@ const EMPTY: ActionState = { ok: false };
 
 export function NewStudentForm({
   captured,
-  courses,
+  streams,
+  courseCount,
+  loadSubjects,
+  loadCourses,
   feeTiers,
   action,
   onSaved,
   onBack,
 }: {
   captured: Identifier;
-  courses: CourseOption[];
+  streams: StreamPick[];
+  /** Only to say "no courses exist yet" — the lists load per step. */
+  courseCount: number;
+  loadSubjects: (streamId: number) => Promise<SubjectPick[]>;
+  loadCourses: (input: { subjectId?: number; all?: boolean }) => Promise<CoursePick[]>;
   feeTiers: FeeTierOption[];
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   onSaved: () => void;
@@ -66,7 +73,7 @@ export function NewStudentForm({
       </div>
 
 
-      {courses.length === 0 ? (
+      {courseCount === 0 ? (
         <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
           There are no active courses yet, so nobody can be enrolled. Create one
           under Setup → Classes / Courses first.
@@ -114,7 +121,12 @@ export function NewStudentForm({
           </div>
 
           <div className="rounded-xl border p-4">
-            <EnrolmentPicker courses={courses} feeTiers={feeTiers} />
+            <EnrolmentPicker
+              streams={streams}
+              feeTiers={feeTiers}
+              loadSubjects={loadSubjects}
+              loadCourses={loadCourses}
+            />
           </div>
         </>
       )}
@@ -131,7 +143,7 @@ export function NewStudentForm({
         <Button type="button" variant="outline" className="h-14 px-5 text-base" onClick={onBack}>
           Cancel
         </Button>
-        <Button type="submit" className="h-14 flex-1 text-base" disabled={pending || courses.length === 0}>
+        <Button type="submit" className="h-14 flex-1 text-base" disabled={pending || courseCount === 0}>
           {pending ? "Saving…" : "Save student"}
         </Button>
       </div>

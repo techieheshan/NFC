@@ -5,10 +5,18 @@ import { CheckCircle2 } from "lucide-react";
 
 import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
-import type { ActionState, Identifier, LookupResult, StudentView } from "./actions";
+import type {
+  ActionState,
+  CoursePick,
+  Identifier,
+  LookupResult,
+  StudentView,
+  SubjectPick,
+} from "./actions";
+import type { StreamPick } from "./course-cascade";
 import { CardScanner } from "./card-scanner";
 import { ExistingStudent } from "./existing-student";
-import type { CourseOption, FeeTierOption } from "./enrolment-picker";
+import type { FeeTierOption } from "./enrolment-picker";
 import { NewStudentForm } from "./new-student-form";
 
 type Phase =
@@ -18,8 +26,12 @@ type Phase =
   | { kind: "saved" };
 
 type Props = {
-  courses: CourseOption[];
+  /** Step 1 of the cascade; subjects and courses load per step. */
+  streams: StreamPick[];
+  courseCount: number;
   feeTiers: FeeTierOption[];
+  loadSubjects: (streamId: number) => Promise<SubjectPick[]>;
+  loadCourses: (input: { subjectId?: number; all?: boolean }) => Promise<CoursePick[]>;
   lookupCard: (input: Identifier) => Promise<LookupResult>;
   refreshStudent: (studentId: number) => Promise<StudentView | null>;
   createStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -67,8 +79,11 @@ function SavedThenScan({ onDone }: { onDone: () => void }) {
 }
 
 export function RegistrationScreen({
-  courses,
+  streams,
+  courseCount,
   feeTiers,
+  loadSubjects,
+  loadCourses,
   lookupCard,
   refreshStudent,
   createStudent,
@@ -151,8 +166,11 @@ export function RegistrationScreen({
     return (
       <NewStudentForm
         captured={phase.captured}
-        courses={courses}
+        streams={streams}
+        courseCount={courseCount}
         feeTiers={feeTiers}
+        loadSubjects={loadSubjects}
+        loadCourses={loadCourses}
         action={createStudent}
         onSaved={() => {
           VOICE.registered();
@@ -168,8 +186,10 @@ export function RegistrationScreen({
       <ExistingStudent
         student={phase.student}
         captured={phase.captured}
-        courses={courses}
+        streams={streams}
         feeTiers={feeTiers}
+        loadSubjects={loadSubjects}
+        loadCourses={loadCourses}
         actions={{ addEnrolment, updateStudent, updatePhoto, attachIdentifier }}
         onChanged={refresh}
         onBack={backToScan}

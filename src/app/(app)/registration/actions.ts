@@ -8,6 +8,7 @@ import { normalizeCardNumber, normalizeCardUid } from "@/lib/card-uid";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { isUniqueViolation } from "@/lib/prisma-errors";
+import { coursesForSubject, subjectsForStream } from "@/lib/streams";
 import {
   MAX_PHOTO_BYTES,
   deleteStudentPhoto,
@@ -16,6 +17,21 @@ import {
 } from "@/lib/photo";
 
 const PATH = "/registration";
+
+/** What the cascade's two pickers render. */
+export type SubjectPick = { id: number; label: string };
+export type CoursePick = { id: number; label: string; hint?: string };
+
+/** The columns `courseDisplayName` needs, matching `coursesForSubject`. */
+const cascadeCourseSelect = {
+  id: true,
+  name: true,
+  defaultFee: true,
+  teacher: { select: { name: true } },
+  grade: { select: { label: true } },
+  subject: { select: { label: true } },
+  classType: { select: { label: true } },
+} as const;
 
 /**
  * `values` echoes back what was submitted. React 19 resets an uncontrolled form
@@ -661,4 +677,55 @@ export async function refreshStudent(studentId: number): Promise<StudentView | n
   });
 
   return student ? toStudentView(student) : null;
+}
+
+// ---------------------------------------------------------------------------
+// The registration cascade: stream → subject → course
+// ---------------------------------------------------------------------------
+
+/**
+ * The subjects a stream offers, and the courses that teach one subject.
+ *
+ * These are thin wrappers over `src/lib/streams.ts` — the same helpers Setup
+ * writes through — so the list staff can pick from is the list Setup says the
+ * stream contains, and never a second copy assembled here.
+ *
+ * They are fetched per step rather than shipped whole: registration is the
+ * screen with hundreds of courses behind it, and sending all of them to a
+ * terminal on every student is the cost this cascade exists to remove.
+ * Each is its own HTTP endpoint, so each re-checks the role.
+ */
+export async function loadSubjectsForStream(streamId: number): Promise<SubjectPick[]> {
+  await requireOperationalAccess();
+  return subjectsForStream(streamId);
+}
+
+/**
+ * Courses for one subject, or — with `all` — every active course.
+ *
+ * The `all` escape is deliberate: a student catching up sits in a course
+ * outside their stream's usual set, and a cascade with no way out would send
+ * staff to the database instead.
+ */
+export async function loadCoursesForCascade(input: {
+  subjectId?: number;
+  all?: boolean;
+}): Promise<CoursePick[]> {
+  await requireOperationalAccess();
+
+  const rows = input.all
+    ? await db.course.findMany({
+        where: { active: true },
+        select: cascadeCourseSelect,
+        orderBy: { id: "asc" },
+      })
+    : input.subjectId
+      ? await coursesForSubject(input.subjectId)
+      : [];
+
+  return rows.map((c) => ({
+    id: c.id,
+    label: courseDisplayName(c),
+    hint: c.teacher.name,
+  }));
 }
