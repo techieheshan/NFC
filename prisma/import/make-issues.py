@@ -11,9 +11,10 @@ on our side and nothing has to be explained twice.
 import json, sys, zipfile
 from xml.sax.saxutils import escape
 
-SHOW = [("row", "Row in your file", 9), ("name", "Course Name", 30), ("teacher", "Teacher", 22),
-        ("subject", "Subject", 13), ("grade", "Grade", 9), ("day", "Day", 7),
-        ("start", "Start", 11), ("end", "End", 11), ("problem", "WHAT IS WRONG", 46)]
+SHOW = [("row", "Row in your file", 9), ("status", "STATUS", 26), ("name", "Course Name", 30),
+        ("teacher", "Teacher", 22), ("subject", "Subject", 13), ("grade", "Grade", 9),
+        ("day", "Day", 7), ("start", "Start", 11), ("end", "End", 11),
+        ("problem", "WHAT IS WRONG / WHAT WE NEED", 60)]
 FIX = [("Correct Teacher", 22), ("Correct Grade", 13), ("Correct Day", 11),
        ("Correct Start", 13), ("Correct End", 13)]
 
@@ -48,10 +49,10 @@ def main():
     ]
     widths = [w for _, _, w in SHOW] + [w for _, w in FIX]
     fix_from = len(SHOW)
-    # 1 = header, 2 = the "what is wrong" cell, 3 = the columns they fill in.
+    # 1 = header, 2 = status and the problem text, 3 = the columns they fill in.
     def styles(r, c):
         if r == 1: return 1
-        if c == fix_from - 1: return 2
+        if c in (1, fix_from - 1): return 2
         if c >= fix_from: return 3
         return 0
 
