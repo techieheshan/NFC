@@ -29,6 +29,7 @@ import type {
   Receipt,
 } from "./actions";
 import { ComboPrompt } from "./combo-prompt";
+import { MonthCalendar } from "./month-calendar";
 import { ReceiptView } from "./receipt";
 
 type Props = {
@@ -383,45 +384,16 @@ export function PaymentScreen({
                   Free — no charge
                 </p>
               ) : (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {c.months.map((m) => {
-                    const key = monthKey(c.courseId, m.year, m.month);
-                    const on = selected.has(key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        disabled={m.paid || pending}
-                        onClick={() => toggleMonth(key)}
-                        className={[
-                          "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-                          m.paid
-                            ? "bg-muted text-muted-foreground cursor-not-allowed"
-                            : on
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : // A month that is neither paid nor current is
-                                // still perfectly payable — past months are
-                                // catch-up, future ones are paying ahead.
-                                m.kind === "past"
-                                ? "border-amber-300 bg-amber-50 hover:bg-accent"
-                                : m.kind === "future"
-                                  ? "border-dashed hover:bg-accent"
-                                  : "hover:bg-accent",
-                        ].join(" ")}
-                        title={
-                          m.kind === "future"
-                            ? "Paying ahead"
-                            : m.kind === "past"
-                              ? "Catch-up for a past month"
-                              : undefined
-                        }
-                      >
-                        {m.label}
-                        {m.paid && " ✓"}
-                        {!m.paid && m.kind === "future" && " →"}
-                      </button>
-                    );
-                  })}
+                <div className="mt-3">
+                  {/* Twelve chips do not fit a terminal; the months live in a
+                      calendar instead. Nothing in it is pre-selected. */}
+                  <MonthCalendar
+                    months={c.months}
+                    selectedKeys={selected}
+                    disabled={pending}
+                    keyFor={(year, month) => monthKey(c.courseId, year, month)}
+                    onToggle={(year, month) => toggleMonth(monthKey(c.courseId, year, month))}
+                  />
                 </div>
               )}
             </div>
