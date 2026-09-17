@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { UserRole } from "@prisma/client";
 
+import { MobileNav } from "@/components/shell/mobile-nav";
 import { NavLink } from "@/components/shell/nav-link";
 import { SignOutButton } from "@/components/shell/sign-out-button";
 import { navSectionsFor } from "@/config/nav";
@@ -13,7 +14,8 @@ const ROLE_LABEL: Record<UserRole, string> = {
 
 /**
  * Responsive shell. Same tree at every width; CSS decides which half shows:
- *   < lg  — no sidebar, the dashboard renders as tiles (the terminal view)
+ *   < lg  — no sidebar: the dashboard is tiles, and the full menu lives
+ *            behind the burger in the header (the terminal view)
  *   >= lg — persistent left sidebar (the WST-style desktop view)
  * Both sides read the SAME role-filtered nav config; there is no per-role menu.
  */
@@ -64,7 +66,10 @@ export function AppShell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-10 flex h-16 items-center justify-between gap-3 border-b px-4 backdrop-blur lg:px-8">
-          <div className="lg:hidden">
+          {/* Phones get the full menu behind the burger — tiles only carry the
+              daily work, and staff away from a desktop need the rest too. */}
+          <div className="flex items-center gap-1 lg:hidden">
+            <MobileNav role={role} username={username} roleLabel={ROLE_LABEL[role]} />
             <Wordmark />
           </div>
           <div className="hidden lg:block">
