@@ -10,6 +10,7 @@ import {
   createStudent,
   lookupCard,
   refreshStudent,
+  removeEnrolment,
   updateStudent,
   updateStudentPhoto,
 } from "./actions";
@@ -62,6 +63,7 @@ export default async function RegistrationPage({
       lookupCard={lookupCard}
       refreshStudent={refreshStudent}
       createStudent={createStudent}
+      removeEnrolment={removeEnrolment}
       addEnrolment={addEnrolment}
       updateStudent={updateStudent}
       updatePhoto={updateStudentPhoto}

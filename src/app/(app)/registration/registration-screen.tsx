@@ -35,6 +35,7 @@ type Props = {
   lookupCard: (input: Identifier) => Promise<LookupResult>;
   refreshStudent: (studentId: number) => Promise<StudentView | null>;
   createStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  removeEnrolment: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   addEnrolment: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updateStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updatePhoto: (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -87,6 +88,7 @@ export function RegistrationScreen({
   lookupCard,
   refreshStudent,
   createStudent,
+  removeEnrolment,
   addEnrolment,
   updateStudent,
   updatePhoto,
@@ -190,7 +192,7 @@ export function RegistrationScreen({
         feeTiers={feeTiers}
         loadSubjects={loadSubjects}
         loadCourses={loadCourses}
-        actions={{ addEnrolment, updateStudent, updatePhoto, attachIdentifier }}
+        actions={{ removeEnrolment, addEnrolment, updateStudent, updatePhoto, attachIdentifier }}
         onChanged={refresh}
         onBack={backToScan}
       />

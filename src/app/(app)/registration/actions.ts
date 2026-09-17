@@ -64,6 +64,14 @@ export type EnrolmentView = {
   course: string;
   feeTier: string;
   status: "ACTIVE" | "DROPPED";
+  /**
+   * How much history hangs off this enrolment. Zero of both means it is still
+   * just a typing mistake and can be removed outright; anything else and the
+   * row has to stay, because deleting it would delete the reason a payment or
+   * a mark exists.
+   */
+  payments: number;
+  attendance: number;
 };
 
 export type StudentView = {
@@ -186,6 +194,28 @@ async function readPhoto(formData: FormData): Promise<PhotoUpload | null | strin
   };
 }
 
+/**
+ * How many payments and attendance marks exist for each of a student's courses.
+ *
+ * Payment and Attendance point at (student, course), not at the enrolment row,
+ * so this is two grouped counts rather than a relation count — and it is what
+ * decides whether an enrolment is still just a mistake that can be deleted.
+ */
+async function historyByCourse(studentId: number) {
+  const [payments, attendance] = await Promise.all([
+    db.payment.groupBy({
+      by: ["courseId"],
+      where: { studentId, courseId: { not: null } },
+      _count: { _all: true },
+    }),
+    db.attendance.groupBy({ by: ["courseId"], where: { studentId }, _count: { _all: true } }),
+  ]);
+  return {
+    payments: new Map(payments.map((p) => [p.courseId!, p._count._all])),
+    attendance: new Map(attendance.map((a) => [a.courseId, a._count._all])),
+  };
+}
+
 function toStudentView(student: {
   id: number;
   name: string;
@@ -228,6 +258,8 @@ function toStudentView(student: {
       course: courseDisplayName(e.course),
       feeTier: e.feeTier.label,
       status: e.status,
+      payments: 0,
+      attendance: 0,
     })),
   };
 }
@@ -249,6 +281,22 @@ const studentInclude = {
     orderBy: { id: "asc" },
   },
 } as const;
+
+/** `toStudentView`, with each enrolment's payment and attendance counts filled in. */
+async function withHistory(
+  student: Parameters<typeof toStudentView>[0] & { id: number },
+): Promise<StudentView> {
+  const history = await historyByCourse(student.id);
+  const view = toStudentView(student);
+  return {
+    ...view,
+    enrolments: view.enrolments.map((e) => ({
+      ...e,
+      payments: history.payments.get(e.courseId) ?? 0,
+      attendance: history.attendance.get(e.courseId) ?? 0,
+    })),
+  };
+}
 
 /**
  * Both cardUid and cardNumber are unique, so a clash has to name the offending
@@ -347,7 +395,7 @@ export async function lookupCard(input: Identifier): Promise<LookupResult> {
   });
 
   return student
-    ? { status: "found", student: toStudentView(student), captured }
+    ? { status: "found", student: await withHistory(student), captured }
     : { status: "new", captured };
 }
 
@@ -676,7 +724,7 @@ export async function refreshStudent(studentId: number): Promise<StudentView | n
     include: studentInclude,
   });
 
-  return student ? toStudentView(student) : null;
+  return student ? await withHistory(student) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -728,4 +776,63 @@ export async function loadCoursesForCascade(input: {
     label: courseDisplayName(c),
     hint: c.teacher.name,
   }));
+}
+
+/**
+ * Undo a wrongly-added enrolment.
+ *
+ * In the rush at the counter staff pick the course above the one they meant, and
+ * until that enrolment has been used it is nothing but a typo — so it is
+ * deleted outright rather than left as a DROPPED row nobody can explain later.
+ *
+ * The moment it HAS been used it stops being a typo: a payment or an attendance
+ * mark points at that (student, course), and removing the enrolment would leave
+ * money and marks with nothing behind them. Then it is refused, with the counts
+ * in the message, and the student is dropped from the course instead — the
+ * record stays, the enrolment stops.
+ *
+ * The check is re-run here rather than trusted from the screen: the screen's
+ * copy was fetched before someone else's payment may have landed.
+ */
+export async function removeEnrolment(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireOperationalAccess();
+
+  const parsed = z.object({ enrolmentId: id }).safeParse({
+    enrolmentId: formData.get("enrolmentId"),
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid enrolment." };
+
+  const enrolment = await db.enrollment.findUnique({
+    where: { id: parsed.data.enrolmentId },
+    select: { id: true, studentId: true, courseId: true },
+  });
+  if (!enrolment) return { ok: false, error: "That enrolment no longer exists." };
+
+  const [payments, attendance] = await Promise.all([
+    db.payment.count({
+      where: { studentId: enrolment.studentId, courseId: enrolment.courseId },
+    }),
+    db.attendance.count({
+      where: { studentId: enrolment.studentId, courseId: enrolment.courseId },
+    }),
+  ]);
+
+  if (payments > 0 || attendance > 0) {
+    const parts = [
+      payments > 0 ? `${payments} payment${payments === 1 ? "" : "s"}` : null,
+      attendance > 0 ? `${attendance} attendance mark${attendance === 1 ? "" : "s"}` : null,
+    ].filter(Boolean);
+    return {
+      ok: false,
+      error: `This course has ${parts.join(" and ")} against it, so it cannot be removed. Drop the student from the course instead — the history stays.`,
+    };
+  }
+
+  await db.enrollment.delete({ where: { id: enrolment.id } });
+
+  revalidatePath(PATH);
+  return { ok: true };
 }

@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   UserRound,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ import { formatCardUid } from "@/lib/card-uid";
 
 import type {
   ActionState,
+  EnrolmentView,
   CoursePick,
   Identifier,
   StudentView,
@@ -40,6 +42,7 @@ import { PhotoCapture } from "./photo-capture";
 const EMPTY: ActionState = { ok: false };
 
 type Actions = {
+  removeEnrolment: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   addEnrolment: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updateStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updatePhoto: (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -182,15 +185,12 @@ export function ExistingStudent({
         ) : (
           <ul className="divide-y">
             {student.enrolments.map((e) => (
-              <li key={e.id} className="flex items-center justify-between gap-3 py-2">
-                <span className="text-sm">{e.course}</span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <Badge variant="outline">{e.feeTier}</Badge>
-                  {e.status === "DROPPED" && (
-                    <Badge variant="secondary">Dropped</Badge>
-                  )}
-                </span>
-              </li>
+              <EnrolmentRow
+                key={e.id}
+                enrolment={e}
+                onRemoved={onChanged}
+                action={actions.removeEnrolment}
+              />
             ))}
           </ul>
         )}
@@ -397,5 +397,76 @@ function ActionDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * One enrolment, with the way out of a mis-tap.
+ *
+ * Remove is offered only while the enrolment has no history — no payment, no
+ * attendance mark. With history the button is gone and the row says why, so
+ * staff learn the rule from the screen instead of from a refusal; the server
+ * re-checks it anyway, because this copy of the counts was fetched before
+ * someone else's payment may have landed.
+ */
+function EnrolmentRow({
+  enrolment,
+  action,
+  onRemoved,
+}: {
+  enrolment: EnrolmentView;
+  action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  onRemoved: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(action, EMPTY);
+  const used = enrolment.payments > 0 || enrolment.attendance > 0;
+
+  useEffect(() => {
+    if (state.ok) onRemoved();
+  }, [state.ok, onRemoved]);
+
+  const history = [
+    enrolment.payments > 0
+      ? `${enrolment.payments} payment${enrolment.payments === 1 ? "" : "s"}`
+      : null,
+    enrolment.attendance > 0
+      ? `${enrolment.attendance} mark${enrolment.attendance === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
+
+  return (
+    <li className="flex items-center justify-between gap-3 py-2">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm">{enrolment.course}</span>
+        {used && (
+          <span className="text-muted-foreground block text-xs">
+            {history.join(" · ")} — cannot be removed
+          </span>
+        )}
+        {state.error && (
+          <span className="text-destructive block text-xs">{state.error}</span>
+        )}
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        <Badge variant="outline">{enrolment.feeTier}</Badge>
+        {enrolment.status === "DROPPED" && <Badge variant="secondary">Dropped</Badge>}
+        {!used && (
+          <form action={formAction}>
+            <input type="hidden" name="enrolmentId" value={enrolment.id} />
+            <Button
+              type="submit"
+              variant="outline"
+              size="icon"
+              className="size-10"
+              disabled={pending}
+              aria-label={`Remove ${enrolment.course}`}
+              title="Remove — added by mistake"
+            >
+              <X className="size-4" aria-hidden />
+            </Button>
+          </form>
+        )}
+      </span>
+    </li>
   );
 }
