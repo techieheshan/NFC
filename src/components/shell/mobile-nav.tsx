@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
@@ -65,7 +66,15 @@ export function MobileNav({ role, username, roleLabel }: {
         <Menu className="size-6" aria-hidden />
       </button>
 
-      {open && (
+      {/*
+        Portalled to <body>, not rendered in place. The header this button
+        lives in has `backdrop-blur`, and in CSS a filter on an ancestor makes
+        that ancestor the containing block for its `position: fixed`
+        descendants — so an in-place drawer LOOKED full-screen but was really
+        clipped to the 64px header, and taps on its lower rows fell through to
+        the dashboard tiles underneath ("Payment" opened Attendance).
+      */}
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 flex bg-black/40 lg:hidden"
           onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
@@ -121,7 +130,8 @@ export function MobileNav({ role, username, roleLabel }: {
               <p className="text-muted-foreground text-xs">{roleLabel}</p>
             </div>
           </nav>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

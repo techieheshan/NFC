@@ -40,23 +40,26 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   const [year, month] =
     asked && /^\d{4}-\d{2}$/.test(asked) ? asked.split("-").map(Number) : [now.year, now.month];
 
-  const { courses, blocked, teacherScoped } = await reportableCourses(user, teacherId);
-
-  // Teachers never pick a teacher — theirs is fixed and shown read-only.
-  const teachers = isTeacher
-    ? []
-    : await db.teacher.findMany({
-        where: { active: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      });
+  // Independent reads, so they run side by side. On a remote database every
+  // query is a few hundred milliseconds of round trip; asked one after another
+  // they made this the slowest screen in the app (~2.5s a tap).
+  const [{ courses, blocked, teacherScoped }, teachers, report] = await Promise.all([
+    reportableCourses(user, teacherId),
+    // Teachers never pick a teacher — theirs is fixed and shown read-only.
+    isTeacher
+      ? Promise.resolve([] as { id: number; name: string }[])
+      : db.teacher.findMany({
+          where: { active: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+    // "All courses" is a real selection now, so the report is always built —
+    // there is no "pick a course first" state to fall back to.
+    buildStudentList(user, { courseId, teacherId, year, month }),
+  ]);
   const ownName = isTeacher && teacherScoped
     ? (await db.teacher.findUnique({ where: { id: teacherScoped }, select: { name: true } }))?.name ?? null
     : null;
-
-  // "All courses" is a real selection now, so the report is always built —
-  // there is no "pick a course first" state to fall back to.
-  const report = await buildStudentList(user, { courseId, teacherId, year, month });
 
   const monthValue = `${year}-${String(month).padStart(2, "0")}`;
 

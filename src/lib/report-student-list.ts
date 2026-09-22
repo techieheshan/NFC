@@ -6,12 +6,12 @@ import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { courseScopeFor } from "@/lib/reports";
-import { paidStudentsForCourseMonth } from "@/lib/student-arrears";
+import { paidStudentsForCoursesMonth } from "@/lib/student-arrears";
 
 /**
  * The teacher-facing student list: for one course and one month, who has paid.
  *
- * Read-only. "Paid" is decided by `paidStudentsForCourseMonth`, the same
+ * Read-only. "Paid" is decided by `paidStudentsForCoursesMonth`, the same
  * billing-month check the arrears colour uses — a July-stamped payment counts
  * for July however late the cash arrived, and this report can never disagree
  * with the badge on the counter.
@@ -136,11 +136,12 @@ export async function buildStudentList(
         student: { select: { id: true, name: true, cardNumber: true } },
       },
     }),
-    // One paid-set per course, through the same billing-month check as always.
-    Promise.all(courseIds.map((id) => paidStudentsForCourseMonth(id, year, month))),
+    // Every course's paid-set in one query, through the same billing-month
+    // check as always — not one round trip per course.
+    paidStudentsForCoursesMonth(courseIds, year, month),
   ]);
 
-  const paidByCourse = new Map(courseIds.map((id, i) => [id, paidPerCourse[i]]));
+  const paidByCourse = paidPerCourse;
   const nameByCourse = new Map(courses.map((c) => [c.id, courseDisplayName(c)]));
 
   const rows: StudentListRow[] = enrolments

@@ -54,6 +54,29 @@ export async function paidStudentsForCourseMonth(
   return new Set(rows.map((r) => r.studentId));
 }
 
+/**
+ * The same check as `paidStudentsForCourseMonth`, for many courses in ONE query.
+ *
+ * Not a second paid-rule — it is the identical `SETTLED_PAYMENT_WHERE` filter,
+ * just asked once instead of once per course. The student list's "All courses"
+ * view called the single-course version in a loop, which on a remote database
+ * is one round trip per course: ~37 of them, 3.5–6 seconds a tap.
+ */
+export async function paidStudentsForCoursesMonth(
+  courseIds: number[],
+  year: number,
+  month: number,
+): Promise<Map<number, Set<number>>> {
+  const byCourse = new Map<number, Set<number>>(courseIds.map((id) => [id, new Set()]));
+  if (courseIds.length === 0) return byCourse;
+  const rows = await db.payment.findMany({
+    where: { ...SETTLED_PAYMENT_WHERE, courseId: { in: courseIds }, billingYear: year, billingMonth: month },
+    select: { studentId: true, courseId: true },
+  });
+  for (const r of rows) byCourse.get(r.courseId!)?.add(r.studentId);
+  return byCourse;
+}
+
 export type OwedMonth = { year: number; month: number; label: string };
 
 export type CourseArrears = {
