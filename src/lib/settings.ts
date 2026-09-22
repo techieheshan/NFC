@@ -1,14 +1,37 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+
 import { db } from "@/lib/db";
 
 /**
  * Reads a `Setting` row. Business values live in the database so the institute
  * can change them without a deploy — never inline them as constants.
  */
+/**
+ * Settings are read on almost every screen (the admission fee, the smart-card
+ * fee, the voice toggle) and written about twice a year, so they are cached
+ * across requests and dropped the moment someone saves one — see
+ * `SETTINGS_TAG` and the `revalidateTag` in settings/actions.ts.
+ *
+ * This is the ONLY kind of thing in this app that may be cached like that:
+ * reference values that change by decision, never by transaction. Payments,
+ * attendance and arrears are never cached, because a stale "paid" at the
+ * counter is a wrong decision, not a slow one.
+ */
+export const SETTINGS_TAG = "settings";
+
+const readSettings = unstable_cache(
+  async () => {
+    const rows = await db.setting.findMany({ select: { key: true, value: true } });
+    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  },
+  ["settings-all"],
+  { tags: [SETTINGS_TAG] },
+);
+
 export async function getSetting(key: string): Promise<string | null> {
-  const row = await db.setting.findUnique({ where: { key } });
-  return row?.value ?? null;
+  return (await readSettings())[key] ?? null;
 }
 
 /**
@@ -105,7 +128,6 @@ export async function getToggle(key: string): Promise<boolean> {
 
 /** Every spec with its current value — what the Settings screen renders. */
 export async function getAllSettings(): Promise<(SettingSpec & { value: string })[]> {
-  const rows = await db.setting.findMany();
-  const byKey = new Map(rows.map((r) => [r.key, r.value]));
-  return SETTING_SPECS.map((spec) => ({ ...spec, value: byKey.get(spec.key) ?? spec.fallback }));
+  const byKey = await readSettings();
+  return SETTING_SPECS.map((spec) => ({ ...spec, value: byKey[spec.key] ?? spec.fallback }));
 }

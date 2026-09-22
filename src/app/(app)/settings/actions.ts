@@ -1,11 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 
 import { requireRole } from "@/lib/authz";
 import { db } from "@/lib/db";
-import { SETTING_SPECS } from "@/lib/settings";
+import { SETTING_SPECS, SETTINGS_TAG } from "@/lib/settings";
 
 const PATH = "/settings";
 
@@ -67,6 +67,7 @@ export async function saveSetting(
 
   // Fees are read per transaction, so a change lands on the NEXT payment and
   // never rewrites a receipt that already exists.
+  updateTag(SETTINGS_TAG);
   revalidatePath(PATH);
   revalidatePath("/payment");
   revalidatePath("/my-students");
@@ -94,6 +95,7 @@ export async function setToggle(
     create: { key: spec.key, value: parsed.data.on, label: spec.label },
   });
 
+  updateTag(SETTINGS_TAG);
   revalidatePath(PATH);
   revalidatePath("/my-students");
   return { ok: true, savedKey: spec.key };
