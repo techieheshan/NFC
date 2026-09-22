@@ -180,6 +180,17 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     arrears, not-paid and the student list follow it — while `paidAt` stays the
     day the cash arrived.
 
+29. **Who may do what, and where it is enforced.** ADMIN and STAFF both do
+    setup — subjects, grades, streams (and their subject links), teachers,
+    courses, schedules, additional classes — because the admin is not always on
+    site (`SETUP_ROLES = OPERATIONAL_ROLES`). Two things stay ADMIN-only, and
+    both are money or identity: **cancelling a payment** (`cancelTransaction`
+    → `requireRole(["ADMIN"])`; Receipts hides the button from staff, reprint
+    stays both) and **User Roles** (creating logins, resetting OTHER people's
+    passwords). Everyone changes their own password. The hidden button is a
+    courtesy; the guard inside the action is the boundary — prove any change to
+    it by replaying the request with a STAFF cookie next to an ADMIN control.
+
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code
 (see the comments in `schema.prisma`). Preserve those checks.
