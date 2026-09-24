@@ -146,6 +146,16 @@ export function PaymentScreen({
     setSmartCard(false);
   }, []);
 
+  /**
+   * What happens when the receipt is done with: the counter dismisses its
+   * dialog, the standalone screen goes back to waiting for the next student.
+   * Stable, so nothing downstream re-runs just because this re-rendered.
+   */
+  const finish = useCallback(() => {
+    if (embedded) onFinished?.();
+    else reset();
+  }, [embedded, onFinished, reset]);
+
   const toggleMonth = useCallback((key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -249,12 +259,7 @@ export function PaymentScreen({
   );
 
   if (receipt) {
-    return (
-      <AutoPrintReceipt
-        receipt={receipt}
-        onDone={embedded ? () => onFinished?.() : reset}
-      />
-    );
+    return <AutoPrintReceipt receipt={receipt} onDone={finish} />;
   }
 
   if (!panel && embedded) {
@@ -537,19 +542,43 @@ export function PaymentScreen({
  * receipt is rendered, `window.print()` opens the real dialog, and when that
  * dialog closes the next payment appears on its own — no "next" button exists.
  *
- * Chrome blocks on `window.print()` until the dialog closes, and fires
- * `afterprint` as well; both paths advance, guarded so it only happens once. A
- * browser that can neither print nor fire the event still advances rather than
- * stranding the counter on a receipt.
+ * ONE PRINT PER RECEIPT, and the receipt's own reference is what says so.
+ * This used to depend on `onDone`, which the counter passes as a fresh arrow on
+ * every render (`embedded ? () => onFinished?.() : reset`) — so every re-render
+ * while the receipt was up tore the effect down and ran it again, scheduling
+ * another print. Measured: two effect runs 14ms apart for a single payment, and
+ * the only thing between that and a second sheet of paper was the cleanup
+ * cancelling the first timer in time. On Android `print()` returns immediately
+ * rather than blocking, which leaves the receipt mounted and re-rendering while
+ * the preview is open — exactly when that race is lost and the bill prints
+ * twice. The ref makes it impossible rather than unlikely.
+ *
+ * `onDone` is read through a ref for the same reason: a changing callback must
+ * not be able to restart the print.
+ *
+ * Chrome also fires `afterprint`; both paths advance, guarded so it only
+ * happens once. A browser that can neither print nor fire the event still
+ * advances rather than stranding the counter on a receipt.
  */
 function AutoPrintReceipt({ receipt, onDone }: { receipt: Receipt; onDone: () => void }) {
   const advanced = useRef(false);
+  const printedFor = useRef<string | null>(null);
+
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
 
   useEffect(() => {
+    // Already printed this receipt: a re-render (or a remount for the same
+    // transaction) must not send a second copy to the printer.
+    if (printedFor.current === receipt.reference) return;
+    printedFor.current = receipt.reference;
+
     const advance = () => {
       if (advanced.current) return;
       advanced.current = true;
-      onDone();
+      onDoneRef.current();
     };
 
     window.addEventListener("afterprint", advance, { once: true });
@@ -568,7 +597,7 @@ function AutoPrintReceipt({ receipt, onDone }: { receipt: Receipt; onDone: () =>
       window.clearTimeout(timer);
       window.removeEventListener("afterprint", advance);
     };
-  }, [onDone]);
+  }, [receipt.reference]);
 
   return (
     <div className="mx-auto max-w-lg space-y-5">
