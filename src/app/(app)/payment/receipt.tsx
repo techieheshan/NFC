@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -41,30 +43,46 @@ export function ReceiptView({
    */
   auto?: boolean;
 }) {
-  const voided = receipt.cancelled ?? null;
-
   return (
     <div className="space-y-4">
-      <style>{`
-        @media print {
-          @page { size: 58mm auto; margin: 0; }
-          body * { visibility: hidden !important; }
-          #receipt, #receipt * { visibility: visible !important; }
-          #receipt {
-            position: absolute; left: 0; top: 0;
-            width: 58mm; padding: 1mm 2mm 2mm;
-            font-size: 10pt; color: #000; background: #fff;
-          }
-          /* The screen border is a preview affordance; on paper it is ink. */
-          #receipt { border: 0 !important; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
-
       <div className="flex justify-center">
+        <Paper receipt={receipt} />
+      </div>
+
+      {/* The same paper again, in the print root — a direct child of <body>,
+          outside this dialog. Only this copy goes on paper; globals.css hides
+          everything else while printing. */}
+      <PrintPortal>
+        <Paper receipt={receipt} />
+      </PrintPortal>
+
+      {!auto && (
+      <div className="no-print mx-auto flex max-w-md gap-2">
+        <Button variant="outline" className="flex-1 gap-2" onClick={() => window.print()}>
+          <Printer className="size-4" aria-hidden />
+          Print
+        </Button>
+        <Button className="flex-1" onClick={onDone}>
+          {doneLabel}
+        </Button>
+      </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The receipt, as it appears on paper.
+ *
+ * Rendered twice — once on screen as the preview staff glance at, once inside
+ * the print root — so that what prints cannot depend on what is on screen.
+ */
+function Paper({ receipt }: { receipt: Receipt }) {
+  const voided = receipt.cancelled ?? null;
+  return (
         <div
-          id="receipt"
-          className="w-[384px] max-w-full border bg-white px-3 py-2 font-mono text-[13px] leading-tight text-black"
+          data-receipt
+          className="receipt-paper w-[384px] max-w-full border bg-white px-3 py-2 font-mono text-[13px] leading-tight text-black"
         >
           <div className="text-center">
             <p className="text-base font-bold tracking-widest">XENON</p>
@@ -119,21 +137,36 @@ export function ReceiptView({
             {voided ? "This receipt has been cancelled." : "Thank you"}
           </p>
         </div>
-      </div>
-
-      {!auto && (
-      <div className="no-print mx-auto flex max-w-md gap-2">
-        <Button variant="outline" className="flex-1 gap-2" onClick={() => window.print()}>
-          <Printer className="size-4" aria-hidden />
-          Print
-        </Button>
-        <Button className="flex-1" onClick={onDone}>
-          {doneLabel}
-        </Button>
-      </div>
-      )}
-    </div>
   );
+}
+
+/**
+ * A portal into #xenon-print, created on mount as a direct child of <body>.
+ *
+ * Being a child of <body> is the point: the payment dialog is transformed
+ * (-translate-x-1/2), and a transform makes an ancestor the containing block
+ * for absolutely positioned descendants — printing from inside it put the
+ * receipt somewhere other than the top of the page.
+ */
+function PrintPortal({ children }: { children: React.ReactNode }) {
+  // Created once, during render, so there is no state to set from an effect —
+  // the effect only attaches and detaches it.
+  const [host] = useState(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.id = "xenon-print";
+    return el;
+  });
+
+  useEffect(() => {
+    if (!host) return;
+    document.body.appendChild(host);
+    return () => {
+      host.remove();
+    };
+  }, [host]);
+
+  return host ? createPortal(children, host) : null;
 }
 
 /**

@@ -590,11 +590,20 @@ function AutoPrintReceipt({ receipt, onDone }: { receipt: Receipt; onDone: () =>
       } catch {
         // No printing on this device — the payment is taken either way.
       }
-      advance();
+      // NOT advancing here. On Android `print()` returns before the preview has
+      // composed the page, and advancing at this point unmounted the receipt
+      // ~35ms later — so what got printed was whatever the app moved on to,
+      // usually the attendance screen. `afterprint` is the honest signal; the
+      // fallback only exists for a browser that never fires it, and is long
+      // enough that the page is composed by the time it runs.
+      fallback = window.setTimeout(advance, 2500);
     }, 60);
+
+    let fallback: number | undefined;
 
     return () => {
       window.clearTimeout(timer);
+      if (fallback !== undefined) window.clearTimeout(fallback);
       window.removeEventListener("afterprint", advance);
     };
   }, [receipt.reference]);

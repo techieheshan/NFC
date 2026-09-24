@@ -134,3 +134,57 @@
     @apply font-sans;
   }
 }
+/* ---------------------------------------------------------------------------
+   Printing: only the paper, never the screen behind it.
+
+   These rules live HERE, not inside the receipt component, because the receipt
+   is unmounted the moment the app moves on — and on Android `window.print()`
+   returns before the preview has composed the page, so a stylesheet that dies
+   with the receipt takes its hiding rules with it and the attendance screen
+   gets printed instead. Measured: the receipt survived 35ms after print().
+
+   `display: none`, not `visibility: hidden`: a hidden box still occupies its
+   space and comes out as blank pages on a 58mm roll.
+
+   The paper is portalled into #xenon-print, a direct child of <body>, so it is
+   outside the payment dialog — which is transformed (-translate-x-1/2), and a
+   transform makes an ancestor the containing block for absolutely positioned
+   descendants, which used to push the receipt off the page.
+--------------------------------------------------------------------------- */
+#xenon-print {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+
+  html,
+  body {
+    background: #fff;
+    margin: 0;
+  }
+
+  body > *:not(#xenon-print) {
+    display: none !important;
+  }
+
+  #xenon-print {
+    display: block !important;
+  }
+
+  #xenon-print .receipt-paper {
+    width: 58mm;
+    padding: 1mm 2mm 2mm;
+    border: 0;
+    font-size: 10pt;
+    color: #000;
+    background: #fff;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
