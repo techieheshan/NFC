@@ -50,17 +50,21 @@ export function ComboPrompt({
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Layers className="size-5 shrink-0" aria-hidden />
-            {combo.name}
+          {/* The combo name can be long ("Chemistry Theory+Paper"). Left to
+              itself it set the dialog's min-content width, pushing the rows —
+              and with them the attendance day counts, the whole point of this
+              check — past the edge of a 390px terminal. It wraps now. */}
+          <DialogTitle className="flex items-start gap-2">
+            <Layers className="mt-0.5 size-5 shrink-0" aria-hidden />
+            <span className="min-w-0 break-words">{combo.name}</span>
           </DialogTitle>
           <DialogDescription>
             {studentName} · {combo.teacher}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="rounded-lg border p-3">
+        <div className="min-w-0 space-y-4 py-2">
+          <div className="min-w-0 rounded-lg border p-3">
             <p className="text-sm font-medium">
               Attendance in {combo.lastMonthLabel}
             </p>
@@ -86,7 +90,7 @@ export function ComboPrompt({
             </ul>
           </div>
 
-          <div className="rounded-lg border p-3">
+          <div className="min-w-0 rounded-lg border p-3">
             <p className="text-sm font-medium">Combined rate</p>
             <ul className="mt-2 space-y-1.5 text-sm">
               {combo.items.map((i) => (
@@ -108,9 +112,12 @@ export function ComboPrompt({
 
           {refusing && (
             <div className="space-y-2">
-              <Label htmlFor="combo-reason">Reason for refusing (required)</Label>
+              <Label htmlFor="combo-reason" className="text-base">
+                Reason for refusing (required)
+              </Label>
               <Input
                 id="combo-reason"
+                className="h-12 text-base"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="e.g. Did not attend Paper last month"
@@ -124,12 +131,15 @@ export function ComboPrompt({
           )}
         </div>
 
-        <DialogFooter className="flex-col gap-2 sm:flex-row">
+        {/* The two answers decide money, and they are answered with a thumb on
+            a small terminal — so they get 56px and the full width of the sheet,
+            stacked on a phone. Nothing about the decision changed. */}
+        <DialogFooter className="flex-col gap-3 sm:flex-row">
           {refusing ? (
             <>
               <Button
                 variant="outline"
-                className="flex-1"
+                className="h-14 w-full shrink-0 text-base sm:flex-1"
                 onClick={() => setRefusing(false)}
                 disabled={pending}
               >
@@ -137,7 +147,7 @@ export function ComboPrompt({
               </Button>
               <Button
                 variant="destructive"
-                className="flex-1 gap-1.5"
+                className="h-14 w-full shrink-0 gap-1.5 text-base sm:flex-1"
                 disabled={pending || trimmed === ""}
                 onClick={() =>
                   onAnswer({ comboId: combo.comboId, apply: false, reason: trimmed })
@@ -151,14 +161,14 @@ export function ComboPrompt({
             <>
               <Button
                 variant="outline"
-                className="flex-1"
+                className="h-14 w-full shrink-0 text-base sm:flex-1"
                 onClick={() => setRefusing(true)}
                 disabled={pending}
               >
                 No — normal rate
               </Button>
               <Button
-                className="flex-1"
+                className="h-14 w-full shrink-0 text-base sm:flex-1"
                 disabled={pending}
                 onClick={() => onAnswer({ comboId: combo.comboId, apply: true })}
               >
