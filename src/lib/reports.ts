@@ -10,6 +10,7 @@ import {
 } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
+import { studentArrearsMany } from "@/lib/student-arrears";
 
 /**
  * Read-only reporting. Two rules run through everything here:
@@ -278,6 +279,112 @@ export type DailyAttendance = {
 };
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// ---------------------------------------------------------------------------
+// Report B2 — one class, student by student
+// ---------------------------------------------------------------------------
+
+export type ClassStudentRow = {
+  studentId: number;
+  name: string;
+  cardNumber: string | null;
+  photoUrl: string | null;
+  /** Was this student marked in THIS class on THIS date. */
+  present: boolean;
+  /** The counter's verdict, from `studentArrears` — never recomputed here. */
+  arrears: { status: "green" | "red" | "darkred" | "grey"; label: string };
+};
+
+export type ClassAttendanceDetail = {
+  date: string;
+  courseId: number;
+  course: string;
+  teacher: string;
+  /** Null when the course is not one this viewer may see. */
+  found: boolean;
+  present: number;
+  absent: number;
+  students: ClassStudentRow[];
+};
+
+/**
+ * One class on one day: who is enrolled, who turned up, and who owes.
+ *
+ * Nothing is recalculated. The mark is the same `Attendance` row the counter
+ * writes, and the paid/not-paid colour is `studentArrears` — the same verdict
+ * the counter shows on a tap, so a teacher reading this list and a staff member
+ * reading the counter can never see different colours for the same student.
+ *
+ * The viewer's scope is part of the WHERE, so a teacher asking for someone
+ * else's course gets "not found" rather than someone else's roster.
+ */
+export async function classAttendanceDetail(
+  courseId: number,
+  date: string,
+  scope: { teacherId: number } | Record<string, never> | null,
+): Promise<ClassAttendanceDetail> {
+  const empty = {
+    date, courseId, course: "", teacher: "", found: false,
+    present: 0, absent: 0, students: [] as ClassStudentRow[],
+  };
+  if (scope === null) return empty;
+
+  const course = await db.course.findFirst({
+    where: { id: courseId, ...scope },
+    select: courseSelect,
+  });
+  if (!course) return empty;
+
+  const dayValue = colomboDateValue(date);
+  const [enrolments, marks] = await Promise.all([
+    db.enrollment.findMany({
+      where: { courseId, status: "ACTIVE" },
+      select: {
+        student: {
+          select: { id: true, name: true, cardNumber: true, photoUrl: true },
+        },
+      },
+    }),
+    db.attendance.findMany({
+      where: { courseId, date: dayValue },
+      select: { studentId: true },
+    }),
+  ]);
+
+  const presentIds = new Set(marks.map((m) => m.studentId));
+  const arrears = await studentArrearsMany(enrolments.map((e) => e.student.id));
+
+  const students: ClassStudentRow[] = enrolments
+    .map((e) => {
+      const verdict = arrears.get(e.student.id);
+      return {
+        studentId: e.student.id,
+        name: e.student.name,
+        cardNumber: e.student.cardNumber,
+        photoUrl: e.student.photoUrl,
+        present: presentIds.has(e.student.id),
+        arrears: {
+          status: verdict?.status ?? "grey",
+          label: verdict?.label ?? "",
+        },
+      };
+    })
+    // Absent first: the list is read to find who is missing.
+    .sort((a, b) => Number(a.present) - Number(b.present) || a.name.localeCompare(b.name));
+
+  const present = students.filter((s) => s.present).length;
+
+  return {
+    date,
+    courseId,
+    course: courseDisplayName(course),
+    teacher: course.teacher.name,
+    found: true,
+    present,
+    absent: students.length - present,
+    students,
+  };
+}
 
 export async function dailyAttendance(
   date: string,

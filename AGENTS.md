@@ -191,6 +191,15 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     courtesy; the guard inside the action is the boundary — prove any change to
     it by replaying the request with a STAFF cookie next to an ADMIN control.
 
+30. **A refusal is proven by what comes back, not by the status code.**
+    `(app)/loading.tsx` streams a shell the moment a tap lands, which is what
+    makes the terminal feel alive — but once that shell is flushed a later
+    `notFound()` can no longer set the status, so a blocked page answers **200**
+    with the not-found UI instead of 404. Nothing leaks: the roster, the report
+    and the user list are simply absent. When testing an authorization boundary,
+    assert on the CONTENT (and on the server action's refusal, which is still a
+    hard error) — never on a 404 alone.
+
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code
 (see the comments in `schema.prisma`). Preserve those checks.

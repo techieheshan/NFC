@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState, useTransition } from "react";
 import { AlertTriangle, ClipboardList, Download } from "lucide-react";
 
@@ -108,7 +110,15 @@ export function AttendanceReportScreen({
                 {report.courses.map((c) => (
                   <TableRow key={c.courseId}>
                     <TableCell className="max-w-72">
-                      <div className="truncate font-medium" title={c.course}>{c.course}</div>
+                      {/* The class name opens that class's own list: who came,
+                          who did not, and who owes. */}
+                      <Link
+                        href={`/daily-attendance/${c.courseId}?date=${report.date}`}
+                        className="block truncate font-medium hover:underline"
+                        title={c.course}
+                      >
+                        {c.course}
+                      </Link>
                       <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
                         {c.teacher}
                         {c.sessions.includes("additional") && (
