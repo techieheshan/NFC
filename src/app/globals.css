@@ -147,9 +147,10 @@
    space and comes out as blank pages on a 58mm roll.
 
    The paper is portalled into #xenon-print, a direct child of <body>, so it is
-   outside the payment dialog — which is transformed (-translate-x-1/2), and a
-   transform makes an ancestor the containing block for absolutely positioned
-   descendants, which used to push the receipt off the page.
+   outside the payment dialog — which sits in a fixed-position positioner and
+   is transformed while it animates. Either one makes an ancestor the containing
+   block for absolutely positioned descendants, which used to push the receipt
+   off the page.
 --------------------------------------------------------------------------- */
 #xenon-print {
   display: none;
@@ -186,5 +187,67 @@
 
   .no-print {
     display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The attender's reader.
+
+   Concentric rings around the NFC button: the whole "is it listening?" signal,
+   since the screen no longer has a line of text saying so.
+
+   Animated with `transform: scale()` and `opacity` — NOT the standalone
+   `scale` / `translate` properties Tailwind v4 compiles its transform
+   utilities to. Chrome ignores those before 104, which is what the POS
+   terminals run, and a ring that does not move is a reader that looks dead.
+   `transform` has worked since long before that.
+--------------------------------------------------------------------------- */
+@keyframes xenon-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.xenon-ring {
+  animation: xenon-ring 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* The second ring trails the first, so it reads as a pulse travelling out. */
+.xenon-ring-2 {
+  animation-delay: 0.7s;
+}
+
+/* A result's five seconds, as a bar rather than a number. */
+@keyframes xenon-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.xenon-countdown {
+  animation: xenon-countdown linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xenon-ring {
+    animation: none;
+    opacity: 0;
+  }
+
+  .xenon-countdown {
+    animation: none;
+    transform: scaleX(1);
   }
 }

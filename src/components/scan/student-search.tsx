@@ -56,7 +56,7 @@ export function StudentSearch({
         <Label htmlFor="student-search">Search by number, name or school</Label>
         <div className="relative">
           <Search
-            className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2"
+            className="text-muted-foreground absolute top-0 bottom-0 left-3 my-auto size-4"
             aria-hidden
           />
           <Input
@@ -70,7 +70,7 @@ export function StudentSearch({
           />
           {pending && (
             <Loader2
-              className="text-muted-foreground absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin"
+              className="text-muted-foreground absolute top-0 bottom-0 right-3 my-auto size-4 animate-spin"
               aria-hidden
             />
           )}

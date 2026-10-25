@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
   CloudOff,
   Nfc,
   QrCode,
-  Pause,
   RefreshCw,
+  Search,
   UploadCloud,
 } from "lucide-react";
 
@@ -19,9 +19,9 @@ import type {
   PanelResult,
 } from "@/app/(app)/payment/actions";
 import { QrScanner } from "@/components/scan/qr-scanner";
-import { StudentSearch } from "@/components/scan/student-search";
 import { useNfcScan } from "@/components/scan/use-nfc-scan";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -34,13 +34,21 @@ import type { Candidate } from "@/lib/attendance-match";
 import type { StudentBrief } from "@/lib/students";
 
 import type {
+  AttenderHit,
+  ClassAttendance,
   Method,
   QueuedMark,
   ScanResult,
   SyncOutcome,
   WorkingSet,
 } from "./actions";
-import { ChoiceCard, CounterCard } from "./counter-card";
+import { ChoiceCard } from "./counter-card";
+import {
+  OfflineBlockedPanel,
+  ResultPanel,
+  UnknownCardPanel,
+} from "./result-panel";
+import { SearchScreen } from "./search-screen";
 import {
   playAlreadyMarked,
   playMarkedButOwes,
@@ -57,25 +65,23 @@ type Tap = { input: { cardUid?: string; cardNumber?: string; studentId?: number 
 
 type StreamCard = { id: string; result: ScanResult };
 
+/** How long a RESULT stays up before the screen goes back to the buttons. */
+const RESULT_MS = 5000;
+
 /**
  * Which outcomes are QUESTIONS rather than results.
  *
- * A confirmation reports something that already happened, so the next tap
- * simply replaces it and the line keeps moving. A question — which class? whose
- * card is this? — has no answer yet, so the reader holds until staff give one.
- * That is the whole "click only when ambiguous" rule.
- */
-type ReaderState = "off" | "on" | "waiting";
-
-const BLOCKS = new Set<ScanResult["status"]>(["choose", "confirm", "unknown"]);
-
-/**
- * What the reader is doing, as staff sees it.
+ * A result reports something that already happened, so it clears itself and the
+ * next tap simply replaces it. A question — WHICH class? is the till open? —
+ * has no answer yet, so the reader holds until staff give one, and taps that
+ * arrive meanwhile are IGNORED, never queued: banking taps behind a question
+ * would mark students nobody verified.
  *
- *   off      — not armed yet
- *   on       — armed and listening; students tap one after another
- *   waiting  — armed, but a choice is on screen, so taps are IGNORED
+ * An unrecognised card used to be in here. It is not any more: it writes
+ * nothing, there is nothing to answer, and one stranger's card was stopping the
+ * whole queue. It gets the reject tone and five red seconds instead.
  */
+const BLOCKS = new Set<ScanResult["status"]>(["choose", "confirm"]);
 
 type Props = {
   resolveScan: (input: {
@@ -87,7 +93,8 @@ type Props = {
     method: Method; clientRef: string;
   }) => Promise<ScanResult>;
   undoMark: (attendanceId: number) => Promise<{ ok: boolean; error?: string }>;
-  searchStudents: (query: string) => Promise<StudentBrief[]>;
+  searchAttender: (query: string) => Promise<AttenderHit[]>;
+  loadClassAttendance: (input: { studentId: number; courseId: number }) => Promise<ClassAttendance>;
   loadWorkingSet: () => Promise<WorkingSet>;
   syncMarks: (items: QueuedMark[]) => Promise<SyncOutcome[]>;
   // Payment engine, passed straight through to the embedded payment screen.
@@ -102,22 +109,25 @@ type Props = {
 };
 
 /**
- * The streaming counter.
+ * The attender's screen.
  *
- * The reader never stops. Every tap joins a SERIAL queue — a burst processes in
- * order, none dropped, none raced — and each outcome stacks a confirmation card
- * that needs no click to clear. The only thing that halts the stream is a
- * genuine ambiguity (two classes open, or a one-off extra class): those need a
- * decision, and taps that arrive meanwhile buffer rather than being lost.
+ * Three buttons and one panel. The reader arms itself on arrival and stays on —
+ * no toggle, no "Reader ON" line, nothing to press per student — and the rings
+ * around the NFC button are the whole "it is listening" signal. Every tap joins
+ * a SERIAL queue, so a burst processes in order with none dropped and none
+ * raced, and each outcome REPLACES the last: one panel, no trail, no scrolling
+ * terminal.
  *
- * Nothing here decides anything on its own. The class comes from
- * `attendance-match.ts`, the colour from `studentArrears`, the money from the
- * existing `takePayment` — this file is sequencing and presentation.
+ * Nothing here decides anything. The class comes from `attendance-match.ts`,
+ * the arrears colour from `studentArrears`, every amount from `takePayment` —
+ * this file is sequencing and presentation.
  */
 export function AttendanceScreen({
   resolveScan,
   markCandidate,
-  searchStudents,
+  undoMark,
+  searchAttender,
+  loadClassAttendance,
   loadWorkingSet,
   syncMarks,
   loadPanel,
@@ -125,11 +135,12 @@ export function AttendanceScreen({
   paymentSearch,
   voiceEnabled,
 }: Props) {
-  // ONE popup. The device screen is small and must not scroll, so nothing
-  // accumulates: each outcome replaces the last.
   const [popup, setPopup] = useState<StreamCard | null>(null);
+  const [view, setView] = useState<"reader" | "search">("reader");
   const [qrOpen, setQrOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [undoing, setUndoing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [paying, setPaying] = useState<{ studentId: number; name: string } | null>(null);
 
   const offline = useOfflineAttendance({ loadWorkingSet, syncMarks });
@@ -147,7 +158,9 @@ export function AttendanceScreen({
     const card = { id: crypto.randomUUID(), result };
 
     // Sound first: staff run this counter by ear.
-    const owing = "arrears" in result && (result.arrears.status === "red" || result.arrears.status === "darkred");
+    const owing =
+      "arrears" in result &&
+      (result.arrears.status === "red" || result.arrears.status === "darkred");
     switch (result.status) {
       case "marked":
       case "queued":
@@ -177,6 +190,7 @@ export function AttendanceScreen({
 
     // Questions hold the line; results just replace whatever was showing.
     if (BLOCKS.has(result.status)) blocked.current = true;
+    setNotice(null);
     setPopup(card);
   }, []);
 
@@ -206,8 +220,8 @@ export function AttendanceScreen({
         const tap = queue.current.shift()!;
         push(await process(tap));
       }
-      // A choice just opened: anything still queued behind it is dropped, not
-      // banked, so nobody is marked without staff seeing their popup.
+      // A question just opened: anything still queued behind it is dropped, not
+      // banked, so nobody is marked without staff seeing their panel.
       if (blocked.current) queue.current.length = 0;
     } finally {
       running.current = false;
@@ -218,28 +232,131 @@ export function AttendanceScreen({
   /**
    * Every entry point lands here.
    *
-   * While a choice is on screen the reader is OFF and a tap does NOTHING — it
-   * is not queued for later. Staff are looking at a question; silently banking
-   * taps behind it would mark students they never verified.
+   * While a question is on screen the reader is OFF and a tap does NOTHING — it
+   * is not queued for later.
    */
   const tap = useCallback(
     (input: Tap["input"], m: Method) => {
       if (blocked.current) return;
-      primeAudio();
       method.current = m;
-      // The queue still exists, but only to keep a BURST in order — never to
-      // hold taps across a choice.
       queue.current.push({ input, method: m });
       void drain();
     },
     [drain],
   );
 
-  // Armed once, then continuous: a queue of students taps one after another
-  // with no further button press.
-  const nfc = useNfcScan((cardUid) => tap({ cardUid }, "NFC"), { continuous: true });
+  // Armed on arrival and continuous: students tap one after another with no
+  // button press, ever.
+  const nfc = useNfcScan((cardUid) => tap({ cardUid }, "NFC"), {
+    continuous: true,
+    autoStart: true,
+  });
 
-  const reader: ReaderState = !nfc.scanning ? "off" : popup && BLOCKS.has(popup.result.status) ? "waiting" : "on";
+  /**
+   * Re-arm, without re-arming on every render.
+   *
+   * `start` is a fresh function each render, so it is reached through a ref —
+   * putting it in a dependency list would restart the reader mid-queue.
+   */
+  const startRef = useRef(nfc.start);
+  const stopRef = useRef(nfc.stop);
+  const scanningRef = useRef(nfc.scanning);
+  // No dependency list: this runs after every render, and it is declared FIRST
+  // so the effects below always read the current values.
+  useEffect(() => {
+    startRef.current = nfc.start;
+    stopRef.current = nfc.stop;
+    scanningRef.current = nfc.scanning;
+  });
+
+  /**
+   * Arming, exactly once at a time.
+   *
+   * Two overlapping `scan()` calls means two `onreading` handlers, so every
+   * card gets processed TWICE — a mark and then an "already marked" for the
+   * same tap. The hook arms itself on arrival; everything here re-arms only on
+   * a real transition, and never while a scan is already up or in flight.
+   */
+  const arming = useRef(false);
+  const rearm = useCallback(async () => {
+    if (arming.current || scanningRef.current) return;
+    arming.current = true;
+    try {
+      await startRef.current();
+    } finally {
+      arming.current = false;
+    }
+  }, []);
+
+  /**
+   * Android backgrounds the tab when the screen locks or staff look at
+   * something else, and the scan dies with it. Returning is not a user gesture
+   * we can rely on, so the reader is re-armed on the way back — but only after
+   * a real hide, never on the stray focus event a page gets while loading.
+   */
+  useEffect(() => {
+    if (nfc.support !== "supported") return;
+
+    let wasHidden = false;
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        wasHidden = true;
+        return;
+      }
+      if (!wasHidden) return;
+      wasHidden = false;
+      void rearm();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [nfc.support, rearm]);
+
+  /**
+   * The reader is paused while the search screen is up — staff are typing, not
+   * tapping — and armed again on the way back. It must not arm on the first
+   * run: the hook already did that, and arming again is the double-reader bug.
+   */
+  const lastView = useRef(view);
+  useEffect(() => {
+    if (lastView.current === view) return;
+    lastView.current = view;
+    if (nfc.support !== "supported") return;
+    if (view === "search") stopRef.current();
+    else void rearm();
+  }, [view, nfc.support, rearm]);
+
+  /**
+   * Unlock the audio context on the first touch ANYWHERE on the page.
+   *
+   * A card `reading` event is not a user gesture, so a context created from one
+   * starts `suspended` and every tone is silently dropped. The listener is on
+   * the document rather than this screen's box, because the first thing staff
+   * touch is often the menu or the header.
+   */
+  useEffect(() => {
+    const prime = () => primeAudio();
+    document.addEventListener("pointerdown", prime, { passive: true });
+    document.addEventListener("touchstart", prime, { passive: true });
+    document.addEventListener("keydown", prime);
+    return () => {
+      document.removeEventListener("pointerdown", prime);
+      document.removeEventListener("touchstart", prime);
+      document.removeEventListener("keydown", prime);
+    };
+  }, []);
+
+  /**
+   * A result clears itself after five seconds. A question does not: it has no
+   * answer yet. The timer is keyed on the panel's id, so the next tap replaces
+   * the panel AND restarts the clock.
+   */
+  const isQuestion = popup !== null && BLOCKS.has(popup.result.status);
+  useEffect(() => {
+    if (popup === null || isQuestion) return;
+    const timer = setTimeout(() => setPopup(null), RESULT_MS);
+    return () => clearTimeout(timer);
+  }, [popup, isQuestion]);
 
   /** Answering or dismissing a question releases the stream. */
   const release = useCallback(() => {
@@ -291,31 +408,68 @@ export function AttendanceScreen({
     [markCandidate, offline, drain],
   );
 
+  /** Undo, while the mark is still on screen. Never reaches past today. */
+  const undo = useCallback(
+    (attendanceId: number) => {
+      setUndoing(true);
+      void undoMark(attendanceId)
+        .then((r) => {
+          setPopup(null);
+          setNotice(r.ok ? "Mark removed." : (r.error ?? "Couldn't undo that."));
+        })
+        .catch(() => setNotice("Couldn't undo that — check the connection."))
+        .finally(() => setUndoing(false));
+    },
+    [undoMark],
+  );
+
   /** Search falls back to the cached roster when the server can't answer. */
   const search = useCallback(
-    async (query: string) => {
+    async (query: string): Promise<AttenderHit[]> => {
       try {
         if (!navigator.onLine) throw new Error("offline");
-        const hits = await searchStudents(query);
+        const hits = await searchAttender(query);
         offline.setReachable(true);
         return hits;
       } catch {
         offline.setReachable(false);
-        return offline.searchOffline(query);
+        // Offline the cached roster has no payment verdict to give: say so
+        // rather than guess a colour.
+        const rows = await offline.searchOffline(query);
+        return rows.map((r) => ({
+          ...r,
+          arrears: offline.cache?.arrears?.[r.id] ?? { status: "grey", label: "Unknown offline" },
+          classes: [],
+        }));
       }
     },
-    [searchStudents, offline],
+    [searchAttender, offline],
   );
 
-  // What the box shows instead of the reader line: every popup except the
-  // pick-list, which needs its own card below.
-  const cardPopup =
-    popup && popup.result.status !== "choose" && popup.result.status !== "confirm"
-      ? popup
-      : null;
+  /**
+   * A STABLE handle on the search.
+   *
+   * `search` closes over the offline hook, whose object is new on every render,
+   * so passing it straight down would change identity constantly — and the
+   * search screen debounces on it, so every parent render would restart the
+   * 250ms timer and a steady typist could out-run the query forever.
+   */
+  const searchRef = useRef(search);
+  useEffect(() => {
+    searchRef.current = search;
+  });
+  const searchStable = useCallback((query: string) => searchRef.current(query), []);
+
+  const pick = useCallback(
+    (hit: AttenderHit) => {
+      setView("reader");
+      tap({ studentId: hit.id }, "SEARCH");
+    },
+    [tap],
+  );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto max-w-2xl space-y-4">
       <ConnectionBar
         online={offline.connected}
         stale={offline.stale}
@@ -326,102 +480,73 @@ export function AttendanceScreen({
         onSync={() => void offline.flush()}
       />
 
-      {/*
-        ONE box. It shows what the reader is doing, and when a card lands the
-        result takes its place inside the same border — nothing pops up over the
-        screen, nothing appears further down, so staff's eyes never move and the
-        terminal never grows a second card to scroll past.
-      */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {(cardPopup || (nfc.support !== "unsupported" && nfc.scanning)) && (
-          <div
-            className={`space-y-2 rounded-xl border-2 p-4 text-center sm:col-span-2 ${
-              !nfc.scanning
-                ? "border-border bg-card"
-                : reader === "waiting"
-                  ? "border-amber-400 bg-amber-50"
-                  : "border-emerald-400 bg-emerald-50"
-            }`}
-          >
-            {cardPopup ? (
-              <CounterCard
-                key={cardPopup.id}
-                result={cardPopup.result}
-                canPay={offline.connected}
-                onDismiss={cardPopup.result.status === "unknown" ? release : undefined}
-                // Results only. Closing one is a VIEW change: it neither marks
-                // nor unmarks anything, and the reader was never blocked by it.
-                onClose={
-                  cardPopup.result.status === "unknown" ? undefined : () => setPopup(null)
-                }
-                onPay={(studentId, name) => {
-                  // The pay decision is a question too: it holds the line until
-                  // the till closes. Taps keep queueing behind it.
-                  blocked.current = true;
-                  setPaying({ studentId, name });
-                }}
-              />
-            ) : reader === "waiting" ? (
-              <p className="flex items-center justify-center gap-2 text-sm font-medium text-amber-900">
-                <Pause className="size-4 shrink-0" aria-hidden />
-                Reader OFF — answer the question first. Taps are ignored.
-              </p>
-            ) : (
-              /* A dot, not a spinner: the same "it is live" signal in one line
-                 instead of six, which is the room the result needs. */
-              <p className="flex items-center justify-center gap-2 text-sm font-medium text-emerald-900">
-                <span className="size-2.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
-                Reader ON — tap cards one after another
-              </p>
-            )}
+      {view === "search" ? (
+        <SearchScreen search={searchStable} onPick={pick} onBack={() => setView("reader")} />
+      ) : (
+        <>
+          {/*
+            ONE thing on screen at a time: the buttons, a result panel, or a
+            question. A result takes the buttons' place because the reader is
+            still listening behind it; a question takes their place because the
+            reader is OFF until it is answered, and showing a "listening"
+            button then would be a lie. Either way the terminal never scrolls
+            and staff's eyes never move.
+          */}
+          {popup === null ? (
+            <Buttons
+              support={nfc.support}
+              scanning={nfc.scanning}
+              working={busy}
+              failed={nfc.error !== null}
+              onRetryNfc={() => {
+                primeAudio();
+                void nfc.start();
+              }}
+              onQr={() => {
+                primeAudio();
+                setQrOpen(true);
+              }}
+              onSearch={() => {
+                primeAudio();
+                setView("search");
+              }}
+            />
+          ) : isQuestion ? null : (
+            <Panel
+              popup={popup}
+              canPay={offline.connected}
+              onPay={(studentId, name) => {
+                // The till is a question: it holds the line until it closes.
+                blocked.current = true;
+                setPaying({ studentId, name });
+              }}
+              onClose={() => setPopup(null)}
+              onUndo={undo}
+              undoing={undoing}
+              loadClassAttendance={loadClassAttendance}
+            />
+          )}
 
-            {nfc.scanning && (
-              <Button variant="outline" size="sm" onClick={nfc.stop}>Stop reader</Button>
-            )}
-          </div>
-        )}
+          {notice && <p className="text-muted-foreground text-center text-sm">{notice}</p>}
 
-        {nfc.support !== "unsupported" && !nfc.scanning && (
-          <Button
-            onClick={() => { primeAudio(); void nfc.start(); }}
-            className="h-16 gap-2 text-base sm:col-span-2"
-            disabled={nfc.support === "unknown"}
-          >
-            <Nfc className="size-5" aria-hidden />
-            Start reader (NFC)
-          </Button>
-        )}
+          {/*
+            A pick-list is a question with its own buttons, so it renders as its
+            own card rather than inside the panel area.
+          */}
+          {popup && isQuestion && (
+            <ChoiceCard
+              result={popup.result as Extract<ScanResult, { status: "choose" | "confirm" }>}
+              pending={busy}
+              onChoose={(c) =>
+                choose((popup.result as Extract<ScanResult, { status: "choose" }>).student, c)
+              }
+              onCancel={release}
+            />
+          )}
 
-        <Button
-          onClick={() => { primeAudio(); setQrOpen(true); }}
-          variant={nfc.support === "unsupported" ? "default" : "secondary"}
-          className="h-14 gap-2"
-        >
-          <QrCode className="size-5" aria-hidden />
-          Scan QR
-        </Button>
-
-        <ReaderLamp state={reader} busy={busy} />
-      </div>
-
-      <div className="rounded-xl border p-3">
-        <StudentSearch search={search} busy={false} onPick={(s) => tap({ studentId: s.id }, "SEARCH")} />
-      </div>
-
-      {/*
-        The one thing that does NOT live in the reader box: a pick-list is a
-        question with its own buttons, and the box above it is already saying
-        "Reader OFF". Everything else is a result and renders in the box.
-      */}
-      {popup && (popup.result.status === "choose" || popup.result.status === "confirm") && (
-        <ChoiceCard
-          result={popup.result}
-          pending={busy}
-          onChoose={(c) =>
-            choose((popup.result as Extract<ScanResult, { status: "choose" }>).student, c)
-          }
-          onCancel={release}
-        />
+          {/* Desktop only: there is no card reader on a laptop. */}
+          <ManualEntry onSubmit={(value) => tap({ cardNumber: value }, "SEARCH")} />
+        </>
       )}
 
       <QrScanner open={qrOpen} onOpenChange={setQrOpen} onDecode={(v) => tap({ cardNumber: v }, "QR")} />
@@ -447,7 +572,7 @@ export function AttendanceScreen({
               Take payment — {paying?.name}
             </DialogTitle>
             <DialogDescription>
-              Taps keep queuing behind this and are marked when it closes.
+              Taps are ignored until this closes.
             </DialogDescription>
           </DialogHeader>
           {paying && (
@@ -475,6 +600,173 @@ export function AttendanceScreen({
   );
 }
 
+/** One panel, whatever the outcome. */
+function Panel({
+  popup,
+  canPay,
+  onPay,
+  onClose,
+  onUndo,
+  undoing,
+  loadClassAttendance,
+}: {
+  popup: StreamCard;
+  canPay: boolean;
+  onPay: (studentId: number, name: string) => void;
+  onClose: () => void;
+  onUndo: (attendanceId: number) => void;
+  undoing: boolean;
+  loadClassAttendance: (input: { studentId: number; courseId: number }) => Promise<ClassAttendance>;
+}) {
+  const r = popup.result;
+
+  if (r.status === "unknown") return <UnknownCardPanel key={popup.id} durationMs={RESULT_MS} />;
+  if (r.status === "offline-blocked")
+    return <OfflineBlockedPanel key={popup.id} message={r.message} durationMs={RESULT_MS} />;
+  if (r.status === "choose" || r.status === "confirm") return null;
+
+  return (
+    <ResultPanel
+      key={popup.id}
+      result={r}
+      canPay={canPay}
+      durationMs={RESULT_MS}
+      onPay={onPay}
+      onClose={onClose}
+      onUndo={onUndo}
+      undoing={undoing}
+      loadClassAttendance={loadClassAttendance}
+    />
+  );
+}
+
+/**
+ * A. The three ways in — icon only, thumb sized, in one column.
+ *
+ * NFC is solid purple and always listening; QR and Search are light purple
+ * because they are the exceptions. There is no reader toggle and no status
+ * line: the rings say "listening", and their absence says "it is not".
+ */
+function Buttons({
+  support,
+  scanning,
+  working,
+  failed,
+  onRetryNfc,
+  onQr,
+  onSearch,
+}: {
+  support: "unknown" | "supported" | "unsupported";
+  scanning: boolean;
+  /** A tap has been read and the server has not answered yet. */
+  working: boolean;
+  failed: boolean;
+  onRetryNfc: () => void;
+  onQr: () => void;
+  onSearch: () => void;
+}) {
+  const live = scanning && support === "supported";
+  /**
+   * Arming takes a moment, and on the very first visit it needs a tap to get
+   * the permission prompt. "Starting…" covers the former; the hint only says
+   * "tap" once the attempt has actually failed, so staff are never told to
+   * press something that is about to work by itself.
+   */
+  const hint =
+    support === "unsupported"
+      ? "No NFC here"
+      : failed
+        ? "NFC off — tap"
+        : "Starting…";
+
+  return (
+    <div className="space-y-3">
+      <button
+        type="button"
+        onClick={onRetryNfc}
+        aria-label={live ? "Reader listening for cards" : "Turn the card reader on"}
+        className={`relative isolate flex h-28 w-full items-center justify-center overflow-hidden rounded-2xl transition-colors ${
+          live
+            ? "bg-primary text-primary-foreground"
+            : "bg-muted text-muted-foreground border-2 border-dashed"
+        }`}
+      >
+        {live && (
+          <span className="pointer-events-none absolute top-0 right-0 bottom-0 left-0 grid place-items-center">
+            <span className="xenon-ring absolute size-16 rounded-full bg-white/35" aria-hidden />
+            <span className="xenon-ring xenon-ring-2 absolute size-16 rounded-full bg-white/35" aria-hidden />
+          </span>
+        )}
+        <Nfc className="relative size-14" aria-hidden />
+        {/*
+          A card that has been read but not yet answered. Without this the
+          screen is identical to "nothing happened", and staff tap again — which
+          is exactly what a slow answer must not provoke.
+        */}
+        {live && working && (
+          <span className="absolute bottom-2 text-xs font-medium">Reading…</span>
+        )}
+        {/* Two or three words, only when there is nothing to listen with. */}
+        {!live && (
+          <span className="absolute bottom-2 text-xs font-medium">{hint}</span>
+        )}
+      </button>
+
+      {/* Stacked, full width: one column of targets a thumb cannot miss. */}
+      <button
+        type="button"
+        onClick={onQr}
+        aria-label="Scan a QR code"
+        className="bg-primary/10 text-primary hover:bg-primary/15 flex h-24 w-full items-center justify-center rounded-2xl transition-colors"
+      >
+        <QrCode className="size-11" aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={onSearch}
+        aria-label="Find a student by name or card number"
+        className="bg-primary/10 text-primary hover:bg-primary/15 flex h-24 w-full items-center justify-center rounded-2xl transition-colors"
+      >
+        <Search className="size-11" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The desktop fallback.
+ *
+ * Hidden on the terminals, which have a reader and a camera. On a laptop there
+ * is no other way to put a card number in.
+ */
+function ManualEntry({ onSubmit }: { onSubmit: (value: string) => void }) {
+  const [value, setValue] = useState("");
+
+  return (
+    <form
+      className="hidden gap-2 sm:flex"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const v = value.trim();
+        if (v === "") return;
+        setValue("");
+        onSubmit(v);
+      }}
+    >
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Card number (desktop fallback)"
+        autoComplete="off"
+        aria-label="Card number"
+      />
+      <Button type="submit" variant="outline">
+        Mark
+      </Button>
+    </form>
+  );
+}
+
 /** Connection and sync state — it changes what a mark MEANS, so it stays visible. */
 function ConnectionBar({
   online, stale, cacheDate, queued, syncing, message, onSync,
@@ -485,7 +777,7 @@ function ConnectionBar({
   if (online && queued === 0 && !stale && !message) return null;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 print:hidden">
       {!online && (
         <p className="border-primary/30 bg-primary/5 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
           <CloudOff className="size-4 shrink-0" aria-hidden />
@@ -516,26 +808,6 @@ function ConnectionBar({
       )}
 
       {message && queued === 0 && <p className="text-muted-foreground text-sm">{message}</p>}
-    </div>
-  );
-}
-
-/** The reader's state, always visible — it decides whether a tap does anything. */
-function ReaderLamp({ state, busy }: { state: ReaderState; busy: boolean }) {
-  const look =
-    state === "on"
-      ? { dot: "bg-emerald-500", text: "text-emerald-900", box: "border-emerald-300 bg-emerald-50", label: "Reader ON" }
-      : state === "waiting"
-        ? { dot: "bg-amber-500", text: "text-amber-900", box: "border-amber-300 bg-amber-50", label: "Reader OFF — taps ignored" }
-        : { dot: "bg-muted-foreground", text: "text-muted-foreground", box: "border-border bg-card", label: "Reader off" };
-
-  return (
-    <div className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 ${look.box}`}>
-      <span className={`size-2.5 rounded-full ${look.dot} ${state === "on" ? "animate-pulse" : ""}`} />
-      <p className={`text-xs font-medium ${look.text}`}>
-        {look.label}
-        {busy && state === "on" ? " · reading…" : ""}
-      </p>
     </div>
   );
 }

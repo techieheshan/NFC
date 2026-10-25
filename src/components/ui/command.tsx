@@ -54,7 +54,8 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
+          // The positioner centres; a command palette belongs nearer the top.
+          "self-start mt-[12vh] overflow-hidden rounded-xl! p-0",
           className
         )}
         showCloseButton={showCloseButton}

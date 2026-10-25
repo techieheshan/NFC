@@ -7,10 +7,11 @@ import { requireNavAccess } from "@/lib/authz";
 import { getToggle } from "@/lib/settings";
 
 import {
+  loadClassAttendance,
   loadWorkingSet,
   markCandidate,
   resolveScan,
-  searchStudents,
+  searchAttender,
   syncMarks,
   undoMark,
 } from "./actions";
@@ -29,7 +30,8 @@ export default async function AttendancePage() {
       resolveScan={resolveScan}
       markCandidate={markCandidate}
       undoMark={undoMark}
-      searchStudents={searchStudents}
+      searchAttender={searchAttender}
+      loadClassAttendance={loadClassAttendance}
       loadWorkingSet={loadWorkingSet}
       syncMarks={syncMarks}
       loadPanel={loadPanel}

@@ -2,8 +2,20 @@
  * Three distinct cues, synthesised with Web Audio — no asset files to download
  * on a terminal that may be on a slow connection.
  *
- * Browsers refuse to start an AudioContext without a user gesture, so it is
- * created lazily on the first tap/scan and resumed if the browser suspended it.
+ * Two rules the counter depends on, both learned the hard way:
+ *
+ * 1. A browser starts an AudioContext `suspended` unless it is created during
+ *    a real user gesture, and `resume()` outside one is ignored. An NFC
+ *    `reading` event is NOT a user gesture, so a screen that arms the reader on
+ *    entry and never gets a touch can tap cards all day in silence. That is why
+ *    `primeAudio` is wired to a listener on the DOCUMENT — the first thing
+ *    staff touch is often the menu or the header, not this screen's own box.
+ *
+ * 2. A suspended context's `currentTime` is FROZEN. Scheduling at
+ *    `currentTime + offset` while suspended puts every blip in the past, and
+ *    they all fire at once the moment it resumes — one burst of noise for a
+ *    queue of students. So `play` never schedules against a frozen clock: it
+ *    resumes first and reads the clock again afterwards.
  */
 let ctx: AudioContext | null = null;
 
@@ -16,16 +28,20 @@ function audio(): AudioContext | null {
         .webkitAudioContext;
     if (!Ctor) return null;
     ctx ??= new Ctor();
-    if (ctx.state === "suspended") void ctx.resume();
     return ctx;
   } catch {
     return null;
   }
 }
 
-/** Call from a click/scan handler so the context is unlocked before it's needed. */
+/**
+ * Call from a real user gesture — a touch, a click — so the context is unlocked
+ * before the first card lands. Safe to call on every tap: creating the context
+ * is once-only and `resume()` on a running context is a no-op.
+ */
 export function primeAudio(): void {
-  audio();
+  const ac = audio();
+  if (ac && ac.state !== "running") void ac.resume().catch(() => {});
 }
 
 type Blip = { freq: number; start: number; duration: number; type?: OscillatorType };
@@ -34,6 +50,20 @@ function play(blips: Blip[], gainPeak = 0.18) {
   const ac = audio();
   if (!ac) return;
 
+  if (ac.state !== "running") {
+    // Resume FIRST, then schedule against the clock as it is once it is
+    // running. Without this the offsets are measured from a stopped clock.
+    void ac
+      .resume()
+      .then(() => schedule(ac, blips, gainPeak))
+      .catch(() => {});
+    return;
+  }
+
+  schedule(ac, blips, gainPeak);
+}
+
+function schedule(ac: AudioContext, blips: Blip[], gainPeak: number) {
   for (const b of blips) {
     const osc = ac.createOscillator();
     const gain = ac.createGain();

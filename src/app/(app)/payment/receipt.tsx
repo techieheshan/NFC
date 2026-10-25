@@ -143,10 +143,11 @@ function Paper({ receipt }: { receipt: Receipt }) {
 /**
  * A portal into #xenon-print, created on mount as a direct child of <body>.
  *
- * Being a child of <body> is the point: the payment dialog is transformed
- * (-translate-x-1/2), and a transform makes an ancestor the containing block
- * for absolutely positioned descendants — printing from inside it put the
- * receipt somewhere other than the top of the page.
+ * Being a child of <body> is the point: the payment dialog sits inside a
+ * `position: fixed` positioner and is transformed while it animates, and both
+ * make an ancestor the containing block for absolutely positioned descendants
+ * — printing from inside it put the receipt somewhere other than the top of
+ * the page.
  */
 function PrintPortal({ children }: { children: React.ReactNode }) {
   // Created once, during render, so there is no state to set from an effect —

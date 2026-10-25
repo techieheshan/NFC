@@ -103,28 +103,52 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     day refuses to mark at all.
 22. **The counter sequences; it never decides.** `/attendance` streams taps
     through a serial queue, but which class is open comes from
-    `attendance-match.ts`, the paid/not-paid colour from `studentArrears`
-    (`student-arrears.ts`), and every amount from `takePayment` — the popup only
+    `attendance-match.ts`, the paid/not-paid verdict from `studentArrears`
+    (`student-arrears.ts`), and every amount from `takePayment` — the panel only
     launches it, embedded via `PaymentScreen`'s `initialStudentId`. Never add a
-    second matcher, a second arrears rule or any money math here. The NFC reader is armed ONCE and stays on
-    (`useNfcScan(..., { continuous: true })`) — never make staff press a button
-    per student. ONE popup at a time — no trail,
-    no list: the terminal must not scroll, so the next tap replaces what is
-    showing. That popup renders INSIDE the reader box, taking the place of the
-    "Reader ON" line, so the reader controls and the lamp stay visible and
-    staff's eyes never move; the arrears verdict is a solid BADGE on the
-    student, never the whole screen. A full-bleed coloured result was tried and
-    reverted — it hid the reader controls and made a routine mark read as an
-    alarm. Only the pick-list renders as its own card below the box, because it
-    is a question with its own buttons. What blocks the reader is whether that popup is a QUESTION or a
-    RESULT — a pick-list, an unrecognised card and the open till hold the line
-    until answered; "marked", "already marked" and "no class open" are results
-    the next tap simply replaces. While a question is
-    showing the reader is OFF and taps are IGNORED, never queued: banking taps
-    behind a question would mark students nobody verified. Two or more
-    open classes STOP the stream for a manual pick: guessing the class is the
-    one error the counter must never make. Arrears is billing-month based, so a
-    July fee paid in August clears July.
+    second matcher, a second arrears rule or any money math here.
+
+    The screen is THREE icon-only buttons — NFC, QR, Search — and nothing else.
+    No reader toggle, no "Reader ON" line, no status text: the pulsing rings
+    around the NFC button are the whole "it is listening" signal, and their
+    absence is the whole "it is not". The reader arms itself on arrival
+    (`useNfcScan(..., { continuous: true, autoStart: true })`) and stays on;
+    never make staff press anything per student. Exactly ONE scan may be live at
+    a time — two overlapping `scan()` calls means two `onreading` handlers and
+    every card is processed TWICE, which reads as a mark immediately followed by
+    "already marked". Re-arm only on a real transition (returning from Search,
+    returning from a hidden tab), never on mount, where the hook has already
+    done it.
+
+    ONE thing on screen at a time: the buttons, a result panel, or a question.
+    Each REPLACES the others and the next tap replaces the panel — no trail, no
+    list, and the terminal must never scroll, so staff's eyes never move. The
+    arrears verdict is a CHIP carrying an icon and a word as well as a colour,
+    never colour alone and never the whole screen: a full-bleed coloured result
+    was tried and reverted, because it hid the reader and made a routine mark
+    read as an alarm.
+
+    What holds the line is whether what is showing is a QUESTION or a RESULT.
+    A pick-list, an additional-class confirmation and the open till are
+    questions: the reader is OFF until they are answered and taps are IGNORED,
+    never queued — banking taps behind a question would mark students nobody
+    verified. Everything else is a result that clears itself after five seconds:
+    "marked", "already marked", "no class open", too-early/too-late, and an
+    unrecognised card. An unrecognised card used to block and no longer does —
+    it writes nothing, there is nothing to answer, and one stranger's card was
+    stopping the whole queue; the reject tone is what makes staff look up. Two
+    or more open classes still STOP the stream for a manual pick: guessing the
+    class is the one error the counter must never make. Arrears is
+    billing-month based, so a July fee paid in August clears July.
+
+    Sound needs a real gesture. A card `reading` event is NOT user activation,
+    so an `AudioContext` created from one starts `suspended` and every tone is
+    dropped silently — `primeAudio` is therefore wired to a document-level
+    pointer/touch/key listener, not to this screen's own box. And a suspended
+    context's `currentTime` is frozen, so `play` resumes FIRST and reads the
+    clock again afterwards; scheduling against a stopped clock banks every blip
+    in the past and fires them all at once when it wakes.
+
 23. **Two report clocks, and never a third.** "Who owes?" is BILLING-month —
     `/reports`, `/reports/not-paid` and the counter colour all go through
     `SETTLED_PAYMENT_WHERE` / `student-arrears.ts`, so a July fee taken in

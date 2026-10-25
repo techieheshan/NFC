@@ -167,8 +167,21 @@ export function useOfflineAttendance(deps: {
     };
   }, [refreshCache, refreshOutbox, flush]);
 
-  // Reconnected: top the cache up and drain the outbox.
+  /**
+   * RECONNECTED: top the cache up and drain the outbox.
+   *
+   * The first run is skipped, because the effect above already did this on
+   * mount. Without the guard the terminal opens by running the same expensive
+   * working-set query twice — and React runs server actions ONE AT A TIME, so
+   * the first card tapped waits behind both of them. Measured on a slow
+   * database: ~15s each, and a tap in that window answered nothing at all.
+   */
+  const settled = useRef(false);
   useEffect(() => {
+    if (!settled.current) {
+      settled.current = true;
+      return;
+    }
     if (!online) return;
     void (async () => {
       await refreshCache();

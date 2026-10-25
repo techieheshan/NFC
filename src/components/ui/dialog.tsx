@@ -58,29 +58,54 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content
-        data-slot="dialog-content"
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          className
-        )}
-        {...props}
+      {/*
+        Centred WITHOUT a transform.
+
+        Tailwind v4 compiles its half-width translate utility to the
+        standalone `translate` property, and Lightning CSS cannot down-level
+        that, because the value is composed from custom properties. Chrome
+        ignores `translate` before 104, so on the POS terminals the dialog kept
+        `left: 50%` with nothing pulling it back: its left edge sat exactly at
+        the middle of the screen and the rest ran off the right. A fixed flex box centres with properties that
+        have worked since flexbox shipped. The open/close animations still use
+        `transform` keyframes, which old Chrome does honour — and they no longer
+        compete with the centring.
+
+        `top/right/bottom/left-0` rather than `inset-0`, and no `max-w-[calc()]`
+        on the panel: the gutter is this box's padding, so the panel is just
+        `w-full`. `min-w-0` is not optional — a flex item's `min-width: auto`
+        floors it at its min-content width, so a dialog with something wide
+        inside grew PAST the viewport and scrolled the page sideways. With the
+        floor removed it keeps to 100% and scrolls inside itself instead.
+      */}
+      <div
+        data-slot="dialog-positioner"
+        className="pointer-events-none fixed top-0 right-0 bottom-0 left-0 z-50 flex items-center justify-center p-4"
       >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close data-slot="dialog-close" asChild>
-            <Button
-              variant="ghost"
-              className="absolute top-2 right-2"
-              size="icon-sm"
-            >
-              <XIcon
-              />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Content>
+        <DialogPrimitive.Content
+          data-slot="dialog-content"
+          className={cn(
+            "pointer-events-auto relative grid max-h-full w-full min-w-0 gap-4 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            className
+          )}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close data-slot="dialog-close" asChild>
+              <Button
+                variant="ghost"
+                className="absolute top-2 right-2"
+                size="icon-sm"
+              >
+                <XIcon
+                />
+                <span className="sr-only">Close</span>
+              </Button>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </div>
     </DialogPortal>
   )
 }

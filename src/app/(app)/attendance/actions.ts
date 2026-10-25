@@ -240,6 +240,41 @@ export async function searchStudents(query: string): Promise<StudentBrief[]> {
 }
 
 /**
+ * The same search, plus what the attender's result rows show: the payment
+ * verdict and the classes the student is in.
+ *
+ * The verdict comes from `studentArrearsMany` — the same billing-month rule as
+ * the result panel and the reports, so a row can never say "Paid" where the
+ * panel says "Overdue". The class labels are already in that answer, so this
+ * costs no extra query of its own.
+ */
+export type AttenderHit = StudentBrief & {
+  arrears: ArrearsBadge;
+  /** Course display names, as `courseDisplayName` renders them elsewhere. */
+  classes: string[];
+};
+
+export async function searchAttender(query: string): Promise<AttenderHit[]> {
+  await requireOperationalAccess();
+
+  const hits = await searchStudentsQuery(query);
+  if (hits.length === 0) return [];
+
+  const arrears = await studentArrearsMany(hits.map((h) => h.id));
+
+  return hits.map((h) => {
+    const a = arrears.get(h.id);
+    return {
+      ...h,
+      arrears: a
+        ? { status: a.status, label: a.label }
+        : { status: "grey", label: "No enrolment" },
+      classes: a ? a.courses.map((c) => c.course) : [],
+    };
+  });
+}
+
+/**
  * Identify → match → (auto-mark when unambiguous). One round trip, because this
  * runs on a phone at the classroom door.
  */
@@ -391,6 +426,107 @@ export async function undoMark(attendanceId: number): Promise<{ ok: boolean; err
 
   await db.attendance.delete({ where: { id: row.id } });
   return { ok: true };
+}
+
+/**
+ * This student's record in ONE class, for the result panel.
+ *
+ * "Held" is the number of distinct dates this course has ANY attendance on —
+ * what actually happened, not what the timetable says should have. That keeps
+ * the figure honest on a class that was cancelled or started mid-term, and it
+ * is what makes an "Absent" row meaningful: a day the class ran and this
+ * student has no row.
+ *
+ * It is deliberately NOT part of `resolveScan`. A mark has to land in one round
+ * trip, so the panel asks for this afterwards and fills it in when it arrives.
+ */
+export type ClassDay = {
+  /** "YYYY-MM-DD", Colombo. */
+  date: string;
+  /** "Wed", from the Colombo weekday — never the server's locale or clock. */
+  weekday: string;
+  present: boolean;
+  /** "HH:mm" when present, null when absent. */
+  at: string | null;
+};
+
+export type ClassAttendance = {
+  present: number;
+  held: number;
+  /** Whole percent, or null when the class has never been held. */
+  rate: number | null;
+  /**
+   * No attendance in this class on any day BEFORE today.
+   *
+   * It has to exclude today, because the panel reads this straight after the
+   * mark was written — counting today would mean nobody is ever new.
+   */
+  isNew: boolean;
+  /** Most recent first, at most five. */
+  recent: ClassDay[];
+};
+
+const WEEKDAY_SHORT: Record<string, string> = {
+  MONDAY: "Mon",
+  TUESDAY: "Tue",
+  WEDNESDAY: "Wed",
+  THURSDAY: "Thu",
+  FRIDAY: "Fri",
+  SATURDAY: "Sat",
+  SUNDAY: "Sun",
+};
+
+/** Midday UTC is safely inside the Colombo day, whatever the server's zone. */
+function weekdayOf(isoDate: string): string {
+  return WEEKDAY_SHORT[colomboNow(new Date(`${isoDate}T06:00:00.000Z`)).dayOfWeek] ?? "";
+}
+
+export async function loadClassAttendance(input: {
+  studentId: number;
+  courseId: number;
+}): Promise<ClassAttendance> {
+  await requireOperationalAccess();
+
+  const studentId = id.parse(input.studentId);
+  const courseId = id.parse(input.courseId);
+
+  const [heldDays, mine] = await Promise.all([
+    db.attendance.groupBy({
+      by: ["date"],
+      where: { courseId },
+      orderBy: { date: "desc" },
+    }),
+    db.attendance.findMany({
+      where: { studentId, courseId },
+      select: { date: true, markedAt: true },
+    }),
+  ]);
+
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const mineByDate = new Map(mine.map((r) => [iso(r.date), r.markedAt]));
+
+  const recent: ClassDay[] = heldDays.slice(0, 5).map((d) => {
+    const date = iso(d.date);
+    const markedAt = mineByDate.get(date);
+    return {
+      date,
+      weekday: weekdayOf(date),
+      present: markedAt !== undefined,
+      at: markedAt ? colomboNow(markedAt).time : null,
+    };
+  });
+
+  const held = heldDays.length;
+  const present = mine.length;
+  const today = colomboNow().date;
+
+  return {
+    present,
+    held,
+    rate: held === 0 ? null : Math.round((present / held) * 100),
+    isNew: mine.every((r) => iso(r.date) === today),
+    recent,
+  };
 }
 
 // ---------------------------------------------------------------------------

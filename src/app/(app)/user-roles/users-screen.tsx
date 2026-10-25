@@ -77,7 +77,14 @@ export function UsersScreen({ users }: { users: UserRow[] }) {
               </p>
             </div>
 
-            <div className="flex shrink-0 gap-2">
+            {/*
+              Wraps, and does NOT refuse to shrink: three buttons in a row come
+              to 426px, which overflowed a 360px terminal screen sideways. That
+              also pushed every dialog off-centre, because a `position: fixed`
+              box spans the layout viewport — and the layout viewport grows to
+              the width of a page that scrolls sideways.
+            */}
+            <div className="flex flex-wrap gap-2 sm:shrink-0">
               <Button
                 size="sm"
                 variant="outline"
