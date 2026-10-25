@@ -466,14 +466,15 @@ export type ClassAttendance = {
   recent: ClassDay[];
 };
 
+/** Keyed by the `DayOfWeek` enum that `colomboNow` returns (MON…SUN). */
 const WEEKDAY_SHORT: Record<string, string> = {
-  MONDAY: "Mon",
-  TUESDAY: "Tue",
-  WEDNESDAY: "Wed",
-  THURSDAY: "Thu",
-  FRIDAY: "Fri",
-  SATURDAY: "Sat",
-  SUNDAY: "Sun",
+  MON: "Mon",
+  TUE: "Tue",
+  WED: "Wed",
+  THU: "Thu",
+  FRI: "Fri",
+  SAT: "Sat",
+  SUN: "Sun",
 };
 
 /** Midday UTC is safely inside the Colombo day, whatever the server's zone. */

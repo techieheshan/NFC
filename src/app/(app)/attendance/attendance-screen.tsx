@@ -45,6 +45,7 @@ import type {
 import { ChoiceCard } from "./counter-card";
 import {
   OfflineBlockedPanel,
+  PendingPanel,
   ResultPanel,
   UnknownCardPanel,
 } from "./result-panel";
@@ -61,7 +62,17 @@ import {
 import { useOfflineAttendance } from "./use-offline-attendance";
 import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
-type Tap = { input: { cardUid?: string; cardNumber?: string; studentId?: number }; method: Method };
+/**
+ * Who a tap is about, when we already know before the server answers. A search
+ * pick does; a card tap does not (the card has to be looked up first).
+ */
+type Preview = Pick<AttenderHit, "name" | "photoUrl" | "cardNumber" | "school">;
+
+type Tap = {
+  input: { cardUid?: string; cardNumber?: string; studentId?: number };
+  method: Method;
+  who?: Preview;
+};
 
 type StreamCard = { id: string; result: ScanResult };
 
@@ -139,6 +150,13 @@ export function AttendanceScreen({
   const [view, setView] = useState<"reader" | "search">("reader");
   const [qrOpen, setQrOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  /**
+   * The tap the server is answering RIGHT NOW. On a slow connection that can
+   * take seconds, and a screen that does not change in that time reads as "the
+   * tap did nothing" — so staff tap again, or walk away. It is shown at once,
+   * with the student's face and name when a search pick already gave us them.
+   */
+  const [pending, setPending] = useState<{ id: string; who: Preview | null } | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [paying, setPaying] = useState<{ studentId: number; name: string } | null>(null);
@@ -218,13 +236,17 @@ export function AttendanceScreen({
     try {
       while (queue.current.length > 0 && !blocked.current) {
         const tap = queue.current.shift()!;
-        push(await process(tap));
+        setPending({ id: crypto.randomUUID(), who: tap.who ?? null });
+        const result = await process(tap);
+        setPending(null);
+        push(result);
       }
       // A question just opened: anything still queued behind it is dropped, not
       // banked, so nobody is marked without staff seeing their panel.
       if (blocked.current) queue.current.length = 0;
     } finally {
       running.current = false;
+      setPending(null);
       setBusy(false);
     }
   }, [process, push]);
@@ -236,10 +258,10 @@ export function AttendanceScreen({
    * is not queued for later.
    */
   const tap = useCallback(
-    (input: Tap["input"], m: Method) => {
+    (input: Tap["input"], m: Method, who?: Preview) => {
       if (blocked.current) return;
       method.current = m;
-      queue.current.push({ input, method: m });
+      queue.current.push({ input, method: m, who });
       void drain();
     },
     [drain],
@@ -463,7 +485,12 @@ export function AttendanceScreen({
   const pick = useCallback(
     (hit: AttenderHit) => {
       setView("reader");
-      tap({ studentId: hit.id }, "SEARCH");
+      tap({ studentId: hit.id }, "SEARCH", {
+        name: hit.name,
+        photoUrl: hit.photoUrl,
+        cardNumber: hit.cardNumber,
+        school: hit.school,
+      });
     },
     [tap],
   );
@@ -492,7 +519,9 @@ export function AttendanceScreen({
             button then would be a lie. Either way the terminal never scrolls
             and staff's eyes never move.
           */}
-          {popup === null ? (
+          {pending && !isQuestion ? (
+            <PendingPanel key={pending.id} who={pending.who} />
+          ) : popup === null ? (
             <Buttons
               support={nfc.support}
               scanning={nfc.scanning}

@@ -9,6 +9,7 @@ import {
   CloudOff,
   CreditCard,
   Info,
+  Loader2,
   Undo2,
   UserRound,
   XCircle,
@@ -187,6 +188,52 @@ export function OfflineBlockedPanel({
       </p>
       <p className="text-sm text-red-900/80">{message}</p>
       <Countdown durationMs={durationMs} />
+    </div>
+  );
+}
+
+/**
+ * The moment between a tap and its answer.
+ *
+ * For a search pick we already know who it is, so their face and name go up at
+ * once — staff see the right student being marked instead of an unchanged
+ * screen. For a card tap the card still has to be looked up, so it says that.
+ * The result panel replaces this as soon as the server answers.
+ */
+export function PendingPanel({
+  who,
+}: {
+  who: { name: string; photoUrl: string | null; cardNumber: string | null; school: string | null } | null;
+}) {
+  return (
+    <div
+      data-counter-pending
+      aria-live="polite"
+      className="border-primary/40 bg-primary/5 space-y-3 rounded-xl border-2 p-3 text-left print:hidden"
+    >
+      <p className="text-primary flex items-center gap-2 leading-tight font-semibold">
+        <Loader2 className="size-5 shrink-0 animate-spin" aria-hidden />
+        {who ? "Marking attendance…" : "Reading card…"}
+      </p>
+      {who && (
+        <div className="flex items-start gap-3">
+          <StudentFace
+            photoUrl={who.photoUrl}
+            name={who.name}
+            cardNumber={who.cardNumber}
+            size="verify"
+          />
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="truncate text-lg leading-tight font-semibold">{who.name}</p>
+            <p className="text-muted-foreground truncate font-mono text-xs">
+              {who.cardNumber ?? "no card number"}
+            </p>
+            {who.school && (
+              <p className="text-muted-foreground truncate text-xs">{who.school}</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
