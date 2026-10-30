@@ -102,7 +102,7 @@ export function MobileNav({ role, username, roleLabel }: {
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3">
               {sections.map((section) => (
-                <div key={section.heading ?? "_"}>
+                <div key={section.key}>
                   {section.heading && (
                     <p className="text-muted-foreground px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
                       {section.heading}

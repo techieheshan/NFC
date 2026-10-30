@@ -39,7 +39,7 @@ export function AppShell({
 
         <nav className="flex-1 space-y-4 overflow-y-auto p-3" aria-label="Main">
           {sections.map((section) => (
-            <div key={section.heading ?? "_"}>
+            <div key={section.key}>
               {section.heading && (
                 <p className="text-muted-foreground px-3 pb-1 text-xs font-semibold tracking-wide uppercase">
                   {section.heading}

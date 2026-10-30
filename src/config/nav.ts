@@ -37,6 +37,8 @@ export type NavSurface = "terminal" | "desktop";
 export type NavItem = {
   key: string;
   label: string;
+  /** A different label for one role. `navFor` resolves it, so no consumer cares. */
+  labelByRole?: Partial<Record<UserRole, string>>;
   href: string;
   icon: LucideIcon;
   roles: UserRole[];
@@ -48,10 +50,13 @@ const ALL_ROLES: UserRole[] = ["ADMIN", "STAFF", "TEACHER"];
 const OPERATIONAL: UserRole[] = ["ADMIN", "STAFF"];
 const ADMIN_ONLY: UserRole[] = ["ADMIN"];
 
-/** Sidebar group headings, in render order. Ungrouped items come first. */
-export const NAV_GROUPS = ["Setup"] as const;
-
 export const NAV_ITEMS: NavItem[] = [
+  // The order below IS the order on every surface — the dashboard tiles, the
+  // burger menu and the desktop sidebar all read this one array top to bottom,
+  // filtered by role and surface. Reorder here and nowhere else.
+  //
+  // Daily counter work first; User Roles and Hall Allocation deliberately last.
+  // `dashboard` is the home link, not a module, so it stays pinned on top.
   {
     key: "dashboard",
     label: "Main Dashboard",
@@ -60,8 +65,6 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ALL_ROLES,
     surfaces: ["desktop"],
   },
-
-  // --- Operational / terminal modules -------------------------------------
   {
     key: "attendance",
     label: "Attendance",
@@ -97,25 +100,13 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["terminal", "desktop"],
   },
   {
-    key: "schedules",
-    label: "Class Schedule",
-    href: "/admin/schedules",
-    icon: CalendarClock,
-    // Daily work, not setup: staff add a one-off class in the middle of the
-    // day, from the terminal. ADMIN + STAFF for both the recurring schedule and
-    // additional classes; TEACHER never.
-    roles: OPERATIONAL,
-    surfaces: ["terminal", "desktop"],
-  },
-  {
-    key: "hall-allocation",
-    label: "Hall Allocation",
-    href: "/hall-allocation",
-    icon: DoorOpen,
-    // Changes hour to hour, so it is on the same footing as Attendance and
-    // Payment: ADMIN + STAFF, on both surfaces. TEACHER is blocked — they read
-    // rooms off the timetable, they do not reassign them.
-    roles: OPERATIONAL,
+    key: "daily-attendance",
+    label: "Daily Attendance",
+    href: "/daily-attendance",
+    icon: ClipboardList,
+    // TEACHER is included on purpose: the report scopes itself to their own
+    // courses server-side. See src/lib/reports.ts.
+    roles: ALL_ROLES,
     surfaces: ["terminal", "desktop"],
   },
   {
@@ -129,6 +120,37 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["terminal", "desktop"],
   },
   {
+    key: "schedules",
+    label: "Class Schedule",
+    href: "/admin/schedules",
+    icon: CalendarClock,
+    // Daily work, not setup: staff add a one-off class in the middle of the
+    // day, from the terminal. ADMIN + STAFF for both the recurring schedule and
+    // additional classes; TEACHER never.
+    roles: OPERATIONAL,
+    surfaces: ["terminal", "desktop"],
+  },
+  {
+    key: "expenses",
+    label: "Expenses",
+    href: "/expenses",
+    icon: Receipt,
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "reports",
+    label: "Reports",
+    href: "/reports",
+    icon: ClipboardList,
+    // All three: the student list is teacher-facing, and staff hand it out.
+    // A TEACHER is narrowed to their own courses server-side.
+    roles: ALL_ROLES,
+    surfaces: ["desktop", "terminal"],
+  },
+
+  // --- Everything else, in the order it has always read ----------------------
+  {
     key: "my-students",
     label: "My Students",
     href: "/my-students",
@@ -139,18 +161,59 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["desktop", "terminal"],
   },
   {
-    key: "daily-attendance",
-    label: "Daily Attendance",
-    href: "/daily-attendance",
-    icon: ClipboardList,
-    // TEACHER is included on purpose: the report scopes itself to their own
-    // courses server-side. See src/lib/reports.ts.
+    key: "students",
+    label: "Students",
+    href: "/students",
+    icon: Users,
+    roles: OPERATIONAL,
+    surfaces: ["desktop"],
+  },
+  {
+    key: "staff",
+    label: "Staff",
+    href: "/staff",
+    icon: UsersRound,
+    roles: ADMIN_ONLY,
+    surfaces: ["desktop"],
+  },
+  {
+    key: "receipts",
+    // STAFF reprint here, and the menu should not advertise a control they do not
+    // have: they read "Receipts", the admin who can void a payment reads the long
+    // form. The label is a courtesy — the guard is `requireRole(["ADMIN"])` inside
+    // `cancelTransaction`, and the button is gated by `canCancel` on the page.
+    label: "Receipts",
+    labelByRole: { ADMIN: "Receipts & Cancel" },
+    href: "/receipts",
+    icon: Undo2,
+    // ADMIN + STAFF on purpose: reprinting a receipt is counter work. The
+    // cancel control inside is ADMIN-only, enforced on the action as well as
+    // hidden in the UI — one screen beats two that share a lookup.
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "payslips",
+    label: "Payslips",
+    href: "/payslips",
+    icon: Receipt,
+    // All three: ADMIN sees everything, STAFF sees slips without the institute
+    // profit block, TEACHER sees only their own last-completed month.
     roles: ALL_ROLES,
-    surfaces: ["terminal", "desktop"],
+    surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "settings",
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
+    roles: ADMIN_ONLY,
+    surfaces: ["desktop", "terminal"],
   },
 
   // --- Setup: the backbone reference data everything else enrolls into ----
-  // ADMIN + STAFF. Deliberately NOT visible to TEACHER.
+  // ADMIN + STAFF. Deliberately NOT visible to TEACHER. Grouped under one heading
+  // in the sidebar and burger.
   {
     key: "subjects",
     label: "Subjects",
@@ -215,7 +278,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "Setup",
   },
 
-  // --- Back-office / desktop modules --------------------------------------
+  // --- Last on purpose ----------------------------------------------------
   {
     key: "user-roles",
     label: "User Roles",
@@ -225,95 +288,49 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["desktop"],
   },
   {
-    key: "students",
-    label: "Students",
-    href: "/students",
-    icon: Users,
+    key: "hall-allocation",
+    label: "Hall Allocation",
+    href: "/hall-allocation",
+    icon: DoorOpen,
+    // Changes hour to hour, so it is on the same footing as Attendance and
+    // Payment: ADMIN + STAFF, on both surfaces. TEACHER is blocked — they read
+    // rooms off the timetable, they do not reassign them.
     roles: OPERATIONAL,
-    surfaces: ["desktop"],
-  },
-  {
-    key: "staff",
-    label: "Staff",
-    href: "/staff",
-    icon: UsersRound,
-    roles: ADMIN_ONLY,
-    surfaces: ["desktop"],
-  },
-  {
-    key: "receipts",
-    label: "Receipts & Cancel",
-    href: "/receipts",
-    icon: Undo2,
-    // ADMIN + STAFF on purpose: reprinting a receipt is counter work. The
-    // cancel control inside is ADMIN-only, enforced on the action as well as
-    // hidden in the UI — one screen beats two that share a lookup.
-    roles: OPERATIONAL,
-    surfaces: ["desktop", "terminal"],
-  },
-
-  // --- Shared across both shells ------------------------------------------
-  {
-    key: "reports",
-    label: "Reports",
-    href: "/reports",
-    icon: ClipboardList,
-    // All three: the student list is teacher-facing, and staff hand it out.
-    // A TEACHER is narrowed to their own courses server-side.
-    roles: ALL_ROLES,
-    surfaces: ["desktop", "terminal"],
-  },
-  {
-    key: "payslips",
-    label: "Payslips",
-    href: "/payslips",
-    icon: Receipt,
-    // All three: ADMIN sees everything, STAFF sees slips without the institute
-    // profit block, TEACHER sees only their own last-completed month.
-    roles: ALL_ROLES,
-    surfaces: ["desktop", "terminal"],
-  },
-  {
-    key: "expenses",
-    label: "Expenses",
-    href: "/expenses",
-    icon: Receipt,
-    roles: OPERATIONAL,
-    surfaces: ["desktop", "terminal"],
-  },
-  {
-    key: "settings",
-    label: "Settings",
-    href: "/settings",
-    icon: Settings,
-    roles: ADMIN_ONLY,
-    surfaces: ["desktop", "terminal"],
+    surfaces: ["terminal", "desktop"],
   },
 ];
 
 export function navFor(role: UserRole, surface: NavSurface): NavItem[] {
   return NAV_ITEMS.filter(
     (item) => item.roles.includes(role) && item.surfaces.includes(surface),
-  );
+  ).map((item) => ({ ...item, label: item.labelByRole?.[role] ?? item.label }));
 }
 
-/**
- * Sidebar items bucketed for rendering: ungrouped first (heading `null`), then
- * each group in NAV_GROUPS order. Empty buckets are dropped, so a role that
- * can't see any Setup item never sees the heading either.
- */
-export function navSectionsFor(
-  role: UserRole,
-): { heading: string | null; items: NavItem[] }[] {
-  const items = navFor(role, "desktop");
+export type NavSection = { key: string; heading: string | null; items: NavItem[] };
 
-  return [
-    { heading: null, items: items.filter((i) => !i.group) },
-    ...NAV_GROUPS.map((heading) => ({
-      heading: heading as string,
-      items: items.filter((i) => i.group === heading),
-    })),
-  ].filter((section) => section.items.length > 0);
+/**
+ * Sidebar / burger items bucketed for rendering, in the ORDER OF NAV_ITEMS.
+ *
+ * A section is a contiguous run of items that share a `group`, so a group sits
+ * exactly where its first item sits and anything after it — User Roles and Hall
+ * Allocation — really is last. (This used to hoist every ungrouped item above
+ * the Setup group, which made "last" impossible to express.) A role that can't
+ * see any item in a run never sees its heading either.
+ */
+export function navSectionsFor(role: UserRole): NavSection[] {
+  const sections: NavSection[] = [];
+
+  for (const item of navFor(role, "desktop")) {
+    const heading = item.group ?? null;
+    const last = sections[sections.length - 1];
+    if (last && last.heading === heading) {
+      last.items.push(item);
+    } else {
+      sections.push({ key: `${heading ?? "_"}:${sections.length}`, heading, items: [item] });
+    }
+  }
+
+  return sections;
 }
 
 /** Every route the shell links to — used to keep placeholder pages honest. */
