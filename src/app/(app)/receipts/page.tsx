@@ -7,7 +7,8 @@ import { findTransactions, loadTransaction } from "@/lib/receipts";
 
 import { ReceiptsScreen } from "./receipts-screen";
 
-export const metadata = { title: "Receipts & Cancel" };
+// Static, so it cannot depend on the role: the short form, which is true for both.
+export const metadata = { title: "Receipts" };
 
 const FIELD =
   "border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs";
@@ -38,12 +39,15 @@ export default async function ReceiptsPage({ searchParams }: PageProps<"/receipt
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Receipts &amp; Cancel</h1>
+        {/* Staff reprint here and cannot cancel, so the page does not advertise
+            it to them: the long title and the cancel note are the admin's. */}
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {user.role === "ADMIN" ? "Receipts & Cancel" : "Receipts"}
+        </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Find a receipt to reprint.{" "}
-          {user.role === "ADMIN"
-            ? "Cancelling voids the whole receipt, with a reason on record."
-            : "Cancelling a receipt is an admin action."}
+          Find a receipt to reprint.
+          {user.role === "ADMIN" &&
+            " Cancelling voids the whole receipt, with a reason on record."}
         </p>
       </div>
 
