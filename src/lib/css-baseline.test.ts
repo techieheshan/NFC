@@ -65,3 +65,13 @@ test("the guard itself can fail: it recognises each banned pattern", () => {
     assert.ok(!BANNED.some((b) => b.rx.test(fine)), `should allow: ${fine}`);
   }
 });
+
+test("the dialog panel cannot be widened by its contents", () => {
+  // A flex item and a grid column are both as wide as their widest child's
+  // min-content unless told otherwise. A fixed-width child (the 384px receipt
+  // preview) made the reprint dialog's column 384px inside a 328px panel, which
+  // pushed the TOTAL and the Close button off a 360px screen.
+  const src = readFileSync("src/components/ui/dialog.tsx", "utf8");
+  assert.match(src, /\bmin-w-0\b/, "the panel must be allowed to shrink below its content");
+  assert.match(src, /grid-cols-\[minmax\(0,1fr\)\]/, "the single column must be allowed to shrink below its content");
+});

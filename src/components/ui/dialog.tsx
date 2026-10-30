@@ -77,6 +77,12 @@ function DialogContent({
         floors it at its min-content width, so a dialog with something wide
         inside grew PAST the viewport and scrolled the page sideways. With the
         floor removed it keeps to 100% and scrolls inside itself instead.
+
+        The single grid column is pinned with `minmax(0, 1fr)` for the same
+        reason one level down: an implicit grid column is as wide as its widest
+        child's min-content, so a child with a fixed width (the 384px receipt
+        preview) widened the whole column and pushed the header, the total and
+        the Close button off the right edge of a 360px screen.
       */}
       <div
         data-slot="dialog-positioner"
@@ -85,7 +91,7 @@ function DialogContent({
         <DialogPrimitive.Content
           data-slot="dialog-content"
           className={cn(
-            "pointer-events-auto relative grid max-h-full w-full min-w-0 gap-4 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            "pointer-events-auto relative grid max-h-full w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className
           )}
           {...props}
