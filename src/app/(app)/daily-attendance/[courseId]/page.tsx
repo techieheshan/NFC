@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, UserRound } from "lucide-react";
+import { ArrowLeft, Check, UserRound, X } from "lucide-react";
 
+import { MonthStateBoxes, MonthStateChip } from "@/components/attendance/month-state";
 import { Button } from "@/components/ui/button";
 import { requireNavAccess } from "@/lib/authz";
-import { colomboNow } from "@/lib/colombo-time";
+import { colomboNow, to12Hour } from "@/lib/colombo-time";
 import { classAttendanceDetail, courseScopeFor } from "@/lib/reports";
 
 export const metadata = { title: "Class attendance" };
@@ -12,20 +13,14 @@ export const metadata = { title: "Class attendance" };
 /**
  * One class, student by student — who came, and who owes.
  *
- * Read-only, and it computes nothing: the mark is the row the counter wrote,
- * and the paid/not-paid colour is `studentArrears`, the same verdict the
- * counter shows on a tap. A teacher reaching this page is narrowed to their own
+ * Read-only, and it computes nothing here: the mark is the row the counter
+ * wrote, and the payment state is `courseMonthStates`, the same function the
+ * Daily Attendance cards count with, so a card's four boxes and these chips can
+ * never disagree. Attended students come first (earliest arrival first), then
+ * the absent A to Z. A teacher reaching this page is narrowed to their own
  * courses by `courseScopeFor` inside the library, so asking for someone else's
  * course is a 404 rather than someone else's roster.
  */
-
-/** The four states, in the counter's colours — same words, same meaning. */
-const ARREARS: Record<string, { block: string; word: string }> = {
-  green: { block: "bg-emerald-600 text-white", word: "PAID UP" },
-  red: { block: "bg-red-600 text-white", word: "OWES THIS MONTH" },
-  darkred: { block: "bg-red-900 text-white", word: "IN ARREARS" },
-  grey: { block: "bg-neutral-500 text-white", word: "FREE TIER" },
-};
 
 function toStr(v: string | string[] | undefined): string | undefined {
   const raw = Array.isArray(v) ? v[0] : v;
@@ -67,7 +62,7 @@ export default async function ClassAttendancePage({
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2">
         <span className="rounded-lg border px-3 py-2 text-sm">
           Present <span className="font-semibold tabular-nums">{report.present}</span>
         </span>
@@ -79,16 +74,22 @@ export default async function ClassAttendancePage({
         </span>
       </div>
 
+      <div className="space-y-1.5">
+        <MonthStateBoxes counts={report.counts} />
+        <p className="text-muted-foreground text-xs">Payments: {report.monthLabel}.</p>
+      </div>
+
       {report.students.length === 0 ? (
         <p className="text-muted-foreground rounded-xl border p-6 text-center text-sm">
           Nobody is actively enrolled in this class.
         </p>
       ) : (
-        <ul className="divide-y rounded-xl border">
-          {report.students.map((s) => {
-            const a = ARREARS[s.arrears.status] ?? ARREARS.grey;
-            return (
-              <li key={s.studentId} className="flex items-center gap-3 p-3">
+        <ul className="space-y-2">
+          {report.students.map((s) => (
+            // A card per student, not a table row: on a phone a row has no room
+            // for a photo, a name, two chips and a time side by side.
+            <li key={s.studentId} className="bg-card space-y-2 rounded-xl border p-3">
+              <div className="flex items-center gap-3">
                 <span className="bg-muted size-14 shrink-0 overflow-hidden rounded-xl border">
                   {s.photoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -110,34 +111,32 @@ export default async function ClassAttendancePage({
                   <span className="text-muted-foreground block truncate font-mono text-xs">
                     {s.cardNumber ?? "no card number"}
                   </span>
-                  <span
-                    className={`mt-1 inline-block rounded-md px-2 py-0.5 text-xs font-bold tracking-wide ${a.block}`}
-                  >
-                    {a.word}
-                    {s.arrears.status === "red" || s.arrears.status === "darkred"
-                      ? ` · ${s.arrears.label}`
-                      : ""}
-                  </span>
                 </span>
+              </div>
 
-                <span
-                  className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${
-                    s.present
-                      ? "bg-emerald-100 text-emerald-900"
-                      : "bg-amber-100 text-amber-900"
-                  }`}
-                >
-                  {s.present ? "Present" : "Absent"}
-                </span>
-              </li>
-            );
-          })}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {s.present ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-900">
+                    <Check className="size-3.5 shrink-0" aria-hidden />
+                    Present{s.arrivedAt ? ` · ${to12Hour(s.arrivedAt)}` : ""}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-1 text-xs font-bold text-slate-800">
+                    <X className="size-3.5 shrink-0" aria-hidden />
+                    Absent
+                  </span>
+                )}
+                <MonthStateChip state={s.monthState} />
+              </div>
+            </li>
+          ))}
         </ul>
       )}
 
       <p className="text-muted-foreground text-xs">
-        Absent first. The attendance mark is the one taken at the counter, and the
-        paid colour is the same verdict the counter shows on a tap.
+        Attended first, by arrival time; then the absent, A to Z. The attendance mark
+        is the one taken at the counter, and the payment state is for {report.monthLabel}
+        — overdue means last month is unpaid too.
       </p>
     </div>
   );

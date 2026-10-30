@@ -10,7 +10,8 @@ import {
 } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
-import { studentArrearsMany } from "@/lib/student-arrears";
+import { courseMonthStates } from "@/lib/student-arrears";
+import { sortRoster, tallyMonthStates, type MonthCounts, type MonthState } from "@/lib/month-status";
 
 /**
  * Read-only reporting. Two rules run through everything here:
@@ -263,11 +264,22 @@ export type AttendanceCourseRow = {
   attended: number;
   absent: number;
   total: number;
+  /**
+   * LEGACY fields, kept with their old meaning so a terminal still running the
+   * previous cached app keeps working against this server: `notPaid` is every
+   * unpaid non-free student (the new `overdue` is a subset of it).
+   */
   paid: number;
   notPaid: number;
   free: number;
   monthLabel: string;
   reconciles: boolean;
+  /**
+   * The four states for the selected month, which add up to `total`:
+   * paid + notPaid (this month only) + overdue (last month unpaid too) + free.
+   */
+  states: MonthCounts;
+  statesReconcile: boolean;
 };
 
 export type DailyAttendance = {
@@ -291,8 +303,10 @@ export type ClassStudentRow = {
   photoUrl: string | null;
   /** Was this student marked in THIS class on THIS date. */
   present: boolean;
-  /** The counter's verdict, from `studentArrears` — never recomputed here. */
-  arrears: { status: "green" | "red" | "darkred" | "grey"; label: string };
+  /** "HH:mm" Colombo of the first mark that day, or null if they did not come. */
+  arrivedAt: string | null;
+  /** This course, this month: paid / notPaid / overdue / free. */
+  monthState: MonthState;
 };
 
 export type ClassAttendanceDetail = {
@@ -304,6 +318,9 @@ export type ClassAttendanceDetail = {
   found: boolean;
   present: number;
   absent: number;
+  /** "Oct 2026": the billing month the payment states are about. */
+  monthLabel: string;
+  counts: MonthCounts;
   students: ClassStudentRow[];
 };
 
@@ -311,9 +328,10 @@ export type ClassAttendanceDetail = {
  * One class on one day: who is enrolled, who turned up, and who owes.
  *
  * Nothing is recalculated. The mark is the same `Attendance` row the counter
- * writes, and the paid/not-paid colour is `studentArrears` — the same verdict
- * the counter shows on a tap, so a teacher reading this list and a staff member
- * reading the counter can never see different colours for the same student.
+ * writes, and the payment state is `courseMonthStates` — the SAME function the
+ * Daily Attendance cards count with, so the four boxes on the card and the chips
+ * on this list can never disagree. Attended students come first, earliest
+ * arrival first; then the absent, A to Z.
  *
  * The viewer's scope is part of the WHERE, so a teacher asking for someone
  * else's course gets "not found" rather than someone else's roster.
@@ -323,9 +341,13 @@ export async function classAttendanceDetail(
   date: string,
   scope: { teacherId: number } | Record<string, never> | null,
 ): Promise<ClassAttendanceDetail> {
+  const [year, month] = date.split("-").map(Number);
+  const monthLabel = `${MONTHS[month - 1]} ${year}`;
   const empty = {
     date, courseId, course: "", teacher: "", found: false,
-    present: 0, absent: 0, students: [] as ClassStudentRow[],
+    present: 0, absent: 0, monthLabel,
+    counts: { paid: 0, notPaid: 0, overdue: 0, free: 0 } as MonthCounts,
+    students: [] as ClassStudentRow[],
   };
   if (scope === null) return empty;
 
@@ -336,7 +358,7 @@ export async function classAttendanceDetail(
   if (!course) return empty;
 
   const dayValue = colomboDateValue(date);
-  const [enrolments, marks] = await Promise.all([
+  const [enrolments, marks, states] = await Promise.all([
     db.enrollment.findMany({
       where: { courseId, status: "ACTIVE" },
       select: {
@@ -347,30 +369,33 @@ export async function classAttendanceDetail(
     }),
     db.attendance.findMany({
       where: { courseId, date: dayValue },
-      select: { studentId: true },
+      select: { studentId: true, markedAt: true },
     }),
+    courseMonthStates([courseId], year, month),
   ]);
 
-  const presentIds = new Set(marks.map((m) => m.studentId));
-  const arrears = await studentArrearsMany(enrolments.map((e) => e.student.id));
+  // A student can have two marks the same day (a regular class and an extra one
+  // for the same course); the arrival is the earliest.
+  const arrival = new Map<number, string>();
+  for (const m of marks) {
+    const at = colomboNow(m.markedAt).time;
+    const seen = arrival.get(m.studentId);
+    if (seen === undefined || at < seen) arrival.set(m.studentId, at);
+  }
 
-  const students: ClassStudentRow[] = enrolments
-    .map((e) => {
-      const verdict = arrears.get(e.student.id);
-      return {
-        studentId: e.student.id,
-        name: e.student.name,
-        cardNumber: e.student.cardNumber,
-        photoUrl: e.student.photoUrl,
-        present: presentIds.has(e.student.id),
-        arrears: {
-          status: verdict?.status ?? "grey",
-          label: verdict?.label ?? "",
-        },
-      };
-    })
-    // Absent first: the list is read to find who is missing.
-    .sort((a, b) => Number(a.present) - Number(b.present) || a.name.localeCompare(b.name));
+  const monthStates = states.get(courseId) ?? new Map<number, MonthState>();
+
+  const students: ClassStudentRow[] = sortRoster(
+    enrolments.map((e) => ({
+      studentId: e.student.id,
+      name: e.student.name,
+      cardNumber: e.student.cardNumber,
+      photoUrl: e.student.photoUrl,
+      present: arrival.has(e.student.id),
+      arrivedAt: arrival.get(e.student.id) ?? null,
+      monthState: monthStates.get(e.student.id) ?? ("notPaid" as MonthState),
+    })),
+  );
 
   const present = students.filter((s) => s.present).length;
 
@@ -382,6 +407,8 @@ export async function classAttendanceDetail(
     found: true,
     present,
     absent: students.length - present,
+    monthLabel,
+    counts: tallyMonthStates(students.map((s) => s.monthState)),
     students,
   };
 }
@@ -425,48 +452,28 @@ export async function dailyAttendance(
     return { date, dayLabel: at.dayOfWeek, monthLabel, scoped: "teacherId" in scope, courses: [] };
   }
 
-  const [courses, enrolments, marks, monthPayments, tiers] = await Promise.all([
+  const [courses, marks, monthStates] = await Promise.all([
     db.course.findMany({ where: { id: { in: courseIds } }, select: courseSelect }),
-    db.enrollment.findMany({
-      where: { status: "ACTIVE", courseId: { in: courseIds } },
-      select: { courseId: true, studentId: true, feeTierId: true },
-    }),
     db.attendance.findMany({
       where: { courseId: { in: courseIds }, date: dayValue },
       select: { courseId: true, studentId: true },
     }),
-    db.payment.findMany({
-      where: {
-        kind: "CLASS",
-        cancelled: false,
-        courseId: { in: courseIds },
-        billingYear: year,
-        billingMonth: month,
-      },
-      select: { courseId: true, studentId: true },
-    }),
-    db.feeTier.findMany({ select: { id: true, multiplier: true } }),
+    // The one paid-check: `SETTLED_PAYMENT_WHERE`, via `courseMonthStates`. This
+    // report used to run its own payment query here — a third copy of the rule.
+    courseMonthStates(courseIds, year, month),
   ]);
 
-  const freeTierIds = new Set(tiers.filter((t) => num(t.multiplier) === 0).map((t) => t.id));
-
   const rows: AttendanceCourseRow[] = courses.map((course) => {
-    const mine = enrolments.filter((e) => e.courseId === course.id);
-    const total = mine.length;
-    const free = mine.filter((e) => freeTierIds.has(e.feeTierId)).length;
+    const states = tallyMonthStates((monthStates.get(course.id) ?? new Map()).values());
+    const total = states.paid + states.notPaid + states.overdue + states.free;
+    const free = states.free;
+    const paid = states.paid;
+    // Legacy meaning: every unpaid non-free student, overdue included.
+    const notPaid = states.notPaid + states.overdue;
 
     const attended = new Set(
       marks.filter((m) => m.courseId === course.id).map((m) => m.studentId),
     ).size;
-
-    const paidStudents = new Set(
-      monthPayments.filter((p) => p.courseId === course.id).map((p) => p.studentId),
-    );
-    // Free enrolments generate no payment row, so they must be excluded from
-    // "not paid" rather than counted as debtors.
-    const nonFree = mine.filter((e) => !freeTierIds.has(e.feeTierId));
-    const paid = nonFree.filter((e) => paidStudents.has(e.studentId)).length;
-    const notPaid = nonFree.length - paid;
 
     return {
       courseId: course.id,
@@ -481,6 +488,8 @@ export async function dailyAttendance(
       free,
       monthLabel,
       reconciles: total === paid + notPaid + free,
+      states,
+      statesReconcile: total === states.paid + states.notPaid + states.overdue + states.free,
     };
   });
 

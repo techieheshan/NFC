@@ -3,14 +3,12 @@
 import Link from "next/link";
 
 import { useState, useTransition } from "react";
-import { AlertTriangle, ClipboardList, Download } from "lucide-react";
+import { AlertTriangle, ChevronRight, ClipboardList, Download } from "lucide-react";
 
+import { MonthStateBoxes } from "@/components/attendance/month-state";
 import { downloadReportPdf } from "@/components/reports/report-pdf";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import type { DailyAttendance } from "@/lib/reports";
 
 export function AttendanceReportScreen({
@@ -36,10 +34,11 @@ export function AttendanceReportScreen({
             (report.scoped ? " · your courses only" : ""),
           tables: [
             {
-              head: ["Course", "Teacher", "Session", "Attended", "Absent", "Total", `Paid ${report.monthLabel}`, "Not paid", "Free"],
+              head: ["Course", "Teacher", "Session", "Attended", "Absent", "Total", `Paid ${report.monthLabel}`, "Not paid", "Overdue", "Free"],
               body: report.courses.map((c) => [
                 c.course, c.teacher, c.sessions.join(" + "),
-                c.attended, c.absent, c.total, c.paid, c.notPaid, c.free,
+                c.attended, c.absent, c.total,
+                c.states.paid, c.states.notPaid, c.states.overdue, c.states.free,
               ]),
             },
           ],
@@ -50,7 +49,7 @@ export function AttendanceReportScreen({
     });
   };
 
-  const unreconciled = report.courses.filter((c) => !c.reconciles).length;
+  const unreconciled = report.courses.filter((c) => !c.statesReconcile).length;
 
   return (
     <div className="space-y-6">
@@ -60,6 +59,9 @@ export function AttendanceReportScreen({
           <p className="text-muted-foreground mt-1 text-sm">
             {report.date} ({report.dayLabel})
             {report.scoped && " · your courses only"}
+          </p>
+          <p className="text-muted-foreground text-xs">
+            Attendance: selected day. Payments: {report.monthLabel}.
           </p>
         </div>
         <Button
@@ -74,13 +76,6 @@ export function AttendanceReportScreen({
 
       {filterUi}
 
-      {/* The two halves of this table answer different questions — say so. */}
-      <p className="bg-secondary text-secondary-foreground rounded-lg px-4 py-3 text-sm">
-        <strong>Attended / absent / total</strong> are for the selected day.{" "}
-        <strong>Paid / not paid / free</strong> are the monthly status for{" "}
-        <strong>{report.monthLabel}</strong>.
-      </p>
-
       {report.courses.length === 0 ? (
         <div className="rounded-xl border border-dashed p-10 text-center">
           <ClipboardList className="text-muted-foreground mx-auto size-8" aria-hidden />
@@ -93,58 +88,55 @@ export function AttendanceReportScreen({
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Course</TableHead>
-                  <TableHead className="text-right">Attended</TableHead>
-                  <TableHead className="text-right">Absent</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Not paid</TableHead>
-                  <TableHead className="text-right">Free</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {report.courses.map((c) => (
-                  <TableRow key={c.courseId}>
-                    <TableCell className="max-w-72">
-                      {/* The class name opens that class's own list: who came,
-                          who did not, and who owes. */}
-                      <Link
-                        href={`/daily-attendance/${c.courseId}?date=${report.date}`}
-                        className="block truncate font-medium hover:underline"
-                        title={c.course}
-                      >
-                        {c.course}
-                      </Link>
-                      <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          {/*
+            One card per course instead of a seven-column table: the table made a
+            phone scroll sideways. Same cards in a grid on wider screens, so there
+            is one layout to keep right rather than two.
+          */}
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {report.courses.map((c) => (
+              <li key={c.courseId}>
+                {/* The whole card opens that class's own list: who came, who did
+                    not, and who owes. */}
+                <Link
+                  href={`/daily-attendance/${c.courseId}?date=${report.date}`}
+                  className="bg-card hover:border-primary focus-visible:ring-ring block min-h-12 space-y-3 rounded-xl border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-lg leading-snug font-semibold break-words">{c.course}</p>
+                      <p className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
                         {c.teacher}
                         {c.sessions.includes("additional") && (
                           <Badge variant="outline">Additional</Badge>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">{c.attended}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.absent}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.total}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.paid}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.notPaid}</TableCell>
-                    <TableCell className="text-muted-foreground text-right tabular-nums">{c.free}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                      </p>
+                    </div>
+                    <ChevronRight className="text-muted-foreground mt-1 size-5 shrink-0" aria-hidden />
+                  </div>
+
+                  <p className="text-sm tabular-nums">
+                    Attended <span className="font-semibold">{c.attended}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    Absent <span className="font-semibold">{c.absent}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    Total <span className="font-semibold">{c.total}</span>
+                  </p>
+
+                  <MonthStateBoxes counts={c.states} />
+                </Link>
+              </li>
+            ))}
+          </ul>
 
           <p className="text-muted-foreground text-xs">
-            Total = Paid + Not paid + Free. Free enrolments generate no payment row,
-            so they are counted separately rather than as debtors.
+            Total = Paid + Not paid + Overdue + Free. Overdue means this month and
+            last month are both unpaid. Free enrolments generate no payment row, so
+            they are counted separately rather than as debtors.
             {unreconciled > 0 && (
               <span className="text-destructive ml-1 inline-flex items-center gap-1">
                 <AlertTriangle className="size-3" aria-hidden />
-                {unreconciled} row(s) do not reconcile.
+                {unreconciled} card(s) do not add up.
               </span>
             )}
           </p>

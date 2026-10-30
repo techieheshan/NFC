@@ -3,6 +3,12 @@ import "server-only";
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
+import {
+  buildMonthStates,
+  monthIndex as monthKey,
+  previousMonth,
+  type MonthState,
+} from "@/lib/month-status";
 
 /**
  * Who is behind on fees — the single source of truth for the paid/not-paid
@@ -75,6 +81,65 @@ export async function paidStudentsForCoursesMonth(
   });
   for (const r of rows) byCourse.get(r.courseId!)?.add(r.studentId);
   return byCourse;
+}
+
+/**
+ * Paid / not paid / overdue / free for every ACTIVE enrolment in the given
+ * courses, for one billing month: `courseId -> studentId -> state`.
+ *
+ * Not a second paid-rule. "Settled" is still `SETTLED_PAYMENT_WHERE`, asked via
+ * `paidStudentsForCoursesMonth` for this month and for the one before it — two
+ * queries however many courses there are. The classification itself lives in
+ * `month-status.ts`, where it is tested on its own; this function only fetches.
+ */
+export async function courseMonthStates(
+  courseIds: number[],
+  year: number,
+  month: number,
+): Promise<Map<number, Map<number, MonthState>>> {
+  const out = new Map<number, Map<number, MonthState>>(courseIds.map((id) => [id, new Map()]));
+  if (courseIds.length === 0) return out;
+
+  const prev = previousMonth(year, month);
+  const [enrolments, paidThis, paidLast] = await Promise.all([
+    db.enrollment.findMany({
+      where: { status: "ACTIVE", courseId: { in: courseIds } },
+      select: {
+        courseId: true,
+        studentId: true,
+        createdAt: true,
+        feeTier: { select: { multiplier: true } },
+      },
+    }),
+    paidStudentsForCoursesMonth(courseIds, year, month),
+    paidStudentsForCoursesMonth(courseIds, prev.year, prev.month),
+  ]);
+
+  const lastMonth = monthKey(prev.year, prev.month);
+  for (const courseId of courseIds) {
+    const mine = enrolments
+      .filter((e) => e.courseId === courseId)
+      .map((e) => {
+        // Months are counted from the enrolment's OWN start, in Colombo — the
+        // same basis `studentArrearsMany` uses.
+        const [y, m] = colomboNow(e.createdAt).date.split("-").map(Number);
+        return {
+          studentId: e.studentId,
+          free: Number(String(e.feeTier.multiplier)) === 0,
+          enrolledLastMonth: monthKey(y, m) <= lastMonth,
+        };
+      });
+
+    out.set(
+      courseId,
+      buildMonthStates({
+        enrolments: mine,
+        paidThisMonth: paidThis.get(courseId) ?? new Set(),
+        paidLastMonth: paidLast.get(courseId) ?? new Set(),
+      }),
+    );
+  }
+  return out;
 }
 
 export type OwedMonth = { year: number; month: number; label: string };
