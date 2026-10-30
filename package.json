@@ -16,6 +16,13 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio"
   },
+  "browserslist": [
+    "chrome >= 102",
+    "edge >= 102",
+    "firefox >= 102",
+    "safari >= 15.4",
+    "ios_saf >= 15.4"
+  ],
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",

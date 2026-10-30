@@ -270,6 +270,14 @@ screens to check on the real device. Do not use the standalone `translate`,
 `scale-*` / `rotate-*`; Chrome 104), `svh`/`dvh`/`lvh` units (108), or rely on
 `:has()` or container queries (105) for anything that matters.
 
+`package.json` declares the floor (`browserslist`: Chrome/Edge/Firefox 102,
+Safari 15.4) and Next 16 honours it — measured, not assumed: a Chrome 50 target
+changes the output a lot, and the 102 target changes the JS slightly (+0.8%) and
+the CSS not at all. That is NOT a safety net for CSS: no toolchain step can
+down-level a property whose value is built from `var()`, which is exactly what
+the standalone `translate` is. The floor is enforced by `npm test` (the source)
+and `npm run check:baseline` (the built CSS, after `npm run build`).
+
 **Before saying it is done**
 
 - `tsc`, lint, build and the existing tests pass, and anything new that has
