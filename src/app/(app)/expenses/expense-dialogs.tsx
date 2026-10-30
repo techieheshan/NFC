@@ -136,7 +136,7 @@ export function TeacherAdvanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form action={formAction}>
           <DialogHeader>
             <DialogTitle>Teacher advance</DialogTitle>
@@ -230,7 +230,7 @@ export function XenonExpenseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form action={formAction}>
           <DialogHeader>
             <DialogTitle>Xenon expense</DialogTitle>
@@ -344,7 +344,7 @@ export function EditExpenseDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form action={formAction}>
           <DialogHeader>
             <DialogTitle>Edit expense</DialogTitle>

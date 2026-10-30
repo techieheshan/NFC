@@ -271,7 +271,7 @@ function CourseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <form action={formAction}>
           <DialogHeader>
             <DialogTitle>{isCreate ? "Add course" : "Edit course"}</DialogTitle>

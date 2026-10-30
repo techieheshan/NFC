@@ -31,8 +31,8 @@ export function AppShell({
   const sections = navSectionsFor(role);
 
   return (
-    <div className="flex min-h-svh flex-col lg:grid lg:grid-cols-[16rem_1fr]">
-      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border hidden border-r lg:flex lg:h-svh lg:flex-col lg:sticky lg:top-0">
+    <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[16rem_1fr]">
+      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border hidden border-r lg:flex lg:h-screen lg:flex-col lg:sticky lg:top-0">
         <div className="border-sidebar-border flex h-16 items-center gap-2 border-b px-5">
           <Wordmark />
         </div>

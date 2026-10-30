@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { Check, Download } from "lucide-react";
 
 import { downloadReportPdf } from "@/components/reports/report-pdf";
 import { Badge } from "@/components/ui/badge";
@@ -121,10 +121,15 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
                     <Badge variant="secondary">Paid {report.totals.paid}</Badge>
                     <Badge variant="destructive">Not paid {report.totals.notPaid}</Badge>
                     <Badge variant="outline">Free {report.totals.free}</Badge>
-                    <span className="text-muted-foreground text-xs">
-                      {report.totals.reconciles
-                        ? "Registered = Paid + Not paid + Free ✓"
-                        : "TOTALS DO NOT RECONCILE"}
+                    <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+                      {report.totals.reconciles ? (
+                        <>
+                          Registered = Paid + Not paid + Free
+                          <Check className="size-3" aria-hidden />
+                        </>
+                      ) : (
+                        "TOTALS DO NOT RECONCILE"
+                      )}
                     </span>
                   </span>
                 </td>

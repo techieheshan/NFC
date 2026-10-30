@@ -13,7 +13,7 @@ export const metadata = { title: "No connection" };
  */
 export default function OfflinePage() {
   return (
-    <div className="flex min-h-svh items-center justify-center px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6 text-center">
         <span className="bg-secondary text-secondary-foreground mx-auto grid size-16 place-items-center rounded-full">
           <CloudOff className="size-8" aria-hidden />

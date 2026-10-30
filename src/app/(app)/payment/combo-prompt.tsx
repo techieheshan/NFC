@@ -48,7 +48,7 @@ export function ComboPrompt({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           {/* The combo name can be long ("Chemistry Theory+Paper"). Left to
               itself it set the dialog's min-content width, pushing the rows —

@@ -128,7 +128,7 @@ export function ReceiptsScreen({
       )}
 
       <Dialog open={printing !== null} onOpenChange={(o) => !o && setPrinting(null)}>
-        <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ReceiptIcon className="size-4" aria-hidden />

@@ -221,7 +221,7 @@ function TeacherDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <form action={formAction}>
           <DialogHeader>
             <DialogTitle>{isCreate ? "Add teacher" : "Edit teacher"}</DialogTitle>

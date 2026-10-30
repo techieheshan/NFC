@@ -20,7 +20,7 @@ export default async function ChangePasswordPage() {
   const forced = session.user.mustChangePassword;
 
   return (
-    <div className="from-primary/10 flex min-h-svh items-center justify-center bg-gradient-to-b to-transparent px-4 py-12">
+    <div className="from-primary/10 flex min-h-screen items-center justify-center bg-gradient-to-b to-transparent px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <span className="bg-primary text-primary-foreground grid size-12 place-items-center rounded-xl text-lg font-bold">

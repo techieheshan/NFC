@@ -594,7 +594,7 @@ export function AttendanceScreen({
           release();
         }}
       >
-        <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Banknote className="size-4" aria-hidden />

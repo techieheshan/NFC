@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Download } from "lucide-react";
+import { AlertTriangle, Check, Download } from "lucide-react";
 
 import { downloadReportPdf } from "@/components/reports/report-pdf";
 import { Button } from "@/components/ui/button";
@@ -144,9 +144,14 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
           </table>
         </div>
         <p className="text-muted-foreground p-3 pt-0 text-xs">
-          {report.reconciles.shares
-            ? "Teacher shares + institute keep = course collections ✓"
-            : "TOTALS DO NOT RECONCILE"}
+          {report.reconciles.shares ? (
+            <>
+              Teacher shares + institute keep = course collections
+              <Check className="ml-1 inline size-3 align-[-1px]" aria-hidden />
+            </>
+          ) : (
+            "TOTALS DO NOT RECONCILE"
+          )}
           {report.roundingDelta !== "0.00" && (
             <>
               {" "}

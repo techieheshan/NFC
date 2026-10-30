@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -96,7 +96,7 @@ export function MonthCalendar({
           className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40"
           onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
         >
-          <div className="bg-background max-h-[85svh] overflow-y-auto rounded-t-2xl border-t p-4 shadow-lg">
+          <div className="bg-background max-h-[85%] overflow-y-auto rounded-t-2xl border-t p-4 shadow-lg">
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="text-base font-semibold">Which months?</p>
               <button
@@ -168,7 +168,12 @@ export function MonthCalendar({
                     ].join(" ")}
                   >
                     {name}
-                    {m?.paid && <span className="text-[10px]">paid ✓</span>}
+                    {m?.paid && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px]">
+                        paid
+                        <Check className="size-2.5" aria-hidden />
+                      </span>
+                    )}
                     {m && !m.paid && m.kind === "future" && (
                       <span className="text-muted-foreground text-[10px]">ahead</span>
                     )}

@@ -87,7 +87,7 @@ export function Picker({
         >
           {/* Bounded to the viewport, never taller than it: the list scrolls,
               the sheet does not grow past the screen edge. */}
-          <div className="bg-background flex max-h-[85svh] flex-col rounded-t-2xl border-t shadow-lg">
+          <div className="bg-background flex max-h-[85%] flex-col rounded-t-2xl border-t shadow-lg">
             <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
               <p className="text-base font-semibold">{title ?? placeholder}</p>
               <button
