@@ -88,7 +88,12 @@ export default async function TimetablePage({ searchParams }: PageProps<"/report
         <Button asChild variant="ghost"><Link href="/reports/timetable">This week</Link></Button>
       </form>
 
-      <TimetableScreen key={`${anchor}|${teacherId ?? ""}`} report={report} subtitle={subtitle} />
+      <TimetableScreen
+        key={`${anchor}|${teacherId ?? ""}`}
+        report={report}
+        subtitle={subtitle}
+        today={today}
+      />
     </div>
   );
 }

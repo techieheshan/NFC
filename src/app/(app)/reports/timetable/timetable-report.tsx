@@ -7,14 +7,24 @@ import { downloadReportPdf } from "@/components/reports/report-pdf";
 import { Button } from "@/components/ui/button";
 import { HallIcon } from "@/lib/hall-icons";
 import type { TimetableReport } from "@/lib/report-timetable";
+import { agendaFor } from "@/lib/timetable-agenda";
 
-/** Hall × day. Read down a column for a day, across a row for a room. */
+import { TimetableAgenda } from "./timetable-agenda";
+
+/**
+ * Hall × day on a wide screen — read down a column for a day, across a row for a
+ * room — and a day-by-day agenda below it, because the grid is 896px wide and a
+ * phone would scroll sideways. Both are drawn from the same report.
+ */
 export function TimetableScreen({
   report,
   subtitle,
+  today,
 }: {
   report: TimetableReport;
   subtitle: string;
+  /** "YYYY-MM-DD" in Colombo, decided on the server. */
+  today: string;
 }) {
   const [exporting, setExporting] = useState(false);
   const rows = [...report.rows, ...(report.unassigned ? [report.unassigned] : [])];
@@ -60,7 +70,10 @@ export function TimetableScreen({
         </Button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border">
+      {/* Below xl the grid would not fit, so the agenda stands in for it. */}
+      <TimetableAgenda days={agendaFor(report)} today={today} className="xl:hidden" />
+
+      <div className="hidden overflow-x-auto rounded-xl border xl:block">
         <table className="w-full min-w-4xl text-sm">
           <thead className="bg-muted/40 text-left">
             <tr>
