@@ -110,7 +110,7 @@ export default async function MyStudentsPage({ searchParams }: PageProps<"/my-st
             </div>
             <div className="space-y-2">
               <label htmlFor="courseId" className="block text-sm font-medium">Course</label>
-              <select id="courseId" name="courseId" className={FIELD} defaultValue={filters.courseId ?? ""}>
+              <select id="courseId" name="courseId" className={`${FIELD} w-full max-w-full`} defaultValue={filters.courseId ?? ""}>
                 <option value="">All courses</option>
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>{courseDisplayName(c)}</option>
