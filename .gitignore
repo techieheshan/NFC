@@ -53,3 +53,6 @@ next-env.d.ts
 prisma/import/reference-values*.csv
 prisma/import/*filled*.csv
 prisma/import/*-real*.csv
+
+# Local review screenshots (demo data); never committed.
+/review-shots/
