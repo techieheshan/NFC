@@ -227,3 +227,55 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
 Some app-logic invariants are deliberately *not* enforced by DB constraints —
 "already marked attendance?" and "already paid this month?" are checked in code
 (see the comments in `schema.prisma`). Preserve those checks.
+
+# Live system rules
+
+Xenon is in production and staff may be using it this very minute. A mistake
+here hits real students, real payments and real receipts. Be careful and slow.
+These apply to **every** tag, on top of rules 1–30 above.
+
+**Database and data**
+
+- Never touch the production database. No schema changes, migrations,
+  `migrate deploy`, `db push`, `migrate reset`, seed scripts, or manual writes,
+  updates or deletes. A tag that seems to need a schema change stops and asks.
+- Before running anything that talks to a database, print which `DATABASE_URL`
+  host it points at and confirm it is NOT production. Test against the demo
+  database (`.env.demo`) or a separate Neon branch. Never put production
+  credentials into a local env file or a script.
+- Vercel preview deployments must not be wired to the production database.
+  Check before using one, and say so if they are.
+
+**Code and behaviour**
+
+- Work on a feature branch. Never commit or push to `main`, never deploy to
+  production — the owner reviews and deploys.
+- Do not rewrite or "clean up" working logic. Do not touch payments, money
+  calculation, receipt printing, auth/sessions, the proxy, the offline outbox or
+  the service worker unless the brief names them. Keep the diff small and the
+  commits small and separate, so each one can be reverted alone.
+- Server-action and API contracts stay backward compatible (same inputs, same
+  response shapes). Phones and terminals keep running the old cached app until
+  they reload, and old code must keep working against the new server.
+- No new dependencies, no major-version upgrades, and no build-tool migration
+  (Tailwind included) without asking first.
+- Server-side authority stays where it is: money, combo and payment-status
+  decisions are computed on the server and only displayed by the client.
+
+**Browser baseline.** The oldest terminal runs Chrome 102 (32-bit, Android 8.1).
+The app must work on Chrome 102 and up, and desktop emulation cannot reproduce
+what an old Chrome silently ignores — so a brief that touches CSS names the
+screens to check on the real device. Do not use the standalone `translate`,
+`scale` or `rotate` properties (Tailwind v4 emits them for `translate-*` /
+`scale-*` / `rotate-*`; Chrome 104), `svh`/`dvh`/`lvh` units (108), or rely on
+`:has()` or container queries (105) for anything that matters.
+
+**Before saying it is done**
+
+- `tsc`, lint, build and the existing tests pass, and anything new that has
+  logic gets a test.
+- Smoke-test the flows that must not break: NFC attendance tap, payment and
+  receipt, registration, search, login/logout.
+
+When in doubt, stop and ask. A paused task costs nothing. A broken live system
+does.
