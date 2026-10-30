@@ -2,6 +2,15 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+  Tests are not style sources. Tailwind v4 scans every file in the project for
+  class names, and `css-baseline.test.ts` quotes the banned ones on purpose to
+  prove its guard catches them — without this they were compiled into the
+  stylesheet as dead rules, i.e. the guard shipped the CSS it forbids.
+*/
+@source not "../**/*.test.ts";
+@source not "../**/*.test.tsx";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
