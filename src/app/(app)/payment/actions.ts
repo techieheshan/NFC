@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { requireOperationalAccess } from "@/lib/authz";
-import { applicableCombos, type ApplicableCombo } from "@/lib/combos";
+import { applicableCombos, comboStates, type ApplicableCombo } from "@/lib/combos";
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
@@ -76,6 +76,13 @@ export type ComboDecision = {
   comboId: number;
   apply: boolean;
   reason?: string;
+  /**
+   * Optional. Staff switched this combo OFF: the normal rate is charged and no reason is
+   * needed (a teacher may simply say a student does not get it). Absent = today's rules:
+   * a refusal needs a reason. It wins over `apply`, and the row records "not applied"
+   * with no reason text.
+   */
+  off?: boolean;
 };
 
 export type PaymentPanel = {
@@ -313,6 +320,7 @@ const chargeSchema = z.object({
         comboId: id,
         apply: z.boolean(),
         reason: z.string().trim().max(300).optional(),
+        off: z.boolean().optional(),
       }),
     )
     .max(20),
@@ -406,20 +414,23 @@ export async function takePayment(input: {
   }
 
   /*
-   * Eligibility is recomputed here, never taken from the client — the combo
-   * rate is a discount, so the client may say WHICH combo was decided, but not
-   * whether the student qualifies or what the price is.
+   * Eligibility AND whether anyone must answer are recomputed here, never taken from the
+   * client — the combo rate is a discount, so the client may say WHICH combo was decided,
+   * but not whether the student qualifies, what the price is, or whether a question was due.
+   * `comboStates` is the one rule (see combos.ts).
    */
-  const combos = await applicableCombos(studentId);
+  const switchedOff = new Set(comboDecisions.filter((d) => d.off).map((d) => d.comboId));
+  const combos = await comboStates(studentId, { switchedOff });
   const comboByCourse = new Map<number, { comboId: number; comboFee: string }>();
   for (const combo of combos) {
     for (const item of combo.items) {
       comboByCourse.set(item.courseId, { comboId: combo.comboId, comboFee: item.comboFee });
     }
   }
+  const stateByCombo = new Map(combos.map((c) => [c.comboId, c.state]));
 
-  // Which combos this transaction actually touches — a decision is required for
-  // each, and decisions for anything else are ignored rather than trusted.
+  // Which combos this transaction actually touches. Decisions for anything else are
+  // ignored rather than trusted.
   const involved = new Set(
     classMonths
       // A month recorded with no charge is 0.00 with or without the combo, so it
@@ -434,17 +445,43 @@ export async function takePayment(input: {
     if (involved.has(d.comboId)) decisionByCombo.set(d.comboId, d);
   }
 
+  /**
+   * What happens to each touched combo, once the rules have been applied:
+   *   switched off          → normal rate, recorded as not applied, NO reason text
+   *   a refusal             → honoured in every state, and it needs a reason, as always
+   *   an acceptance         → applied
+   *   no answer             → applied on its own, UNLESS the state is needs-confirmation
+   *                           (a class with 0 days last month), which still needs a person
+   * So an old client that answers every combo keeps working: an answer for a combo that
+   * no longer needs one is honoured if it is a refusal and otherwise changes nothing.
+   */
+  const outcome = new Map<number, { apply: boolean; reason: string | null }>();
   for (const comboId of involved) {
+    const state = stateByCombo.get(comboId);
     const decision = decisionByCombo.get(comboId);
-    if (!decision) {
+
+    if (state === "off") {
+      outcome.set(comboId, { apply: false, reason: null });
+      continue;
+    }
+    if (decision && !decision.apply) {
+      if (!decision.reason?.trim()) {
+        return {
+          ok: false,
+          error: "A reason is required when the combined rate is refused.",
+        };
+      }
+      outcome.set(comboId, { apply: false, reason: decision.reason.trim() });
+      continue;
+    }
+    if (decision?.apply) {
+      outcome.set(comboId, { apply: true, reason: null });
+      continue;
+    }
+    if (state === "needs-confirmation") {
       return { ok: false, error: "A combined-rate decision is missing." };
     }
-    if (!decision.apply && !decision.reason?.trim()) {
-      return {
-        ok: false,
-        error: "A reason is required when the combined rate is refused.",
-      };
-    }
+    outcome.set(comboId, { apply: true, reason: null });
   }
 
   // Idempotency: a stale tab must not double-charge a month already settled.
@@ -528,8 +565,8 @@ export async function takePayment(input: {
       const mode: PaymentMode = row.mode ?? "FULL";
       // A NO_CHARGE month is outside the combo entirely: nothing is charged either way.
       const inCombo = mode === "NO_CHARGE" ? undefined : comboByCourse.get(row.courseId);
-      const decision = inCombo ? decisionByCombo.get(inCombo.comboId) : undefined;
-      const applyCombo = Boolean(inCombo && decision?.apply);
+      const decided = inCombo ? outcome.get(inCombo.comboId) : undefined;
+      const applyCombo = Boolean(inCombo && decided?.apply);
 
       // Combo rate or normal rate — the tier multiplier applies either way. HALF is half of
       // exactly that amount (as the receipt would have shown it); NO_CHARGE is nothing.
@@ -558,8 +595,7 @@ export async function takePayment(input: {
           // later justify why the discount was withheld.
           comboId: inCombo?.comboId ?? null,
           comboApplied: applyCombo,
-          comboRefusedReason:
-            inCombo && decision && !decision.apply ? decision.reason!.trim() : null,
+          comboRefusedReason: inCombo && decided && !decided.apply ? decided.reason : null,
         },
         select: { id: true },
       });
