@@ -2,6 +2,7 @@ import "server-only";
 
 import type { PaymentPanel } from "@/app/(app)/payment/actions";
 import { colomboNow, to12Hour } from "@/lib/colombo-time";
+import { comboStates, type ComboState, type ComboWithState } from "@/lib/combos";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { monthLabel } from "@/lib/receipts";
@@ -35,10 +36,30 @@ export type ViewMonth = {
   state: ViewMonthState;
   /** Day of the month it was paid, in Colombo time. Only for `paid`. */
   paidDay: number | null;
+  /** How a PAID month was charged: null = the full fee, otherwise HALF or NO_CHARGE. */
+  paidMode: "HALF" | "NO_CHARGE" | null;
   /** Classes attended that month. */
   attended: number;
   /** Unpaid AND before the current month — shown as "Owed". */
   owed: boolean;
+};
+
+/**
+ * What the card needs to show the combo, from the server's own state (`comboStates`) —
+ * never decided on the screen. The staff switch is the screen's; the state is not.
+ */
+export type CourseComboInfo = {
+  comboId: number;
+  /** The combo's state with no staff switch applied. */
+  state: ComboState;
+  /** "Oct": the last completed month the check looked at. */
+  monthWord: string;
+  /** How many classes the combo has ("both" / "all"). */
+  classCount: number;
+  /** Classes the check is waiting on: 0 days last month, and not new. Meaningful for needs-confirmation. */
+  zeroDayCourses: string[];
+  /** THIS card's class began this month (no completed month): shown with a "New" chip. */
+  thisClassIsNew: boolean;
 };
 
 export type CourseCardData = {
@@ -53,6 +74,14 @@ export type CourseCardData = {
   /** `comboFee × multiplier` when the course qualifies for a combo. */
   comboMonthly: string | null;
   comboId: number | null;
+  /**
+   * Half of `monthly` / of `comboMonthly`, built here with the same arithmetic as the
+   * server's Half month (`money(Number(full) * 0.5)`), so the screen only displays strings.
+   * A parity test compares them with the real receipt for every tier and combo case.
+   */
+  halfMonthly: string | null;
+  halfComboMonthly: string | null;
+  combo: CourseComboInfo | null;
   /** What tapping the card charges: the oldest unpaid month up to now. null when nothing is owed. */
   cardMonth: ViewMonth | null;
   /** Set when nothing is owed up to now: the current month is settled. */
@@ -64,8 +93,14 @@ export type CourseCardData = {
 export type PaymentView = {
   student: PaymentPanel["student"];
   admission: PaymentPanel["admission"];
-  smartCard: PaymentPanel["smartCard"];
-  combos: PaymentPanel["combos"];
+  /**
+   * `chargedOn`: the Colombo date of the charge that stops a second one for the card's CURRENT
+   * UID, or null. The same question the server asks when it refuses; the server stays the
+   * authority (a forced request is refused), this only lets the screen say so first.
+   */
+  smartCard: PaymentPanel["smartCard"] & { chargedOn: string | null };
+  /** Every combo the student qualifies for, with its state. */
+  combos: ComboWithState[];
   /** The current Colombo month. */
   today: { year: number; month: number };
   /** How many months ahead may be paid — read from the existing panel, never restated here. */
@@ -78,6 +113,9 @@ export type PaymentView = {
 const ordinal = (year: number, month: number) => year * 12 + (month - 1);
 const fromOrdinal = (o: number) => ({ year: Math.floor(o / 12), month: (o % 12) + 1 });
 const ym = (date: Date) => date.toISOString().slice(0, 7); // a @db.Date is stored as UTC midnight
+
+/** Half of a displayed price, exactly as the server's Half month computes it. */
+const halfOf = (amount: string | null) => (amount === null ? null : (Number(amount) * 0.5).toFixed(2));
 
 const SHORT_MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -95,7 +133,8 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
 
   const courseIds = panel.courses.map((c) => c.courseId);
 
-  const [enrolments, arrears, settled, attendance] = await Promise.all([
+  const currentUid = panel.smartCard.currentUid;
+  const [enrolments, arrears, settled, attendance, combos, priorCard] = await Promise.all([
     db.enrollment.findMany({
       where: { studentId, status: "ACTIVE", courseId: { in: courseIds } },
       select: { courseId: true, createdAt: true },
@@ -103,13 +142,22 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
     studentArrears(studentId),
     db.payment.findMany({
       where: { ...SETTLED_PAYMENT_WHERE, studentId },
-      select: { courseId: true, billingYear: true, billingMonth: true, paidAt: true },
+      select: { courseId: true, billingYear: true, billingMonth: true, paidAt: true, chargeMode: true },
       orderBy: { paidAt: "asc" },
     }),
     db.attendance.findMany({
       where: { studentId, courseId: { in: courseIds } },
       select: { courseId: true, date: true },
     }),
+    comboStates(studentId),
+    // Only a non-empty UID can be guarded; rows with no UID recorded never match one.
+    currentUid
+      ? db.payment.findFirst({
+          where: { studentId, kind: "SMART_CARD", cancelled: false, cardUidIssued: currentUid },
+          orderBy: { paidAt: "desc" },
+          select: { paidAt: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   const startOf = new Map(
@@ -121,10 +169,14 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
 
   // First payment wins when a month was (wrongly) paid twice: the day it was first settled.
   const paidDayOf = new Map<string, number>();
+  const paidModeOf = new Map<string, "HALF" | "NO_CHARGE" | null>();
   for (const p of settled) {
     if (p.courseId === null || p.billingYear === null || p.billingMonth === null) continue;
     const key = `${p.courseId}:${p.billingYear}:${p.billingMonth}`;
-    if (!paidDayOf.has(key)) paidDayOf.set(key, Number(colomboNow(p.paidAt).date.slice(8, 10)));
+    if (!paidDayOf.has(key)) {
+      paidDayOf.set(key, Number(colomboNow(p.paidAt).date.slice(8, 10)));
+      paidModeOf.set(key, p.chargeMode);
+    }
   }
 
   const attendedIn = new Map<string, number>();
@@ -152,6 +204,7 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
         label: monthLabel(year, month),
         state,
         paidDay: paidDay ?? null,
+        paidMode: paidModeOf.get(`${c.courseId}:${year}:${month}`) ?? null,
         attended: attendedIn.get(`${c.courseId}:${year}-${String(month).padStart(2, "0")}`) ?? 0,
         owed: state === "unpaid" && o < here,
       });
@@ -175,6 +228,21 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
           }
         : null;
 
+    const inCombo = combos.find((x) => x.courseIds.includes(c.courseId));
+    const facts = inCombo?.classes.find((x) => x.courseId === c.courseId);
+    const combo: CourseComboInfo | null = inCombo
+      ? {
+          comboId: inCombo.comboId,
+          state: inCombo.state,
+          monthWord: inCombo.lastMonthLabel.split(" ")[0],
+          classCount: inCombo.courseIds.length,
+          zeroDayCourses: inCombo.classes
+            .filter((x) => !x.isNew && !x.free && x.days === 0)
+            .map((x) => inCombo.attendance.find((a) => a.courseId === x.courseId)?.course ?? ""),
+          thisClassIsNew: facts?.isNew ?? false,
+        }
+      : null;
+
     return {
       courseId: c.courseId,
       course: c.course,
@@ -185,6 +253,9 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
       monthly: c.monthly,
       comboMonthly: c.comboMonthly,
       comboId: c.comboId,
+      halfMonthly: halfOf(c.monthly),
+      halfComboMonthly: halfOf(c.comboMonthly),
+      combo,
       cardMonth,
       paidThisMonth,
       months,
@@ -194,8 +265,8 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
   return {
     student: panel.student,
     admission: panel.admission,
-    smartCard: panel.smartCard,
-    combos: panel.combos,
+    smartCard: { ...panel.smartCard, chargedOn: priorCard ? colomboNow(priorCard.paidAt).date : null },
+    combos,
     today: { year: cy, month: cm },
     ahead,
     lastAttended,

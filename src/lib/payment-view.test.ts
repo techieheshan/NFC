@@ -320,4 +320,157 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     assert.deepEqual(Object.keys(d!).sort(), ["attended", "course", "label", "lastAttended", "rows", "teacher"]);
     assert.deepEqual(Object.keys(d!.rows[0]).sort(), ["date", "time", "weekday"]);
   });
+
+  // ---- job 3B: what the view now carries for the Half / No charge / combo / smart-card screens ----------
+
+  test("3B: a settled month reports HOW it was charged: full (null), HALF, or NO_CHARGE — and stays paid", async () => {
+    const c = await course();
+    const s = await student([{ courseId: c.id }]);
+    const row = (month: number, chargeMode: "HALF" | "NO_CHARGE" | null, amount: string) =>
+      db.payment.create({ data: { kind: "CLASS", studentId: s.id, courseId: c.id, billingYear: 2026, billingMonth: month, amount, feeTierId: w.tiers.FULL.id, takenById: w.admin.id, chargeMode, transactionRef: null } });
+    await row(8, null, "2500.00");
+    await row(9, "HALF", "1250.00");
+    await row(10, "NO_CHARGE", "0.00");
+    const months = (await load(s.id)).courses[0].months;
+    assert.deepEqual(months.slice(0, 3).map((m) => [m.month, m.state, m.paidMode]), [[8, "paid", null], [9, "paid", "HALF"], [10, "paid", "NO_CHARGE"]]);
+    assert.deepEqual(months.slice(3).map((m) => m.paidMode), [null, null, null, null]); // unpaid / ahead months
+  });
+
+  test("3B: a CANCELLED half or no-charge row is not settled: the month is unpaid again with no mode", async () => {
+    const c = await course();
+    const s = await student([{ courseId: c.id }]);
+    await db.payment.create({ data: { kind: "CLASS", studentId: s.id, courseId: c.id, billingYear: 2026, billingMonth: 8, amount: "0.00", feeTierId: w.tiers.FULL.id, takenById: w.admin.id, chargeMode: "NO_CHARGE", cancelled: true, transactionRef: null } });
+    const m = (await load(s.id)).courses[0].months.find((x) => x.month === 8)!;
+    assert.deepEqual([m.state, m.paidMode], ["unpaid", null]);
+  });
+
+  /** Two combo classes (normal 2500 / 1700, combo 2000 / 1300), the student enrolled in both. */
+  async function comboStudent(a: { since?: string; tier?: "FULL" | "HALF" | "FREE"; days?: number }, b: { since?: string; tier?: "FULL" | "HALF" | "FREE"; days?: number }) {
+    const teacher = await makeTeacher(db);
+    const ca = await makeCourse(db, w, { teacherId: teacher.id, fee: "2500", name: `VA${Math.random().toString(36).slice(2, 6)}` });
+    const cb = await makeCourse(db, w, { teacherId: teacher.id, fee: "1700", name: `VB${Math.random().toString(36).slice(2, 6)}` });
+    const combo = await makeCombo(db, { teacherId: teacher.id, items: [{ courseId: ca.id, fee: "2000" }, { courseId: cb.id, fee: "1300" }] });
+    const s = await makeStudent(db);
+    for (const [c, x] of [[ca, a], [cb, b]] as const) {
+      await enrol(db, { studentId: s.id, courseId: c.id, tierId: w.tiers[x.tier ?? "FULL"].id, since: x.since ?? AUG });
+      for (let d = 0; d < (x.days ?? 0); d++) await attend(db, { studentId: s.id, courseId: c.id, date: `2026-10-${String(5 + d * 7).padStart(2, "0")}`, markedById: w.admin.id });
+    }
+    return { ca, cb, combo, s };
+  }
+
+  test("3B: each card carries its combo's state and the facts for the board-8 sub-line, from the server", async () => {
+    const auto = await comboStudent({ days: 2 }, { days: 1 });
+    const [c1, c2] = (await load(auto.s.id)).courses;
+    assert.deepEqual(c1.combo, { comboId: auto.combo.id, state: "auto", monthWord: "Oct", classCount: 2, zeroDayCourses: [], thisClassIsNew: false });
+    assert.equal(c2.combo?.state, "auto");
+
+    const zero = await comboStudent({ days: 2 }, { days: 0 });
+    const zc = (await load(zero.s.id)).courses;
+    assert.equal(zc[0].combo?.state, "needs-confirmation");
+    assert.deepEqual(zc[0].combo?.zeroDayCourses, [zc[1].course]); // names the class the check is waiting on
+    assert.deepEqual(zc[1].combo?.zeroDayCourses, [zc[1].course]);
+
+    const fresh = await comboStudent({ days: 2 }, { since: "2026-11-03T06:00:00Z" });
+    const fc = (await load(fresh.s.id)).courses;
+    assert.deepEqual(fc.map((x) => [x.combo?.state, x.combo?.thisClassIsNew]), [["exempt-new", false], ["exempt-new", true]]);
+
+    // a NEW class with 0 days is exempt, so it is not one of the classes the check is waiting on
+    const mixed = await comboStudent({ days: 0 }, { since: "2026-11-03T06:00:00Z" });
+    const mc = (await load(mixed.s.id)).courses;
+    assert.equal(mc[0].combo?.state, "needs-confirmation");
+    assert.deepEqual(mc[1].combo?.zeroDayCourses, [mc[0].course]); // only the OLD class, never the new one
+
+    const free = await comboStudent({ days: 0 }, { tier: "FREE" });
+    const frc = (await load(free.s.id)).courses;
+    assert.deepEqual(frc.map((x) => x.combo?.state), ["exempt-free", "exempt-free"]);
+  });
+
+  test("3B: a course that is in no combo has combo null; the view's combos list carries the same states", async () => {
+    const c = await course();
+    const s = await student([{ courseId: c.id }]);
+    const v = await load(s.id);
+    assert.equal(v.courses[0].combo, null);
+    assert.deepEqual(v.combos, []);
+    const auto = await comboStudent({ days: 1 }, { days: 1 });
+    const av = await load(auto.s.id);
+    assert.deepEqual(av.combos.map((x) => [x.comboId, x.state]), [[auto.combo.id, "auto"]]);
+  });
+
+  test("3B: the half amounts on the view equal what the REAL takePayment stores, for every tier, with and without the combo", async () => {
+    const quarter = (await db.feeTier.create({ data: { code: "QUARTER", label: "Quarter", multiplier: "0.250" } })).id;
+    const tierIds = { FULL: w.tiers.FULL.id, HALF: w.tiers.HALF.id, QUARTER: quarter } as const;
+    for (const tier of ["FULL", "HALF", "QUARTER"] as const) {
+      const teacher = await makeTeacher(db);
+      const ca = await makeCourse(db, w, { teacherId: teacher.id, fee: "2500", name: `HA${Math.random().toString(36).slice(2, 6)}` });
+      const cb = await makeCourse(db, w, { teacherId: teacher.id, fee: "1700", name: `HB${Math.random().toString(36).slice(2, 6)}` });
+      const combo = await makeCombo(db, { teacherId: teacher.id, items: [{ courseId: ca.id, fee: "2000" }, { courseId: cb.id, fee: "1300" }] });
+      const s = await makeStudent(db);
+      for (const c of [ca, cb]) await enrol(db, { studentId: s.id, courseId: c.id, tierId: tierIds[tier], since: AUG });
+      for (const c of [ca, cb]) await attend(db, { studentId: s.id, courseId: c.id, date: "2026-10-10", markedById: w.admin.id }); // combo applies on its own
+      const v = await load(s.id);
+      setSession("ADMIN", w.admin.id);
+      // HALF with the combo (automatic here) ...
+      const withCombo = await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: ca.id, year: 2026, month: 11, mode: "HALF" }, { courseId: cb.id, year: 2026, month: 11, mode: "HALF" }] });
+      assert.equal(withCombo.ok, true, JSON.stringify(withCombo));
+      const stored = (await db.payment.findMany({ where: { studentId: s.id }, orderBy: { id: "asc" } })).map((r) => r.amount.toFixed(2));
+      assert.deepEqual(stored, v.courses.map((c) => c.halfComboMonthly), `${tier} with combo`);
+      // ... and without it (the staff switch off), on a second student of the same shape
+      const t = await makeStudent(db);
+      for (const c of [ca, cb]) await enrol(db, { studentId: t.id, courseId: c.id, tierId: tierIds[tier], since: AUG });
+      const vt = await load(t.id);
+      const off = await pay.takePayment({ studentId: t.id, admission: false, smartCard: false, comboDecisions: [{ comboId: combo.id, apply: false, off: true }], classMonths: [{ courseId: ca.id, year: 2026, month: 11, mode: "HALF" }, { courseId: cb.id, year: 2026, month: 11, mode: "HALF" }] });
+      assert.equal(off.ok, true, JSON.stringify(off));
+      const storedOff = (await db.payment.findMany({ where: { studentId: t.id }, orderBy: { id: "asc" } })).map((r) => r.amount.toFixed(2));
+      assert.deepEqual(storedOff, vt.courses.map((c) => c.halfMonthly), `${tier} without combo`);
+    }
+  });
+
+  test("3B: a free course has no half amounts", async () => {
+    const c = await course();
+    const s = await student([{ courseId: c.id, tier: "FREE" }]);
+    const card = (await load(s.id)).courses[0];
+    assert.deepEqual([card.halfMonthly, card.halfComboMonthly], [null, null]);
+  });
+
+  test("3B: smartCard.chargedOn is set exactly when the SERVER would refuse a second charge for the card", async () => {
+    const charge = async (id: number) => { setSession("ADMIN", w.admin.id); return pay.takePayment({ studentId: id, admission: false, smartCard: true, classMonths: [], comboDecisions: [] }); };
+    const seen = async (id: number) => (await load(id)).smartCard.chargedOn;
+    const refused = async (id: number) => !(await charge(id)).ok;
+
+    // never charged
+    const a = await makeStudent(db, { cardUid: "VIEWCARD01" });
+    assert.equal(await seen(a.id), null);
+    // charged once: the view says so, and the server refuses (and names the same date)
+    assert.equal((await charge(a.id)).ok, true);
+    assert.equal(await seen(a.id), "2026-11-10");
+    const res = await charge(a.id);
+    assert.equal(res.ok, false);
+    assert.ok((res as { error: string }).error.includes("2026-11-10"));
+    // a REPLACEMENT card (new UID): the view clears and the server allows
+    await db.student.update({ where: { id: a.id }, data: { cardUid: "VIEWCARD02" } });
+    assert.equal(await seen(a.id), null);
+    assert.equal(await refused(a.id), false);
+    // a cancelled charge does not block
+    const b = await makeStudent(db, { cardUid: "VIEWCARD03" });
+    assert.equal((await charge(b.id)).ok, true);
+    await db.payment.updateMany({ where: { studentId: b.id, kind: "SMART_CARD" }, data: { cancelled: true } });
+    assert.equal(await seen(b.id), null);
+    assert.equal(await refused(b.id), false);
+    // legacy rows with no UID recorded do not block
+    const c = await makeStudent(db, { cardUid: "VIEWCARD04" });
+    for (const cardUidIssued of [null, ""]) await db.payment.create({ data: { kind: "SMART_CARD", studentId: c.id, amount: "500.00", cardUidIssued, takenById: w.admin.id } });
+    assert.equal(await seen(c.id), null);
+    assert.equal(await refused(c.id), false);
+    // another student's row with the same UID does not block
+    const d = await makeStudent(db, { cardUid: "VIEWCARD05" });
+    const other = await makeStudent(db);
+    await db.payment.create({ data: { kind: "SMART_CARD", studentId: other.id, amount: "500.00", cardUidIssued: "VIEWCARD05", takenById: w.admin.id } });
+    assert.equal(await seen(d.id), null);
+    assert.equal(await refused(d.id), false);
+    // a student with no UID cannot be guarded, so nothing is shown
+    const e = await makeStudent(db);
+    assert.equal((await charge(e.id)).ok, true);
+    assert.equal(await seen(e.id), null);
+    assert.equal(await refused(e.id), false);
+  });
 });
