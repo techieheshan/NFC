@@ -287,3 +287,61 @@ and `npm run check:baseline` (the built CSS, after `npm run build`).
 
 When in doubt, stop and ask. A paused task costs nothing. A broken live system
 does.
+
+# Testing payments
+
+`npm test` runs without a database: the database tests are skipped and say why.
+`npm run test:db` runs everything and refuses to start unless
+`XENON_TEST_DATABASE_URL` is set.
+
+**Rule: database tests read `XENON_TEST_DATABASE_URL` only — never
+`DATABASE_URL`.** A production URL that is exported in the shell or loaded from
+`.env` can therefore never be used by a test. The host must be local Postgres,
+or be named in `XENON_TEST_DB_ALLOWED_HOSTS` (comma-separated Neon endpoint ids,
+set per run, never committed — this repo is public). Anything else makes the run
+fail before it connects (`src/test-support/db-guard.ts`).
+
+Start a throw-away Postgres, run, remove it:
+
+```
+podman run -d --name xenon-test-pg -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_PASSWORD=<anything local> -e POSTGRES_DB=xenon_test \
+  --tmpfs /var/lib/postgresql/data:rw docker.io/library/postgres:16-alpine
+XENON_TEST_DATABASE_URL=postgresql://postgres:<pw>@127.0.0.1:55432/xenon_test npm run test:db
+podman rm -f xenon-test-pg
+```
+
+How the tests work (`src/test-support/`): each test **file** creates its own
+database on that server, applies `prisma/migrations`, and drops it afterwards;
+data comes from factories, never from what happens to exist. The clock is
+frozen (`freezeClock`) so nothing is flaky on the 1st, the last day or at
+Colombo midnight. The real server actions are called with a stubbed session
+(`setSession`); production code is never modified for a test.
+
+A test that locks something we plan to change is named
+`CURRENT BEHAVIOUR (will change in job N): …`. When that job lands, the failing
+test points at the sentence to update. Checklist:
+
+- **Job 3 — any past month payable:** the server already accepts months older
+  than the panel's window; the panel offers 5 past + current + 3 ahead; arrears
+  are unlimited (`payment-take`, `arrears-db`).
+- **Job 3 — smart card is unguarded:** the same card can be charged repeatedly.
+- **Job 3 — duplicate in one request:** the same course and month listed twice
+  is charged twice.
+- **Job 3 — combo rules:** paying ONE course of a combo still needs a decision
+  and gets the combo fee; attendance is shown but never decides eligibility.
+- **Job 3 — one `lastCompletedMonth`:** `combos.ts` and `payslips.ts` each have
+  their own copy (`last-completed-month`). Merge them, then keep the cases.
+- **Rounding (`report 9.2`):** money is a JS float then `toFixed(2)`, so half-cent
+  results go either way (`1333.33×0.5 → 666.66`, `1250.05×0.5 → 625.02`,
+  `10.15×0.5 → 5.08`).
+- **Rounding (`report 9.3`):** a slip rounds each teacher's two halves separately,
+  so slips and the month-end roll-up can differ by a cent.
+- **Silent zero fee:** a missing or empty `admission_fee` / `smart_card_fee`
+  setting charges `0.00` instead of failing.
+- **Quirk, not planned to change:** a student with no active enrolment reads as
+  grey "Free tier".
+
+Not covered, on purpose: receipt printing (no automated way), and the real
+concurrent double-submit race (not deterministic). The race has no DB constraint
+behind it — the clash check runs outside the transaction.
