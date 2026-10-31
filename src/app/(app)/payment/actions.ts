@@ -57,7 +57,14 @@ const BUSY_MESSAGE = "Another payment for this student is in progress — check 
 function isBusyError(e: unknown): boolean {
   if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (e.code === "P2028") return true;
-  return /55P03|lock timeout/i.test(`${e.message} ${JSON.stringify(e.meta ?? {})}`);
+  let detail = e.message;
+  try {
+    detail += ` ${JSON.stringify(e.meta ?? {})}`;
+  } catch {
+    // meta that cannot be serialised (a BigInt, a cycle) must not replace the real error — the
+    // message alone decides.
+  }
+  return /55P03|lock timeout/i.test(detail);
 }
 
 /** How many months back the catch-up selector will ever offer. */

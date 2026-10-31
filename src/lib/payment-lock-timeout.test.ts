@@ -5,7 +5,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { Client } from "pg";
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 /*
  * Job 3A review fix: a request that waits on the per-student lock longer than its transaction
@@ -212,5 +212,20 @@ describe("a payment that cannot get the student's lock in time, against a real d
     assert.ok(performance.now() - started >= 6000, "it really did run past the 6 s limit");
     assert.equal((await rows(student.id)).length, 0);
     assert.equal((await db.student.findUniqueOrThrow({ where: { id: student.id } })).admissionPaid, false);
+  });
+
+  test("an error whose meta cannot be serialised (a BigInt) is still judged correctly — never replaced by a TypeError", LIMIT, async () => {
+    const { course, student } = await setup();
+    const fail = (message: string) => {
+      const restore = stubTransaction(() => () =>
+        Promise.reject(new Prisma.PrismaClientKnownRequestError(message, { code: "P2010", clientVersion: "test", meta: { big: BigInt(1) } })),
+      );
+      return charge(student.id, course.id).finally(restore);
+    };
+    // A lock timeout is still the busy answer, from the message alone...
+    assert.deepEqual(await fail("Raw query failed. Code: `55P03`. Message: `canceling statement due to lock timeout`"), { ok: false, error: BUSY });
+    // ...and any other error is rethrown AS ITSELF.
+    await assert.rejects(fail("Raw query failed. Code: `23505`. Message: `duplicate key`"), (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && /23505/.test(e.message));
+    assert.equal((await rows(student.id)).length, 0);
   });
 });
