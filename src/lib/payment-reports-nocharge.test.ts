@@ -73,15 +73,15 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
     return { teacher, course, unpaid };
   }
 
-  test("CURRENT BEHAVIOUR (will change in job 5): Daily Summary counts a NO_CHARGE student as having PAID their tier", async () => {
-    // Money is right (2000 + 1000 = 3000). The paid-FULL count is 3: the full payer, the half-month
-    // payer (counted under their tier, not "Half") AND the student who paid nothing. After job 5
-    // the no-charge student is not in a paid count, and shows as not paid for that day's range.
+  test("job 5 (was CURRENT BEHAVIOUR): Daily Summary does NOT count a NO_CHARGE student as having paid — they are not paid for that day's range", async () => {
+    // Money was always right (2000 + 1000 = 3000). The paid-FULL count is now 2: the full payer and the
+    // half-month payer (a normal payer of THEIR tier — not "Half", which is the HALF tier). The student
+    // who paid nothing is no longer in a paid count; with the student who never came, 2 are not paid.
     const { course } = await scenario();
     const summary = await reports.dailySummary("2026-11-10", "2026-11-10");
     const row = summary.courses.find((c) => c.courseId === course.id)!;
     assert.equal(row.amount, "3000.00");
-    assert.deepEqual([row.registered, row.paidFull, row.paidHalf, row.paidQuarter, row.notPaid, row.free], [4, 3, 0, 0, 1, 0]);
+    assert.deepEqual([row.registered, row.paidFull, row.paidHalf, row.paidQuarter, row.notPaid, row.free], [4, 2, 0, 0, 2, 0]);
     assert.equal(row.reconciles, true);
   });
 
@@ -124,10 +124,24 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
     assert.equal(report.byTeacher.find((t) => t.teacherId === teacher.id), undefined);
   });
 
-  test("CURRENT BEHAVIOUR (will change in job 5): a HALF MONTH on a FULL-tier student reads as a full-tier payer — and nobody shows as a Half-month payer", async () => {
-    // "Half" in these reports means the HALF TIER. The student below is FULL tier and paid half of
-    // one month: Daily Summary counts them under paidFull (paidHalf stays 0), and the payslip's tier
-    // counts say "1 FULL". After job 5 they are not read as a full month and are not invisible.
+  test("job 5 (was CURRENT BEHAVIOUR): Daily Summary — a HALF MONTH on a FULL-tier student is a normal payer of their TIER (paidHalf stays the HALF tier), and the month has its own line", async () => {
+    const teacher = await makeTeacher(db);
+    const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `HalfDaily${Math.random().toString(36).slice(2, 6)}` });
+    const s = await makeStudent(db);
+    await enrol(db, { studentId: s.id, courseId: course.id, tierId: w.tiers.FULL.id, since: SINCE });
+    setSession("ADMIN", w.admin.id);
+    assert.equal((await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, ...NOV, mode: "HALF" }] })).ok, true);
+
+    const summary = await reports.dailySummary("2026-11-10", "2026-11-10");
+    const row = summary.courses.find((c) => c.courseId === course.id)!;
+    assert.equal(row.amount, "1000.00");
+    assert.deepEqual([row.paidFull, row.paidHalf, row.paidQuarter], [1, 0, 0]); // tier columns are unchanged: they are TIER columns
+    assert.ok(summary.halfMonths && summary.halfMonths.count >= 1, "the Half month is visible on the extra line (exact figures: reports-half-nocharge.test.ts)");
+  });
+
+  test("CURRENT BEHAVIOUR (will change in job 5): payslip — a HALF MONTH on a FULL-tier student reads as a full-tier payer, and nobody shows as a Half-month payer", async () => {
+    // "Half" in the payslip means the HALF TIER. The student below is FULL tier and paid half of one
+    // month: the payslip's tier counts say "1 FULL" and the sheet line is just a 1000.00 rate.
     const teacher = await makeTeacher(db);
     const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `Half${Math.random().toString(36).slice(2, 6)}` });
     const s = await makeStudent(db);
@@ -135,17 +149,21 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
     setSession("ADMIN", w.admin.id);
     assert.equal((await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, ...NOV, mode: "HALF" }] })).ok, true);
 
-    const row = (await reports.dailySummary("2026-11-10", "2026-11-10")).courses.find((c) => c.courseId === course.id)!;
-    assert.equal(row.amount, "1000.00");
-    assert.deepEqual([row.paidFull, row.paidHalf, row.paidQuarter], [1, 0, 0]);
-
     const slip = (await payslips.buildPayslips({ year: 2026, month: 11, teacherIds: [teacher.id], includeInstitute: false })).slips[0];
     assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["FULL", 1]]);
     assert.deepEqual(slip.lines.map((l) => [l.cards, l.rate, l.gross]), [[1, "1000.00", "1000.00"]]);
   });
 
-  test("the paid-FULL count and the payslip counts agree with each other today (both count rows) — job 5 must change them together", async () => {
-    const { teacher, course } = await scenario();
+  test("the Daily Summary paid count and the payslip's paying students agree with each other for Full and Half-month payers (job 5 keeps them together)", async () => {
+    // (The No-charge case is added with the payslip change: both must exclude it, together.)
+    const teacher = await makeTeacher(db);
+    const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `Agree${Math.random().toString(36).slice(2, 6)}` });
+    setSession("ADMIN", w.admin.id);
+    for (const mode of ["FULL", "HALF"] as const) {
+      const s = await makeStudent(db);
+      await enrol(db, { studentId: s.id, courseId: course.id, tierId: w.tiers.FULL.id, since: SINCE });
+      assert.equal((await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, ...NOV, mode }] })).ok, true);
+    }
     const row = (await reports.dailySummary("2026-11-10", "2026-11-10")).courses.find((c) => c.courseId === course.id)!;
     const slip = (await payslips.buildPayslips({ year: 2026, month: 11, teacherIds: [teacher.id], includeInstitute: false })).slips[0];
     assert.equal(row.paidFull + row.paidHalf + row.paidQuarter, slip.payingStudents);
