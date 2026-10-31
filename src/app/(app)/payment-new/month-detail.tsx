@@ -1,0 +1,219 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import { Check, Loader2, X } from "lucide-react";
+
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { shortMoney } from "@/lib/payment-charge";
+import type { MonthDetail, MonthDetailRow } from "@/lib/payment-view";
+
+/**
+ * Board 5 — one month's attendance for one course.
+ *
+ * Built with the Full fee only. Half and No charge are drawn, visibly disabled and
+ * labelled "Coming soon": they need the money logic and a new column (job 3), so
+ * nothing here can choose them and nothing about them is ever submitted.
+ */
+
+const SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dayMonth = (iso: string) => `${iso.slice(8, 10)} ${SHORT[Number(iso.slice(5, 7)) - 1]}`;
+const lastLabel = (iso: string) => `${Number(iso.slice(8, 10))} ${SHORT[Number(iso.slice(5, 7)) - 1]}`;
+
+const CHIP = "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[13px] font-semibold";
+
+function StatusChip({ row }: { row: MonthDetailRow }) {
+  if (row.status === "present") {
+    return (
+      <span className="flex items-center gap-2">
+        {row.time && <span className="text-xs text-[#5B5670] tabular-nums">{row.time}</span>}
+        <span className={`${CHIP} border-[#2E9E5B] bg-[#D6F2DF] text-[#0B4A24]`}>
+          <Check className="size-3.5" strokeWidth={3} aria-hidden />
+          Present
+        </span>
+      </span>
+    );
+  }
+  if (row.status === "absent") {
+    return (
+      <span className={`${CHIP} border-[#D64545] bg-[#FDE0E0] text-[#8A1C1C]`}>
+        <X className="size-3.5" strokeWidth={3} aria-hidden />
+        Absent
+      </span>
+    );
+  }
+  return (
+    <span className={`${CHIP} border-[#CFC6E6] bg-white text-[#5B5670]`}>
+      {row.status === "today" ? "Today" : "Upcoming"}
+    </span>
+  );
+}
+
+export function MonthDetailSheet({
+  studentId,
+  courseId,
+  year,
+  month,
+  fee,
+  state,
+  selected,
+  load,
+  onUse,
+  onClose,
+}: {
+  studentId: number;
+  courseId: number;
+  year: number;
+  month: number;
+  /** The Full fee for this card, as the screen already shows it. */
+  fee: string | null;
+  /** paid months can be looked at, but not used for a payment. */
+  state: "paid" | "unpaid" | "ahead";
+  selected: boolean;
+  load: (input: { studentId: number; courseId: number; year: number; month: number }) => Promise<MonthDetail | null>;
+  onUse: () => void;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<MonthDetail | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const [, startTransition] = useTransition();
+
+  // Fetch once on open. The parent keys this component on the month, so a
+  // different month is a fresh instance rather than a prop synced into state.
+  useEffect(() => {
+    startTransition(async () => {
+      try {
+        setDetail(await load({ studentId, courseId, year, month }));
+      } catch {
+        setFailed(true);
+      }
+    });
+  }, [load, studentId, courseId, year, month]);
+
+  const allAttended = detail && detail.held > 0 && detail.attended === detail.held;
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent showCloseButton={false} className="gap-3 p-4 sm:max-w-md">
+        <div className="flex items-start gap-2.5">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="text-[22px] leading-tight font-bold">
+              {detail?.label ?? `${SHORT[month - 1]} ${year}`}
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 text-[13px] break-words text-[#5B5670]">
+              {detail ? `${detail.course} · ${detail.teacher}` : "Attendance for this month"}
+            </DialogDescription>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="grid size-11 shrink-0 place-items-center rounded-xl border border-[#E1DAF0] bg-white"
+          >
+            <X className="size-5" aria-hidden />
+          </button>
+        </div>
+
+        {detail === undefined && !failed && (
+          <p className="flex items-center justify-center gap-2 py-8 text-sm text-[#5B5670]">
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Loading attendance…
+          </p>
+        )}
+
+        {(failed || detail === null) && (
+          <p role="alert" className="rounded-xl border border-[#E8851C] bg-[#FFF4E5] px-3 py-3 text-sm text-[#4A2600]">
+            {failed
+              ? "Couldn't load the attendance. Check the connection and try again."
+              : "No attendance to show for this course."}
+          </p>
+        )}
+
+        {detail && (
+          <>
+            <div
+              className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${
+                allAttended
+                  ? "border-[#2E9E5B] bg-[#E8F7EE] text-[#0B4A24]"
+                  : "border-[#E8851C] bg-[#FFF4E5] text-[#4A2600]"
+              }`}
+            >
+              <p className="flex items-baseline gap-1">
+                <span className="text-[34px] leading-none font-bold">{detail.attended}</span>
+                <span className="text-lg font-bold">of {detail.held}</span>
+              </p>
+              <div>
+                <p className="text-[15px] font-bold">classes attended</p>
+                <p className="text-sm">
+                  {detail.lastAttended ? `Last attended ${lastLabel(detail.lastAttended)}` : "No class attended this month"}
+                </p>
+              </div>
+            </div>
+
+            {detail.rows.length > 0 ? (
+              <ul className="overflow-hidden rounded-2xl border border-[#E1DAF0]">
+                {detail.rows.map((r) => (
+                  <li
+                    key={r.date}
+                    className="flex min-h-12 items-center justify-between gap-3 border-b border-[#E1DAF0] px-3.5 py-2 last:border-b-0"
+                  >
+                    <span className="text-[15px]">
+                      {dayMonth(r.date)} · {r.weekday}
+                      {r.extra && <span className="ml-2 text-xs text-[#5B5670]">Extra class</span>}
+                    </span>
+                    <StatusChip row={r} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-[#D8D2E6] px-3.5 py-4 text-center text-sm text-[#5B5670]">
+                No class days on the timetable for this month.
+              </p>
+            )}
+          </>
+        )}
+
+        <div>
+          <p className="mb-1.5 text-sm font-semibold">Fee for this month</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex h-16 flex-col items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <span className="text-sm font-semibold">Full</span>
+              <span className="text-lg font-bold tabular-nums">{shortMoney(fee)}</span>
+            </div>
+            {["Half", "No charge"].map((label) => (
+              <div
+                key={label}
+                aria-disabled="true"
+                className="flex h-16 flex-col items-center justify-center rounded-xl border border-dashed border-[#CFC6E6] bg-[#F4F2F8] text-[#8A849C]"
+              >
+                <span className="text-sm font-semibold">{label}</span>
+                <span className="text-[11px]">Coming soon</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-[52px] flex-1 rounded-[14px] border border-[#CFC6E6] bg-white text-base font-semibold"
+          >
+            {state === "paid" ? "Close" : "Cancel"}
+          </button>
+          {state !== "paid" && (
+            <button
+              type="button"
+              onClick={() => {
+                onUse();
+                onClose();
+              }}
+              className="h-[52px] flex-[1.4] rounded-[14px] bg-primary text-base font-semibold text-primary-foreground"
+            >
+              {selected ? "Remove from payment" : "Use for payment"}
+            </button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
