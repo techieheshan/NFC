@@ -275,6 +275,25 @@ describe("Half month and No charge against a real database", { skip: dbSkip }, (
     assert.equal(ok(await charge(student.id, [{ courseId: course.id, ...NOV }])).total, "2500.00");
   });
 
+  test("DECISION: a STAFF login may record Half and No charge for any month — no note, no role limit (the same amounts and rows as an admin)", async () => {
+    // Staff run the counter and admins review (AGENTS.md, "Decisions recorded from the 3A review").
+    // If this ever needs a limit it is a business decision, and this test is the sentence to change.
+    const { course, student } = await setup({ since: "2026-02-10T06:00:00Z" }); // an old month, with attendance or not
+    setSession("STAFF", w.staff.id);
+    const res = await pay.takePayment({
+      studentId: student.id, admission: false, smartCard: false, comboDecisions: [],
+      classMonths: [
+        { courseId: course.id, year: 2026, month: 3, mode: "NO_CHARGE" },
+        { courseId: course.id, year: 2026, month: 4, mode: "HALF" },
+        { courseId: course.id, ...NOV },
+      ],
+    });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    const rs = await rows(student.id);
+    assert.deepEqual(rs.map((r) => [r.billingMonth, r.chargeMode, dec(r.amount)]), [[3, "NO_CHARGE", "0.00"], [4, "HALF", "1250.00"], [11, null, "2500.00"]]);
+    for (const r of rs) assert.equal(r.takenById, w.staff.id);
+  });
+
   test("an unknown mode is a malformed request; 'FULL' is accepted and stored as NULL (the full fee)", async () => {
     const { course, student } = await setup();
     for (const bad of ["half", "QUARTER", "", "NONE"]) {
