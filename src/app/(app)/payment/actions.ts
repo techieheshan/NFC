@@ -10,6 +10,7 @@ import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import {
+  chargeModeSuffix,
   monthLabel,
   receiptReference,
   type Receipt,
@@ -62,6 +63,13 @@ export type CourseLine = {
 };
 
 export type { ApplicableCombo };
+
+/**
+ * How much of a month's fee one line charges. FULL (or absent) is today's behaviour;
+ * HALF is 50% of what would otherwise be charged; NO_CHARGE records the month as settled
+ * with no money. A client sends only the mode — the server computes every amount.
+ */
+export type PaymentMode = "FULL" | "HALF" | "NO_CHARGE";
 
 /** One staff decision per combo, for THIS transaction only — never remembered. */
 export type ComboDecision = {
@@ -288,7 +296,16 @@ const chargeSchema = z.object({
   admission: z.boolean(),
   smartCard: z.boolean(),
   classMonths: z
-    .array(z.object({ courseId: id, year: id, month: z.coerce.number().int().min(1).max(12) }))
+    .array(
+      z.object({
+        courseId: id,
+        year: id,
+        month: z.coerce.number().int().min(1).max(12),
+        // Optional: absent means FULL, exactly as before. The client says WHICH mode,
+        // never an amount.
+        mode: z.enum(["FULL", "HALF", "NO_CHARGE"]).optional(),
+      }),
+    )
     .max(100),
   comboDecisions: z
     .array(
@@ -309,7 +326,7 @@ export async function takePayment(input: {
   studentId: number;
   admission: boolean;
   smartCard: boolean;
-  classMonths: { courseId: number; year: number; month: number }[];
+  classMonths: { courseId: number; year: number; month: number; mode?: PaymentMode }[];
   comboDecisions: ComboDecision[];
 }): Promise<ChargeResult> {
   const user = await requireOperationalAccess();
@@ -405,6 +422,9 @@ export async function takePayment(input: {
   // each, and decisions for anything else are ignored rather than trusted.
   const involved = new Set(
     classMonths
+      // A month recorded with no charge is 0.00 with or without the combo, so it
+      // never needs a decision.
+      .filter((c) => c.mode !== "NO_CHARGE")
       .map((c) => comboByCourse.get(c.courseId)?.comboId)
       .filter((v): v is number => v !== undefined),
   );
@@ -457,6 +477,7 @@ export async function takePayment(input: {
   }
 
   const lines: ReceiptLine[] = [];
+  const modes: PaymentMode[] = [];
   let total = 0;
 
   const created = await db.$transaction(async (tx) => {
@@ -504,13 +525,17 @@ export async function takePayment(input: {
 
     for (const row of classMonths) {
       const e = byCourse.get(row.courseId)!;
-      const inCombo = comboByCourse.get(row.courseId);
+      const mode: PaymentMode = row.mode ?? "FULL";
+      // A NO_CHARGE month is outside the combo entirely: nothing is charged either way.
+      const inCombo = mode === "NO_CHARGE" ? undefined : comboByCourse.get(row.courseId);
       const decision = inCombo ? decisionByCombo.get(inCombo.comboId) : undefined;
       const applyCombo = Boolean(inCombo && decision?.apply);
 
-      // Combo rate or normal rate — the tier multiplier applies either way.
+      // Combo rate or normal rate — the tier multiplier applies either way. HALF is half of
+      // exactly that amount (as the receipt would have shown it); NO_CHARGE is nothing.
       const base = applyCombo ? inCombo!.comboFee : e.course.defaultFee;
-      const amount = money(classFee(base, e.feeTier.multiplier));
+      const full = money(classFee(base, e.feeTier.multiplier));
+      const amount = mode === "HALF" ? money(Number(full) * 0.5) : mode === "NO_CHARGE" ? money(0) : full;
 
       const created = await tx.payment.create({
         data: {
@@ -522,6 +547,8 @@ export async function takePayment(input: {
           billingYear: row.year,
           billingMonth: row.month,
           amount,
+          // NULL = the full fee (what every existing row and every old client means).
+          chargeMode: mode === "FULL" ? null : mode,
           takenById: user.id,
           paidAt,
           // Freeze the institute's cut as it stands right now. Editing the
@@ -537,8 +564,9 @@ export async function takePayment(input: {
         select: { id: true },
       });
       ids.push(created.id);
+      modes.push(mode);
       lines.push({
-        label: `${courseDisplayName(e.course)} — ${monthLabel(row.year, row.month)}`,
+        label: `${courseDisplayName(e.course)} — ${monthLabel(row.year, row.month)}${chargeModeSuffix(mode === "FULL" ? null : mode)}`,
         amount,
       });
       total += Number(amount);
@@ -560,6 +588,11 @@ export async function takePayment(input: {
       takenBy: user.username,
       lines,
       total: money(total),
+      // Only when EVERY line of this checkout is a month recorded with no charge (and
+      // nothing else was taken). Absent otherwise — the old shape.
+      ...(!admission && !smartCard && modes.length > 0 && modes.every((m) => m === "NO_CHARGE")
+        ? { noCharge: true as const }
+        : {}),
     },
   };
 }

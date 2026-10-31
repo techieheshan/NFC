@@ -43,6 +43,12 @@ export type Receipt = {
   lines: ReceiptLine[];
   total: string;
   /**
+   * True only for a checkout whose every line is a month recorded with no charge: staff are
+   * told "Recorded, no charge" and nothing is printed automatically. ABSENT otherwise, so the
+   * shape the old screens see is exactly what it was.
+   */
+  noCharge?: true;
+  /**
    * Set only on a voided transaction. The reprint stamps it across the paper —
    * a cancelled receipt must never come off the printer looking valid.
    */
@@ -69,6 +75,7 @@ const paymentSelect = {
   billingYear: true,
   billingMonth: true,
   transactionRef: true,
+  chargeMode: true,
   cancelled: true,
   cancelledAt: true,
   cancelReason: true,
@@ -88,6 +95,14 @@ const paymentSelect = {
 
 type PaymentRow = Awaited<ReturnType<typeof db.payment.findMany<{ select: typeof paymentSelect }>>>[number];
 
+/**
+ * Text added to a CLASS line that is not the full fee. Text only: the 58 mm layout is
+ * untouched. Shared with `takePayment`, so the receipt printed at the counter and every
+ * reprint read the same.
+ */
+export const chargeModeSuffix = (mode: "HALF" | "NO_CHARGE" | null | undefined) =>
+  mode === "HALF" ? " (Half month)" : mode === "NO_CHARGE" ? " (No charge)" : "";
+
 /** One printed line. CLASS rows name the course and the month they settle. */
 function lineFor(row: PaymentRow): ReceiptLine {
   const amount = Number(String(row.amount)).toFixed(2);
@@ -100,7 +115,7 @@ function lineFor(row: PaymentRow): ReceiptLine {
     row.billingYear !== null && row.billingMonth !== null
       ? ` — ${monthLabel(row.billingYear, row.billingMonth)}`
       : "";
-  return { label: `${course}${when}`, amount };
+  return { label: `${course}${when}${chargeModeSuffix(row.chargeMode)}`, amount };
 }
 
 /**
@@ -132,6 +147,7 @@ function toTransaction(rows: PaymentRow[]): TransactionSummary {
     lines: rows.map(lineFor),
     total: rows.reduce((sum, r) => sum + Number(String(r.amount)), 0).toFixed(2),
     hasAdmission: rows.some((r) => r.kind === "ADMISSION"),
+    ...(rows.every((r) => r.kind === "CLASS" && r.chargeMode === "NO_CHARGE") ? { noCharge: true as const } : {}),
     cancelled:
       voided && voided.cancelledAt
         ? {
