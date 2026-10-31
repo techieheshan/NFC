@@ -304,14 +304,15 @@ describe("takePayment / loadPanel against a real database", { skip: dbSkip }, ()
     assert.equal(p.cardUidIssued, card);
   });
 
-  test("CURRENT BEHAVIOUR (smart card is unguarded, will change in job 3): the same card can be charged again and again", async () => {
+  test("smart card is GUARDED (job 3A — was 'unguarded'): the same card is charged once; a second charge is refused in plain words and writes nothing", async () => {
     const student = await makeStudent(db, { cardUid: "UIDREPEAT01" });
     receiptOf(await charge(student.id, [], { smartCard: true }));
-    receiptOf(await charge(student.id, [], { smartCard: true }));
-    receiptOf(await charge(student.id, [], { smartCard: true }));
-    const ps = (await rows(student.id)).filter((p) => p.kind === "SMART_CARD" && !p.cancelled);
-    assert.equal(ps.length, 3);
-    assert.equal(new Set(ps.map((p) => p.transactionRef)).size, 3);
+    const again = await charge(student.id, [], { smartCard: true });
+    assert.deepEqual(again, {
+      ok: false,
+      error: "This card was already charged on 2026-10-15. If it is a replacement card, change the card number and UID in Registration first.",
+    });
+    assert.equal((await rows(student.id)).filter((p) => p.kind === "SMART_CARD" && !p.cancelled).length, 1);
   });
 
   test("the fee settings are read live, to 2dp", async () => {
@@ -422,14 +423,16 @@ describe("takePayment / loadPanel against a real database", { skip: dbSkip }, ()
     assert.equal((await rows(student.id)).length, 1);
   });
 
-  test("CURRENT BEHAVIOUR (duplicate inside one request, will change in job 3): the same course+month listed twice is charged twice", async () => {
-    // The clash check looks at rows already stored, not at the request itself (report 5.3).
+  test("the same course+month listed twice in ONE request is refused and writes nothing (job 3A — it used to be charged twice)", async () => {
+    // The stored rows were checked; the request itself was not. Now it is, before any write.
     const { course, student } = await setup();
-    const receipt = receiptOf(await charge(student.id, [{ courseId: course.id, ...OCT }, { courseId: course.id, ...OCT }]));
-    const ps = await rows(student.id);
-    assert.equal(ps.length, 2);
-    assert.deepEqual(ps.map((p) => [p.billingYear, p.billingMonth]), [[2026, 10], [2026, 10]]);
-    assert.equal(receipt.total, "5000.00");
+    const res = await charge(student.id, [{ courseId: course.id, ...OCT }, { courseId: course.id, ...OCT }]);
+    assert.equal(res.ok, false);
+    assert.match((res as { error: string }).error, / — Oct 2026 is listed twice in this payment\.$/);
+    assert.equal((await rows(student.id)).length, 0);
+    // the same month in two different months of the SAME course is, of course, fine
+    receiptOf(await charge(student.id, [{ courseId: course.id, ...OCT }, { courseId: course.id, year: 2026, month: 9 }]));
+    assert.equal((await rows(student.id)).length, 2);
   });
 
   // ---- the server accepts months the panel never offers ----------------------------------

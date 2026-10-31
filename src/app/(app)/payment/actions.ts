@@ -24,6 +24,13 @@ import {
 
 export type { StudentBrief };
 
+/**
+ * Namespace for the per-student advisory lock taken inside the charge transaction
+ * (`pg_advisory_xact_lock(namespace, studentId)`). Any fixed number nothing else uses; it
+ * only keeps this lock from ever colliding with another feature's.
+ */
+const PAYMENT_LOCK_NAMESPACE = 7301;
+
 /** How many months back the catch-up selector will ever offer. */
 const MONTH_WINDOW = 6;
 /**
@@ -413,6 +420,20 @@ export async function takePayment(input: {
     }
   }
 
+  // The same course and month listed twice in one request would be charged twice (the stored
+  // rows are checked, the request itself was not), and two entries may even disagree on the
+  // mode. Nothing sensible can be assumed, so refuse and write nothing.
+  const listed = new Set<string>();
+  for (const row of classMonths) {
+    const key = `${row.courseId}:${row.year}:${row.month}`;
+    if (listed.has(key)) {
+      const enrolled = byCourse.get(row.courseId);
+      const name = enrolled ? courseDisplayName(enrolled.course) : "That course";
+      return { ok: false, error: `${name} — ${monthLabel(row.year, row.month)} is listed twice in this payment.` };
+    }
+    listed.add(key);
+  }
+
   /*
    * Eligibility AND whether anyone must answer are recomputed here, never taken from the
    * client — the combo rate is a discount, so the client may say WHICH combo was decided,
@@ -484,40 +505,78 @@ export async function takePayment(input: {
     outcome.set(comboId, { apply: true, reason: null });
   }
 
-  // Idempotency: a stale tab must not double-charge a month already settled.
-  const clashes = await db.payment.findMany({
-    where: {
-      studentId,
-      kind: "CLASS",
-      cancelled: false,
-      OR: classMonths.map((c) => ({
-        courseId: c.courseId,
-        billingYear: c.year,
-        billingMonth: c.month,
-      })),
-    },
-    select: { courseId: true, billingYear: true, billingMonth: true },
-  });
-  if (classMonths.length > 0 && clashes.length > 0) {
-    const c = clashes[0];
-    // courseId is nullable on Payment for the same reason as the billing
-    // columns — only CLASS rows carry one.
-    const enrolled = c.courseId !== null ? byCourse.get(c.courseId) : undefined;
-    const name = enrolled ? courseDisplayName(enrolled.course) : "That course";
-    // billingYear/Month are nullable on Payment (ADMISSION/SMART_CARD have
-    // none), but a CLASS row always carries them.
-    const when =
-      c.billingYear !== null && c.billingMonth !== null
-        ? ` — ${monthLabel(c.billingYear, c.billingMonth)}`
-        : "";
-    return { ok: false, error: `${name}${when} is already paid.` };
-  }
-
   const lines: ReceiptLine[] = [];
   const modes: PaymentMode[] = [];
   let total = 0;
 
-  const created = await db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx): Promise<{ refused: string } | { ids: number[] }> => {
+    /*
+     * One charge per student at a time. The checks below ("already paid?", "admission taken?",
+     * "card already charged?") read rows and then write, and nothing in the database stops two
+     * overlapping requests both reading "no" first. A transaction-scoped advisory lock makes the
+     * second request WAIT for the first to commit, so its checks see the first one's rows and
+     * it is refused with the normal message instead of creating a duplicate. It is released by
+     * COMMIT or ROLLBACK, so it is safe through a transaction-pooling endpoint; different
+     * students never wait for each other.
+     */
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PAYMENT_LOCK_NAMESPACE}::int, ${studentId}::int)`;
+
+    // Authoritative state, read under the lock. (The earlier admission check only keeps the
+    // order in which refusals are reported; this one is the one that cannot race.)
+    const fresh = await tx.student.findUnique({
+      where: { id: studentId },
+      select: { admissionPaid: true, cardUid: true },
+    });
+    if (!fresh) return { refused: "Student not found." };
+    if (admission && fresh.admissionPaid) return { refused: "Admission has already been paid." };
+
+    // Idempotency: a stale tab, or a second request, must not double-charge a month already settled.
+    if (classMonths.length > 0) {
+      const clashes = await tx.payment.findMany({
+        where: {
+          studentId,
+          kind: "CLASS",
+          cancelled: false,
+          OR: classMonths.map((c) => ({
+            courseId: c.courseId,
+            billingYear: c.year,
+            billingMonth: c.month,
+          })),
+        },
+        select: { courseId: true, billingYear: true, billingMonth: true },
+      });
+      if (clashes.length > 0) {
+        const c = clashes[0];
+        // courseId is nullable on Payment for the same reason as the billing
+        // columns — only CLASS rows carry one.
+        const enrolled = c.courseId !== null ? byCourse.get(c.courseId) : undefined;
+        const name = enrolled ? courseDisplayName(enrolled.course) : "That course";
+        // billingYear/Month are nullable on Payment (ADMISSION/SMART_CARD have
+        // none), but a CLASS row always carries them.
+        const when =
+          c.billingYear !== null && c.billingMonth !== null
+            ? ` — ${monthLabel(c.billingYear, c.billingMonth)}`
+            : "";
+        return { refused: `${name}${when} is already paid.` };
+      }
+    }
+
+    // A card is charged once. A REPLACEMENT card has a new UID (it is changed by hand in
+    // Registration), so it is chargeable again. Rows with no `cardUidIssued` (old data) never
+    // match a UID, so they never block; a student with no UID at all cannot be guarded.
+    if (smartCard && fresh.cardUid) {
+      const prior = await tx.payment.findFirst({
+        where: { studentId, kind: "SMART_CARD", cancelled: false, cardUidIssued: fresh.cardUid },
+        orderBy: { paidAt: "desc" },
+        select: { paidAt: true },
+      });
+      if (prior) {
+        return {
+          refused: `This card was already charged on ${colomboNow(prior.paidAt).date}. If it is a replacement card, change the card number and UID in Registration first.`,
+        };
+      }
+    }
+
     const ids: number[] = [];
 
     if (admission) {
@@ -549,7 +608,7 @@ export async function takePayment(input: {
           transactionRef,
           amount,
           // Records which card this charge issued — matters for reissues.
-          cardUidIssued: student.cardUid,
+          cardUidIssued: fresh.cardUid,
           takenById: user.id,
           paidAt,
         },
@@ -608,8 +667,10 @@ export async function takePayment(input: {
       total += Number(amount);
     }
 
-    return ids;
+    return { ids };
   });
+  if ("refused" in result) return { ok: false, error: result.refused };
+  const created = result.ids;
 
   return {
     ok: true,
