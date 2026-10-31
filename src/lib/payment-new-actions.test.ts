@@ -4,6 +4,9 @@ import { setSession } from "@/test-support/server-stubs";
 import { before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { navItemByHref } from "@/config/nav";
+import { OPERATIONAL_ROLES, requireNavAccess } from "@/lib/authz";
+
 /*
  * The two read-only actions behind the new payment screens (job 2): role guards and input
  * validation, with no database. Each is its own HTTP endpoint, so each is guarded on its
@@ -43,4 +46,23 @@ describe("new payment screens: read-only actions", () => {
       }
     });
   }
+
+  // ---- the actions use the SAME guard as the screens -----------------------------------------
+
+  test("the actions' role set is exactly the screen's: /payment's nav entry is ADMIN + STAFF, as is OPERATIONAL_ROLES", () => {
+    const screen = [...(navItemByHref("/payment")?.roles ?? [])].sort();
+    assert.deepEqual(screen, [...OPERATIONAL_ROLES].sort());
+    assert.deepEqual(screen, ["ADMIN", "STAFF"]);
+  });
+
+  test("for every role the screen guard and both actions allow, or refuse, together", async () => {
+    for (const role of ["ADMIN", "STAFF", "TEACHER", null] as const) {
+      setSession(role);
+      const screen = await requireNavAccess("/payment").then(() => true, () => false);
+      const identify = await actions.identifyStudent({}).then(() => true, () => false);
+      // month 13 fails validation, so an allowed role is answered with null and nothing reaches a database.
+      const detail = await actions.loadMonthDetail({ studentId: 1, courseId: 1, year: 2026, month: 13 }).then(() => true, () => false);
+      assert.deepEqual([identify, detail], [screen, screen], String(role));
+    }
+  });
 });

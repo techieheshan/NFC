@@ -43,6 +43,14 @@ describe("identifyStudent against a real database", { skip: dbSkip }, () => {
     }
   });
 
+  test("identifyStudent returns the student id and NOTHING else (the screen opens by id alone)", async () => {
+    const s = await makeStudent(db, { cardUid: "04A22B9D" });
+    setSession("STAFF", w.staff.id);
+    const found = await actions.identifyStudent({ cardUid: "04:a2:2b:9d" });
+    assert.deepEqual(found, { studentId: s.id });
+    assert.deepEqual(Object.keys(found!), ["studentId"]);
+  });
+
   test("an unknown card or number is null — and nothing about any student leaks", async () => {
     setSession("ADMIN", w.admin.id);
     assert.equal(await actions.identifyStudent({ cardUid: "FFFFFFFF" }), null);
