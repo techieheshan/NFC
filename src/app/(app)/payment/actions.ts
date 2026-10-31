@@ -599,9 +599,14 @@ export async function takePayment(input: {
           })),
         },
         select: { courseId: true, billingYear: true, billingMonth: true, chargeMode: true },
+        // Deterministic: the earliest clashing month is the one named.
+        orderBy: [{ billingYear: "asc" }, { billingMonth: "asc" }, { id: "asc" }],
       });
       if (clashes.length > 0) {
-        const c = clashes[0];
+        // "Recorded as no charge" only when EVERY clashing month is a no-charge record; if any
+        // month was actually paid, the earliest such month is named as "already paid".
+        const paid = clashes.find((x) => x.chargeMode !== "NO_CHARGE");
+        const c = paid ?? clashes[0];
         // courseId is nullable on Payment for the same reason as the billing
         // columns — only CLASS rows carry one.
         const enrolled = c.courseId !== null ? byCourse.get(c.courseId) : undefined;
@@ -614,7 +619,7 @@ export async function takePayment(input: {
             : "";
         // A month recorded as No charge is settled, but nobody paid for it: say so, and who can
         // undo it (only an administrator can cancel a payment record).
-        if (c.chargeMode === "NO_CHARGE" && when) {
+        if (!paid && when) {
           return { refused: `${name}${when} was recorded as no charge. Ask an administrator to cancel that record if it should be charged.` };
         }
         return { refused: `${name}${when} is already paid.` };

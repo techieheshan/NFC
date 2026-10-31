@@ -264,6 +264,28 @@ describe("Half month and No charge against a real database", { skip: dbSkip }, (
     assert.match((again as { error: string }).error, / — Nov 2026 is already paid\.$/);
   });
 
+  test("several clashing months: the message is deterministic — 'no charge' only when EVERY clash is a no-charge record, otherwise the earliest PAID month is 'already paid'", async () => {
+    const { course, student } = await setup();
+    const SEP = { year: 2026, month: 9 };
+    const OCT = { year: 2026, month: 10 };
+    ok(await charge(student.id, [{ courseId: course.id, ...SEP, mode: "NO_CHARGE" }]));
+    ok(await charge(student.id, [{ courseId: course.id, ...OCT }]));
+    ok(await charge(student.id, [{ courseId: course.id, ...NOV, mode: "NO_CHARGE" }]));
+    const ask = async (months: { year: number; month: number }[]) => {
+      const res = await charge(student.id, months.map((m) => ({ courseId: course.id, ...m })));
+      assert.equal(res.ok, false);
+      return (res as { error: string }).error;
+    };
+    for (let i = 0; i < 5; i++) {
+      // a paid month among no-charge ones: the paid month is named, whatever the request order
+      assert.match(await ask([NOV, SEP, OCT]), / — Oct 2026 is already paid\.$/);
+      assert.match(await ask([SEP, OCT, NOV]), / — Oct 2026 is already paid\.$/);
+      // only no-charge records: the earliest is named, with the no-charge message
+      assert.match(await ask([NOV, SEP]), / — Sep 2026 was recorded as no charge\. /);
+    }
+    assert.equal((await rows(student.id)).length, 3, "the refusals wrote nothing");
+  });
+
   test("once an administrator cancels the no-charge record, the month can be charged", async () => {
     const { course, student } = await setup();
     ok(await charge(student.id, [{ courseId: course.id, ...NOV, mode: "NO_CHARGE" }]));
