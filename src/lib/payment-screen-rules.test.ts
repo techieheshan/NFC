@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import type { PrismaClient } from "@prisma/client";
 
 import type { PaymentMode } from "@/app/(app)/payment/actions";
+import { friendlyDate } from "@/lib/friendly-date";
 import {
   chargeCoursesFrom,
   chargeInput,
@@ -280,14 +281,14 @@ describe("the new screen's Total equals the server's receipt total, end to end",
 
   // ---- the smart card -------------------------------------------------------------------------------------------
 
-  test("smart card: the view shows 'already charged' and the server refuses a forced second charge, naming the same date", async () => {
+  test("smart card: the view shows 'already charged' and the server refuses a forced second charge, naming the same date (both as '10 Nov 2026')", async () => {
     const student = await makeStudent(db, { cardUid: "SCREENCARD01" });
     await chargeAndCompare(student.id, { picks: [], smartCard: true });
     const v = await loadView(student.id);
     assert.equal(v.smartCard.chargedOn, "2026-11-10");
     setSession("ADMIN", w.admin.id);
     const forced = await pay.takePayment({ studentId: student.id, admission: false, smartCard: true, comboDecisions: [], classMonths: [] });
-    assert.deepEqual(forced, { ok: false, error: `This card was already charged on ${v.smartCard.chargedOn}. If it is a replacement card, change the card number and UID in Registration first.` });
+    assert.deepEqual(forced, { ok: false, error: `This card was already charged on ${friendlyDate(v.smartCard.chargedOn)}. If it is a replacement card, change the card number and UID in Registration first.` });
   });
 
   // ---- after the payment ------------------------------------------------------------------------------------------
