@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Check, Loader2, X } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import type { PaymentMode } from "@/app/(app)/payment/actions";
 import { shortMoney } from "@/lib/payment-charge";
 import type { MonthDetail, MonthDetailRow } from "@/lib/payment-view";
 
@@ -12,9 +13,10 @@ import type { MonthDetail, MonthDetailRow } from "@/lib/payment-view";
  * attended, and nothing else. No expected class days, no absences, no "of N": those
  * would be derived from today's timetable, which has no history.
  *
- * Built with the Full fee only. Half and No charge are drawn, visibly disabled and
- * labelled "Coming soon": they need the money logic and a new column (job 3), so
- * nothing here can choose them and nothing about them is ever submitted.
+ * Staff pick how this month is charged: Full, Half or No charge (no reason, no attendance
+ * limit). The amounts are the server-built strings the card already shows — Half is half of
+ * this month's normal amount for this student, No charge is nothing. A month that is already
+ * PAID can be looked at, never charged again: it shows how it was charged and offers Close.
  */
 
 const SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -40,26 +42,35 @@ export function MonthDetailSheet({
   courseId,
   year,
   month,
-  fee,
+  fullAmount,
+  halfAmount,
   state,
-  selected,
+  paidMode,
+  currentMode,
   load,
   onUse,
+  onRemove,
   onClose,
 }: {
   studentId: number;
   courseId: number;
   year: number;
   month: number;
-  /** The Full fee for this card, as the screen already shows it. */
-  fee: string | null;
+  /** What this month costs in Full and in Half for this student — the server's strings, combo-aware. */
+  fullAmount: string | null;
+  halfAmount: string | null;
   /** paid months can be looked at, but not used for a payment. */
   state: "paid" | "unpaid" | "ahead";
-  selected: boolean;
+  /** How a PAID month was charged: null = the full fee. */
+  paidMode: "HALF" | "NO_CHARGE" | null;
+  /** The mode this month is currently picked in for this payment, or null if it is not picked. */
+  currentMode: PaymentMode | null;
   load: (input: { studentId: number; courseId: number; year: number; month: number }) => Promise<MonthDetail | null>;
-  onUse: () => void;
+  onUse: (mode: PaymentMode) => void;
+  onRemove: () => void;
   onClose: () => void;
 }) {
+  const [mode, setMode] = useState<PaymentMode>(currentMode ?? "FULL");
   const [detail, setDetail] = useState<MonthDetail | null | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   const [, startTransition] = useTransition();
@@ -151,25 +162,40 @@ export function MonthDetailSheet({
           </>
         )}
 
-        <div>
-          <p className="mb-1.5 text-sm font-semibold">Fee for this month</p>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="flex h-16 flex-col items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <span className="text-sm font-semibold">Full</span>
-              <span className="text-lg font-bold tabular-nums">{shortMoney(fee)}</span>
+        {state === "paid" ? (
+          <p className="rounded-xl border border-[#2E9E5B] bg-[#E8F7EE] px-3.5 py-3 text-sm font-semibold text-[#0B4A24]">
+            Already paid — charged as {paidMode === "HALF" ? "a half month" : paidMode === "NO_CHARGE" ? "no charge" : "the full fee"}.
+          </p>
+        ) : (
+          <div role="radiogroup" aria-label="Fee for this month">
+            <p className="mb-1.5 text-sm font-semibold">Fee for this month</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  ["FULL", "Full", shortMoney(fullAmount)],
+                  ["HALF", "Half", shortMoney(halfAmount)],
+                  ["NO_CHARGE", "No charge", "0"],
+                ] as const
+              ).map(([value, label, amount]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === value}
+                  onClick={() => setMode(value)}
+                  className={`flex h-16 flex-col items-center justify-center rounded-xl border-2 px-1 ${
+                    mode === value
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-[#CFC6E6] bg-white text-foreground"
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{label}</span>
+                  <span className="text-lg font-bold tabular-nums">{amount}</span>
+                </button>
+              ))}
             </div>
-            {["Half", "No charge"].map((label) => (
-              <div
-                key={label}
-                aria-disabled="true"
-                className="flex h-16 flex-col items-center justify-center rounded-xl border border-dashed border-[#CFC6E6] bg-[#F4F2F8] text-[#8A849C]"
-              >
-                <span className="text-sm font-semibold">{label}</span>
-                <span className="text-[11px]">Coming soon</span>
-              </div>
-            ))}
           </div>
-        </div>
+        )}
 
         <div className="flex gap-2.5">
           <button
@@ -183,15 +209,27 @@ export function MonthDetailSheet({
             <button
               type="button"
               onClick={() => {
-                onUse();
+                onUse(mode);
                 onClose();
               }}
               className="h-[52px] flex-[1.4] rounded-[14px] bg-primary text-base font-semibold text-primary-foreground"
             >
-              {selected ? "Remove from payment" : "Use for payment"}
+              Use for payment
             </button>
           )}
         </div>
+        {state !== "paid" && currentMode !== null && (
+          <button
+            type="button"
+            onClick={() => {
+              onRemove();
+              onClose();
+            }}
+            className="h-12 w-full rounded-[14px] border border-[#CFC6E6] bg-white text-base font-semibold text-[#8A1C1C]"
+          >
+            Remove from payment
+          </button>
+        )}
       </DialogContent>
     </Dialog>
   );

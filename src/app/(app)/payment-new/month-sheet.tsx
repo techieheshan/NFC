@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Info, X } from "lucide-react";
 
+import type { PaymentMode } from "@/app/(app)/payment/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { monthKey } from "@/lib/payment-charge";
 import type { CourseCardData, ViewMonth } from "@/lib/payment-view";
@@ -87,14 +88,15 @@ function InfoButton({
 export function MonthSheet({
   course,
   today,
-  selectedKeys,
+  selected,
   onToggle,
   onInfo,
   onClose,
 }: {
   course: CourseCardData;
   today: { year: number; month: number };
-  selectedKeys: { has: (key: string) => boolean };
+  /** The months picked for this payment, and how each is charged. */
+  selected: { get: (key: string) => PaymentMode | undefined };
   onToggle: (month: ViewMonth) => void;
   /** Open the month-detail pop-up for this month. */
   onInfo: (month: ViewMonth) => void;
@@ -108,7 +110,7 @@ export function MonthSheet({
   const firstPick = course.cardMonth ?? course.months.find((m) => m.state !== "paid");
   const [year, setYear] = useState(firstPick?.year ?? today.year);
 
-  const chosen = course.months.filter((m) => selectedKeys.has(monthKey(course.courseId, m.year, m.month)));
+  const chosen = course.months.filter((m) => selected.get(monthKey(course.courseId, m.year, m.month)) !== undefined);
 
   // Press and hold: a timer that opens the detail; the click that follows the
   // release is swallowed so holding a tile does not also select it.
@@ -191,14 +193,15 @@ export function MonthSheet({
               );
             }
 
-            const picked = selectedKeys.has(monthKey(course.courseId, m.year, m.month));
+            const pickedMode = selected.get(monthKey(course.courseId, m.year, m.month));
+            const picked = pickedMode !== undefined;
 
             if (m.state === "paid") {
               return (
                 <Tile
                   key={name}
                   className="border-[#2E9E5B] bg-[#D6F2DF] text-[#0B4A24]"
-                  label={`${m.label}, paid${m.paidDay !== null ? ` on day ${m.paidDay}` : ""}`}
+                  label={`${m.label}, paid${m.paidMode === "NO_CHARGE" ? ", no charge" : m.paidDay !== null ? ` on day ${m.paidDay}` : ""}${m.paidMode === "HALF" ? ", half month" : ""}`}
                   hold={holdProps(m)}
                   onClick={() => {
                     // A paid month cannot be charged again; a tap does nothing.
@@ -207,15 +210,17 @@ export function MonthSheet({
                   info={<InfoButton month={m} tone="text-[#0B4A24]" onInfo={onInfo} />}
                 >
                   <span className="text-[13px] font-semibold">{name}</span>
-                  <span className="flex items-center gap-1 text-[17px] font-bold">
+                  <span className={`flex items-center gap-1 font-bold ${m.paidMode === "NO_CHARGE" ? "text-[13px]" : "text-[17px]"}`}>
                     <Check className="size-3.5" strokeWidth={3} aria-hidden />
-                    {m.paidDay ?? ""}
+                    {m.paidMode === "NO_CHARGE" ? "No charge" : (m.paidDay ?? "")}
                   </span>
+                  {m.paidMode === "HALF" && <span className="rounded-full bg-white/80 px-1.5 text-[10px] leading-4 font-bold">Half</span>}
                 </Tile>
               );
             }
 
-            const word = m.state === "ahead" ? "ahead" : `${m.attended} ${m.attended === 1 ? "day" : "days"}`;
+            const days = m.state === "ahead" ? "ahead" : `${m.attended} ${m.attended === 1 ? "day" : "days"}`;
+            const word = pickedMode === "HALF" ? "Half" : pickedMode === "NO_CHARGE" ? "No charge" : days;
             const tone = picked ? "text-white" : m.state === "ahead" ? "text-[#5B5670]" : "text-[#6B3200]";
 
             return (
@@ -229,7 +234,7 @@ export function MonthSheet({
                       ? "border-dashed border-[#A99BD0] bg-white text-[#5B5670]"
                       : "border-[#E8851C] bg-[#FFE9CF] text-[#6B3200]"
                 }
-                label={`${m.label}, ${m.state === "ahead" ? "ahead" : `not paid, ${word} attended`}${picked ? ", selected" : ""}`}
+                label={`${m.label}, ${m.state === "ahead" ? "ahead" : `not paid, ${days} attended`}${picked ? `, selected${pickedMode === "HALF" ? " as half month" : pickedMode === "NO_CHARGE" ? " as no charge" : ""}` : ""}`}
                 hold={holdProps(m)}
                 onClick={() => {
                   if (held.current) {
@@ -241,7 +246,7 @@ export function MonthSheet({
                 info={<InfoButton month={m} tone={tone} onInfo={onInfo} />}
               >
                 <span className="text-[13px] font-semibold">{name}</span>
-                <span className={m.state === "ahead" ? "text-xs" : "text-[15px] font-bold"}>{word}</span>
+                <span className={m.state === "ahead" && !picked ? "text-xs" : pickedMode === "NO_CHARGE" ? "text-[13px] font-bold" : "text-[15px] font-bold"}>{word}</span>
               </Tile>
             );
           })}
@@ -253,6 +258,12 @@ export function MonthSheet({
               12
             </span>
             Paid, the number is the day paid
+          </p>
+          <p className="flex items-center gap-2">
+            <span className="flex h-5 w-11 items-center justify-center rounded-md border border-[#2E9E5B] bg-[#D6F2DF] text-[10px] font-bold text-[#0B4A24]">
+              Half
+            </span>
+            Paid as a half month; a tile reads No charge if nothing was charged
           </p>
           <p className="flex items-center gap-2">
             <span className="flex h-5 w-11 items-center justify-center rounded-md border border-[#E8851C] bg-[#FFE9CF] font-bold text-[#6B3200]">
