@@ -58,22 +58,27 @@ describe("a payment that cannot get the student's lock in time, against a real d
   }
 
   /**
-   * Holds student `id`'s payment lock — a checkout open on another terminal — and lets go by
-   * itself after `ms`, so a request that is wrongly left waiting fails the test instead of
-   * hanging it. `released` resolves once the lock is really gone.
+   * Holds student `id`'s payment lock — a checkout open on another terminal — until `release()`.
+   * As a safety net it also lets go by itself after `safetyMs`, so a request that is wrongly left
+   * waiting fails the test (it waited far too long) instead of hanging it.
    */
-  async function holdLock(id: number, ms: number) {
+  async function holdLock(id: number, safetyMs: number) {
     const client = new Client({ connectionString: process.env.DATABASE_URL });
     await client.connect();
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock($1::int, $2::int)", [LOCK_NAMESPACE, id]);
-    const released = new Promise<void>((resolve) => {
-      setTimeout(() => {
-        client.query("COMMIT").then(() => client.end()).then(() => resolve());
-      }, ms);
-    });
-    return { released };
+    let done: Promise<void> | null = null;
+    const release = () => (done ??= client.query("COMMIT").then(() => client.end()));
+    const timer = setTimeout(release, safetyMs);
+    return {
+      release: () => {
+        clearTimeout(timer);
+        return release();
+      },
+    };
   }
+  /** No test in this file may hang: each one fails after this long instead. */
+  const LIMIT = { timeout: 30_000 };
 
   async function setup() {
     const teacher = await makeTeacher(db);
@@ -90,31 +95,33 @@ describe("a payment that cannot get the student's lock in time, against a real d
     });
   };
 
-  test("the lock is not free in time: ANSWERED with the plain message after about 4 s — not thrown, not left waiting — and writes nothing", async () => {
+  test("the lock is not free in time: ANSWERED with the plain message after about 4 s — not thrown, not left waiting — and writes nothing", LIMIT, async () => {
     const { course, student } = await setup();
-    const held = await holdLock(student.id, 8000);
+    const held = await holdLock(student.id, 10_000);
     const started = performance.now();
     const res = await charge(student.id, course.id);
     const waited = Math.round(performance.now() - started);
+    await held.release();
 
     assert.deepEqual(res, { ok: false, error: BUSY });
-    assert.ok(waited >= 3500 && waited < 6500, `it waited ${waited} ms (the lock wait is 4 s; the transaction limit is 6 s)`);
+    // The 4 s lock wait answered it — not the 6 s transaction limit, and not the lock being released.
+    assert.ok(waited >= 3500 && waited < 5500, `it waited ${waited} ms (the lock wait is 4 s; the transaction limit is 6 s)`);
     assert.equal((await rows(student.id)).length, 0, "no payment rows");
     assert.equal((await db.student.findUniqueOrThrow({ where: { id: student.id } })).admissionPaid, false, "admission flag untouched");
-    await held.released;
   });
 
-  test("afterwards the student is not stuck: the next request goes straight through and is a normal receipt", async () => {
+  test("afterwards the student is not stuck: the next request goes straight through and is a normal receipt", LIMIT, async () => {
     const { course, student } = await setup();
-    const held = await holdLock(student.id, 5000);
+    // Held until the busy answer has come back, however slow this machine is — then let go.
+    const held = await holdLock(student.id, 15_000);
     assert.deepEqual(await charge(student.id, course.id), { ok: false, error: BUSY });
-    await held.released;
+    await held.release();
     const res = await charge(student.id, course.id);
     assert.equal(res.ok, true, JSON.stringify(res));
     assert.equal((await rows(student.id)).length, 3); // admission + smart card + the month
   });
 
-  test("two DIFFERENT students never wait for each other: while A's real payment holds A's lock, B's finishes promptly", async () => {
+  test("two DIFFERENT students never wait for each other: while A's real payment holds A's lock, B's finishes promptly", LIMIT, async () => {
     const a = await setup();
     const b = await setup();
 
@@ -163,7 +170,14 @@ describe("a payment that cannot get the student's lock in time, against a real d
 
     try {
       const aDone = charge(a.student.id, a.course.id);
-      await inside; // A is inside its transaction, holding its lock
+      // A is inside its transaction, holding its lock. If A ends before it gets there (refused, or
+      // an error) `inside` would never resolve — so race it against A finishing.
+      await Promise.race([
+        inside,
+        aDone.then((r) => {
+          throw new Error(`A finished before it held its lock: ${JSON.stringify(r)}`);
+        }),
+      ]);
       const started = performance.now();
       const res = await charge(b.student.id, b.course.id);
       const took = Math.round(performance.now() - started);
@@ -176,7 +190,7 @@ describe("a payment that cannot get the student's lock in time, against a real d
     }
   });
 
-  test("the transaction itself runs past its limit (P2028): the same plain answer, and nothing is written", async () => {
+  test("the transaction itself runs past its limit (P2028): the same plain answer, and nothing is written", LIMIT, async () => {
     const { course, student } = await setup();
 
     // Make the transaction slow for this request only: it sleeps longer than the 6 s limit before
