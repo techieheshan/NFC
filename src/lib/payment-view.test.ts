@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 
 import type { PrismaClient } from "@prisma/client";
 
+import { friendlyDate } from "@/lib/friendly-date";
+
 /*
  * The read-only data behind the NEW payment screens (job 2), against a real
  * database. The clock is frozen at 10 Nov 2026 11:30 Colombo — the month the
@@ -445,7 +447,7 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     assert.equal(await seen(a.id), "2026-11-10");
     const res = await charge(a.id);
     assert.equal(res.ok, false);
-    assert.ok((res as { error: string }).error.includes("2026-11-10"));
+    assert.ok((res as { error: string }).error.includes(`on ${friendlyDate("2026-11-10")}.`)); // "on 10 Nov 2026."
     // a REPLACEMENT card (new UID): the view clears and the server allows
     await db.student.update({ where: { id: a.id }, data: { cardUid: "VIEWCARD02" } });
     assert.equal(await seen(a.id), null);
