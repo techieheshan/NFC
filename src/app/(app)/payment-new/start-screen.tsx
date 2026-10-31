@@ -24,7 +24,8 @@ import type { StudentBrief } from "@/lib/students";
  * screen use (one permission flow, one set of messages, one abort path), armed on
  * arrival; the rings are the whole "it is listening" signal, as on Attendance,
  * and `xenon-ring` already stops moving under prefers-reduced-motion. The only
- * extra control is the receipt icon, which opens the existing Receipts page.
+ * extra control is the receipt icon, which opens "Last 10 receipts" (board 6, job 4); Back
+ * there returns here.
  */
 export function StartScreen({
   identify,
@@ -125,8 +126,8 @@ export function StartScreen({
 
         {/* A corner of the panel, but not part of the reader button. */}
         <Link
-          href="/receipts"
-          aria-label="Receipts"
+          href="/payment-new/receipts"
+          aria-label="Last 10 receipts"
           className="absolute right-4 bottom-4 z-10 grid size-14 place-items-center rounded-full bg-white text-primary shadow-sm"
         >
           <ReceiptText className="size-7" aria-hidden />
