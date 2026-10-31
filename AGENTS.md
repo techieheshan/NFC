@@ -439,9 +439,11 @@ beside the tier counts, and the lines and totals stay as they are.
   (`payment-new-modes-open.test.ts` fails on any other). ADMIN-only before the switch
   exists because the report counts are not fixed until job 5, not to limit the modes.
 - **A half MONTH never reads as a bare "Half".** "Half" alone is the fee TIER chip; a
-  half month says "Half month" (or "½ month" in the calendar tile). Dates the screen
-  prints are friendly ("8 Aug 2026", `friendly-date.ts`); the server's own message
-  text is unchanged.
+  half month says "Half month" (or "½ month" in the calendar tile).
+- **Full dates read "8 Aug 2026"** through the one shared `friendlyDate`
+  (`src/lib/friendly-date.ts`): the smart-card row ("already charged on …" and "last
+  …") and the server's smart-card refusal. Attendance dates keep their short
+  "26 Sep" form. Never print a raw `YYYY-MM-DD` to staff.
 - The screen's Total is the receipt's total: every price is a server-built string,
   one pure function (`comboApplies` in `payment-charge.ts`) says when a combo
   applies, and `payment-screen-rules.test.ts` compares the displayed Total with the

@@ -300,7 +300,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
               <span className="block text-[13px] text-[#5B5670]">
                 {view.smartCard.count === 0
                   ? "never charged"
-                  : `charged ${view.smartCard.count}× · last ${view.smartCard.lastAt}`}
+                  : `charged ${view.smartCard.count}× · last ${friendlyDate(view.smartCard.lastAt ?? "")}`}
               </span>
             </span>
             <span className="text-base font-bold tabular-nums">{view.smartCard.amount}</span>
