@@ -6,7 +6,7 @@ import { normalizeCardNumber } from "@/lib/card-uid";
 import { colomboNow, colomboRangeUtc } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
-import { transactionKey } from "@/lib/receipts";
+import { chargeModeSuffix, transactionKey } from "@/lib/receipts";
 
 /**
  * The counter lookup. Read-only: nothing here writes, and every function is a
@@ -171,6 +171,8 @@ export async function searchPayments(filters: PaymentFilters): Promise<PaymentHi
       transactionRef: true,
       billingYear: true,
       billingMonth: true,
+      // NULL = the full fee; only used for the label text below.
+      chargeMode: true,
       takenBy: { select: { username: true } },
       student: { select: { id: true, name: true, cardNumber: true } },
       course: {
@@ -196,7 +198,8 @@ export async function searchPayments(filters: PaymentFilters): Promise<PaymentHi
       student: r.student.name,
       studentId: r.student.id,
       cardNumber: r.student.cardNumber,
-      course: r.course ? courseDisplayName(r.course) : null,
+      // "(Half month)" / "(No charge)" — the same words the receipts use; nothing for a full-fee row.
+      course: r.course ? `${courseDisplayName(r.course)}${chargeModeSuffix(r.chargeMode)}` : null,
       kind: r.kind,
       amount: Number(String(r.amount)).toFixed(2),
       cancelled: r.cancelled,

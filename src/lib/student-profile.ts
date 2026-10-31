@@ -2,6 +2,7 @@ import "server-only";
 
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
+import { chargeModeSuffix } from "@/lib/receipts";
 import { db } from "@/lib/db";
 import { studentArrears, type StudentArrears } from "@/lib/student-arrears";
 
@@ -114,6 +115,8 @@ export async function loadStudentProfile(studentId: number): Promise<StudentProf
       select: {
         id: true, kind: true, amount: true, paidAt: true, cancelled: true,
         billingYear: true, billingMonth: true,
+        // NULL = the full fee; only used for the label text below.
+        chargeMode: true,
         course: {
           select: {
             name: true,
@@ -214,7 +217,8 @@ export async function loadStudentProfile(studentId: number): Promise<StudentProf
       kind: p.kind,
       date: colomboNow(p.paidAt).date,
       amount: Number(String(p.amount)).toFixed(2),
-      course: p.course ? courseDisplayName(p.course) : null,
+      // "(Half month)" / "(No charge)" — the same words the receipts use; nothing for a full-fee row.
+      course: p.course ? `${courseDisplayName(p.course)}${chargeModeSuffix(p.chargeMode)}` : null,
       billing:
         p.billingYear && p.billingMonth
           ? `${MONTHS[p.billingMonth - 1]} ${p.billingYear}`
