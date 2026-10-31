@@ -34,8 +34,9 @@ const PAYMENT_LOCK_NAMESPACE = 7301;
 
 /**
  * Limits for the charge transaction. No `maxDuration` is set anywhere in this repo, so the
- * platform's own function limit applies (10 s on a plan without Fluid compute, 300 s with it);
- * every number here keeps the whole request well inside the smaller of those.
+ * platform's own function limit applies (10 s on a plan without Fluid compute, 300 s with it).
+ * The transaction's own limits add up to 8 s; with a cold start or a waking database the margin
+ * under 10 s is thin, so the plan is an open release item (see AGENTS.md).
  *   - maxWait   how long to wait for a pooled connection to start the transaction
  *   - timeout   how long the transaction may run once started
  *   - lock wait how long to wait for ANOTHER checkout of the same student to finish. It is
@@ -47,7 +48,11 @@ const TX_MAX_WAIT_MS = 2000;
 const TX_TIMEOUT_MS = 6000;
 const LOCK_WAIT_MS = 4000;
 
-const BUSY_MESSAGE = "Another payment for this student is in progress — check Receipts, then try again.";
+/**
+ * Deliberately says what happened (not in time, nothing charged), not WHY: the cause may be
+ * another checkout of the same student, an exhausted pool, a slow database or a long catch-up.
+ */
+const BUSY_MESSAGE = "The payment didn't go through in time and nothing was charged. Check Receipts, then try again.";
 
 /**
  * True when the charge transaction could not run in time: it expired or could not start

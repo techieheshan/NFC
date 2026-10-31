@@ -21,7 +21,7 @@ const NOW = "2026-11-10T06:00:00Z";
 const SINCE = "2026-05-05T06:00:00Z";
 const NOV = { year: 2026, month: 11 };
 const LOCK_NAMESPACE = 7301; // PAYMENT_LOCK_NAMESPACE in payment/actions.ts
-const BUSY = "Another payment for this student is in progress — check Receipts, then try again.";
+const BUSY = "The payment didn't go through in time and nothing was charged. Check Receipts, then try again.";
 
 let db: PrismaClient;
 let handle: TestDatabase;

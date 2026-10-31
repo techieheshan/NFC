@@ -381,13 +381,18 @@ beside the tier counts, and the lines and totals stay as they are.
   writes, never below. A new write goes below the guards, never above.
 - **One clock per request.** `takePayment` takes `paidAt` once and judges the month
   limits, "before enrolment" and `comboStates` (`at: paidAt`) at that instant.
-- **A busy student is answered, not thrown.** A request that cannot get the
-  per-student lock in 4 s (`lock_timeout`), or whose transaction expires
-  (P2028; `maxWait` 2 s, `timeout` 6 s), returns `{ ok: false, error: "Another
-  payment for this student is in progress — check Receipts, then try again." }` and
-  writes nothing. The old screen has no catch; a throw is a browser crash page. No
-  `maxDuration` is set in the repo, so keep the sum of the limits under the
-  platform's (10 s without Fluid compute).
+- **A payment that cannot finish in time is answered, not thrown.** A request that
+  cannot get the per-student lock in 4 s (`lock_timeout`), or whose transaction
+  expires (P2028; `maxWait` 2 s, `timeout` 6 s), returns `{ ok: false, error: "The
+  payment didn't go through in time and nothing was charged. Check Receipts, then try
+  again." }` and writes nothing. The wording names no cause on purpose: another
+  checkout of the same student, an exhausted pool, a slow database or a long catch-up
+  all end here. The old screen has no catch; a throw is a browser crash page.
+- **Open release item: the platform time limit.** No `maxDuration` is set in the
+  repo (on purpose, until the Vercel plan is known). Without Fluid compute the limit
+  is 10 s, and the transaction's own limits already add up to 8 s before cold start
+  and database wake-up; with Fluid compute it is 300 s. Kavin confirms the plan
+  before release.
 - **Inside the transaction use `tx`, never `db`.** A read through `db` there takes a
   second pooled connection while the lock is held and can starve the pool.
 
