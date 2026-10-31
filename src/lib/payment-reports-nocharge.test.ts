@@ -85,28 +85,29 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
     assert.equal(row.reconciles, true);
   });
 
-  test("CURRENT BEHAVIOUR (will change in job 5): the payslip counts a NO_CHARGE student as a paying student, and gives them a 0.00 sheet line", async () => {
-    // Money is right (collected 3000, institute 600, teacher 2400). The COUNTS are inflated:
-    // 3 paying students and 3 "cards", one of them at a rate of 0.00. After job 5 there is no
-    // 0.00 line and the count is 2.
+  test("job 5 (was CURRENT BEHAVIOUR): the payslip does NOT count a NO_CHARGE student as a paying student, and has no 0.00 sheet line", async () => {
+    // Money was always right (collected 3000, institute 600, teacher 2400). The COUNTS were inflated: 3 paying
+    // students and 3 "cards", one at a rate of 0.00. Now: 2 paying students, 2 cards, no 0.00 line. The
+    // Half-month payer (1000, a Full-tier student) is a normal payer of their tier, on a labelled line.
     const { teacher, course } = await scenario();
     const report = await payslips.buildPayslips({ year: 2026, month: 11, teacherIds: [teacher.id], includeInstitute: false });
     const slip = report.slips[0];
     assert.deepEqual([slip.totalCollected, slip.totalInstituteShare, slip.totalTeacherShare], ["3000.00", "600.00", "2400.00"]);
-    assert.equal(slip.payingStudents, 3);
-    assert.equal(slip.courses.find((c) => c.courseId === course.id)?.payingStudents, 3);
-    assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["FULL", 3]]);
-    assert.deepEqual(slip.lines.map((l) => [l.cards, l.rate, l.gross]).sort(), [[1, "0.00", "0.00"], [1, "1000.00", "1000.00"], [1, "2000.00", "2000.00"]]);
-    assert.equal(slip.lineCards, 3);
+    assert.equal(slip.payingStudents, 2);
+    assert.equal(slip.courses.find((c) => c.courseId === course.id)?.payingStudents, 2);
+    assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["FULL", 2]]);
+    assert.deepEqual(slip.lines.map((l) => [l.cards, l.rate, l.gross, l.halfMonth === true]).sort(), [[1, "1000.00", "1000.00", true], [1, "2000.00", "2000.00", false]]);
+    assert.equal(slip.lineCards, 2);
+    assert.deepEqual(slip.halfMonths, { cards: 1, gross: "1000.00" });
     for (const l of slip.lines) assert.equal((l.cards * Number(l.rate)).toFixed(2), l.gross); // "cards x rate = gross" still holds
   });
 
-  test("CURRENT BEHAVIOUR (will change in job 5): the monthly income report's 'students' for the teacher includes the NO_CHARGE student", async () => {
+  test("job 5 (was CURRENT BEHAVIOUR): the monthly income report's 'students' for the teacher no longer includes the NO_CHARGE student", async () => {
     const { teacher } = await scenario();
     const report = await income.buildMonthlyIncome(2026, 11);
     const row = report.byTeacher.find((t) => t.teacherId === teacher.id)!;
     assert.equal(row.collected, "3000.00");
-    assert.equal(row.students, 3);
+    assert.equal(row.students, 2);
   });
 
   test("a teacher whose ONLY payments this month are NO_CHARGE has a slip of zeros and is left out of the income report's by-teacher list", async () => {
@@ -139,9 +140,9 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
     assert.ok(summary.halfMonths && summary.halfMonths.count >= 1, "the Half month is visible on the extra line (exact figures: reports-half-nocharge.test.ts)");
   });
 
-  test("CURRENT BEHAVIOUR (will change in job 5): payslip — a HALF MONTH on a FULL-tier student reads as a full-tier payer, and nobody shows as a Half-month payer", async () => {
-    // "Half" in the payslip means the HALF TIER. The student below is FULL tier and paid half of one
-    // month: the payslip's tier counts say "1 FULL" and the sheet line is just a 1000.00 rate.
+  test("job 5 (was CURRENT BEHAVIOUR): payslip — a HALF MONTH on a FULL-tier student is a normal payer of their TIER, and the month is a labelled line", async () => {
+    // "Half" in the payslip tier counts is the HALF TIER and stays so: the student below is FULL tier, so the
+    // tier counts say "1 FULL". The month itself is visible: its own line, flagged Half month, and the slip's note.
     const teacher = await makeTeacher(db);
     const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `Half${Math.random().toString(36).slice(2, 6)}` });
     const s = await makeStudent(db);
@@ -151,11 +152,19 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
 
     const slip = (await payslips.buildPayslips({ year: 2026, month: 11, teacherIds: [teacher.id], includeInstitute: false })).slips[0];
     assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["FULL", 1]]);
-    assert.deepEqual(slip.lines.map((l) => [l.cards, l.rate, l.gross]), [[1, "1000.00", "1000.00"]]);
+    assert.deepEqual(slip.lines.map((l) => [l.cards, l.rate, l.gross, l.halfMonth === true]), [[1, "1000.00", "1000.00", true]]);
+    assert.deepEqual(slip.halfMonths, { cards: 1, gross: "1000.00" });
   });
 
-  test("the Daily Summary paid count and the payslip's paying students agree with each other for Full and Half-month payers (job 5 keeps them together)", async () => {
-    // (The No-charge case is added with the payslip change: both must exclude it, together.)
+  test("the Daily Summary paid count and the payslip's paying students agree with each other — including a NO_CHARGE student (job 5 changed them together)", async () => {
+    const { teacher, course } = await scenario();
+    const row = (await reports.dailySummary("2026-11-10", "2026-11-10")).courses.find((c) => c.courseId === course.id)!;
+    const slip = (await payslips.buildPayslips({ year: 2026, month: 11, teacherIds: [teacher.id], includeInstitute: false })).slips[0];
+    assert.equal(row.paidFull + row.paidHalf + row.paidQuarter, slip.payingStudents);
+    assert.equal(slip.payingStudents, 2);
+  });
+
+  test("the Daily Summary paid count and the payslip's paying students agree for Full and Half-month payers", async () => {
     const teacher = await makeTeacher(db);
     const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `Agree${Math.random().toString(36).slice(2, 6)}` });
     setSession("ADMIN", w.admin.id);

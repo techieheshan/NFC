@@ -89,6 +89,13 @@ export type PayslipLineRow = {
   sharePercent: string;
   instituteShare: string;
   teacherShare: string;
+  /**
+   * True on a line of months paid at HALF the fee (`chargeMode = HALF`), whatever tier the
+   * student is on: it keeps them off a same-priced line of ordinary payers, and the sheet adds
+   * "(Half month)" to the course cell. ABSENT on every other line, so a slip for today's data
+   * has exactly the keys it always had.
+   */
+  halfMonth?: true;
 };
 
 /** One advance, itemised — the deduction has to be explainable to the teacher. */
@@ -114,6 +121,11 @@ export type Payslip = {
   lines: PayslipLineRow[];
   /** Cards counted line by line — a student paying two months counts twice. */
   lineCards: number;
+  /**
+   * The Half months inside this slip — already part of every figure, shown as a note on the
+   * Payslips screen only. ABSENT when there are none.
+   */
+  halfMonths?: { cards: number; gross: string };
   /** The advances behind the `advances` total. */
   advanceLines: PayslipAdvanceRow[];
   totalCollected: string;
@@ -186,7 +198,7 @@ export async function buildPayslips(options: {
 
   // `Payment.amount` is the snapshot of what was actually charged — it already
   // carries the fee tier and any combo discount, so it is summed as-is.
-  const payments = allCourseIds.length
+  const everyPayment = allCourseIds.length
     ? await db.payment.findMany({
         where: {
           kind: "CLASS",
@@ -206,9 +218,17 @@ export async function buildPayslips(options: {
           // The tier is read for the voucher's "3 full, 25 half" line. Labels
           // come from the reference table — never a hardcoded list of tiers.
           feeTier: { select: { code: true, label: true } },
+          // NULL = the full fee. Compared in code below, never filtered in SQL: `<> 'NO_CHARGE'`
+          // would drop the NULL rows, which are almost every row there is.
+          chargeMode: true,
         },
       })
     : [];
+
+  // A month recorded with NO CHARGE is settled and 0.00 but is not cash and not a payer: it is no
+  // paying student, no card, no tier count and no sheet line. (Its amount is 0.00, so no money figure
+  // below moves.) A HALF month stays — it is a real payment of half the fee.
+  const payments = everyPayment.filter((p) => p.chargeMode !== "NO_CHARGE");
 
   const advances = await db.expense.findMany({
     where: {
@@ -276,7 +296,7 @@ export async function buildPayslips(options: {
     const lineMap = new Map<
       string,
       { courseId: number; course: string; billingLabel: string; billingOrder: number;
-        rate: number; cards: number; gross: number; institute: number }
+        rate: number; cards: number; gross: number; institute: number; half: boolean }
     >();
     for (const p of mineAll) {
       const course = teacher.courses.find((c) => c.id === p.courseId);
@@ -287,7 +307,10 @@ export async function buildPayslips(options: {
           ? num(p.instituteSharePercentApplied)
           : num(course.instituteSharePercent);
       const hasMonth = p.billingYear !== null && p.billingMonth !== null;
-      const key = `${p.courseId}:${p.billingYear ?? 0}:${p.billingMonth ?? 0}:${amount.toFixed(2)}`;
+      const half = p.chargeMode === "HALF";
+      // A Half month is its own line even when its price equals a Half-TIER student's rate. The key
+      // is unchanged for every other row, so today's lines are grouped exactly as before.
+      const key = `${p.courseId}:${p.billingYear ?? 0}:${p.billingMonth ?? 0}:${amount.toFixed(2)}${half ? ":half" : ""}`;
       const entry =
         lineMap.get(key) ??
         {
@@ -299,6 +322,7 @@ export async function buildPayslips(options: {
           cards: 0,
           gross: 0,
           institute: 0,
+          half,
         };
       entry.cards += 1;
       entry.gross += amount;
@@ -319,13 +343,17 @@ export async function buildPayslips(options: {
         sharePercent: (l.gross > 0 ? (l.institute / l.gross) * 100 : 0).toFixed(2),
         instituteShare: money(l.institute),
         teacherShare: money(l.gross - l.institute),
+        ...(l.half ? { halfMonth: true as const } : {}),
       }))
       .sort(
         (a, b) =>
           a.course.localeCompare(b.course) ||
           a.billingOrder - b.billingOrder ||
-          Number(b.rate) - Number(a.rate),
+          Number(b.rate) - Number(a.rate) ||
+          // same price: ordinary payers first, the Half-month line after them
+          Number(a.halfMonth === true) - Number(b.halfMonth === true),
       );
+    const halfLines = lines.filter((l) => l.halfMonth);
 
     const totalCollected = rows.reduce((s, r) => s + Number(r.collected), 0);
     const totalInstituteShare = rows.reduce((s, r) => s + Number(r.instituteShare), 0);
@@ -342,6 +370,9 @@ export async function buildPayslips(options: {
       payingStudents: new Set(mineAll.map((p) => p.studentId)).size,
       lines,
       lineCards: lines.reduce((s, l) => s + l.cards, 0),
+      ...(halfLines.length > 0
+        ? { halfMonths: { cards: halfLines.reduce((s, l) => s + l.cards, 0), gross: money(halfLines.reduce((s, l) => s + Number(l.gross), 0)) } }
+        : {}),
       advanceLines: advances
         .filter((a) => a.teacherId === teacher.id)
         .map((a) => ({

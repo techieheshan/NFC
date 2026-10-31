@@ -30,6 +30,8 @@ let quarterTierId: number;
 let pay: typeof import("@/app/(app)/payment/actions");
 let rec: typeof import("@/app/(app)/receipts/actions");
 let reports: typeof import("@/lib/reports");
+let payslips: typeof import("@/lib/payslips");
+let income: typeof import("@/lib/report-monthly-income");
 
 type Tier = "FULL" | "HALF" | "QUARTER";
 type Mode = "FULL" | "HALF" | "NO_CHARGE";
@@ -42,6 +44,8 @@ describe("Half and No-charge months in the reports (hand-computed)", { skip: dbS
     pay = await import("@/app/(app)/payment/actions");
     rec = await import("@/app/(app)/receipts/actions");
     reports = await import("@/lib/reports");
+    payslips = await import("@/lib/payslips");
+    income = await import("@/lib/report-monthly-income");
     w = await seedWorld(db, { admissionFee: "1300", smartCardFee: "500" });
     quarterTierId = (await db.feeTier.create({ data: { code: "QUARTER", label: "25%", multiplier: "0.250" } })).id;
   });
@@ -91,22 +95,38 @@ describe("Half and No-charge months in the reports (hand-computed)", { skip: dbS
   const shape = (r: { registered: number; paidFull: number; paidHalf: number; paidQuarter: number; notPaid: number; free: number; amount: string; reconciles: boolean }) =>
     [r.registered, r.paidFull, r.paidHalf, r.paidQuarter, r.notPaid, r.free, r.amount, r.reconciles];
 
+  /**
+   * Ten students on one course (fee 2500, institute 20%) in month `month`, in one receipt each:
+   *   A Full tier, Full 2500      B Full tier, HALF MONTH 1250      C Full tier, No charge 0
+   *   D Half tier, normal 1250    E Half tier, HALF MONTH 625       F Half tier, No charge 0
+   *   G Quarter tier, normal 625  H Quarter tier, HALF MONTH 312.50 I Quarter tier, No charge 0
+   *   O never paid.
+   */
+  async function tierMatrix(month: number) {
+    const { teacher, ict } = await institute(month);
+    const m = NOV(month);
+    const pay1 = async (name: string, tier: Tier, mode?: Mode) => {
+      const s = await student(name, [ict], tier);
+      await take(s.id, [{ courseId: ict.id, ...m, mode }]);
+      return s;
+    };
+    const A = await pay1("A", "FULL");
+    const B = await pay1("B", "FULL", "HALF");
+    const C = await pay1("C", "FULL", "NO_CHARGE");
+    const D = await pay1("D", "HALF");
+    const E = await pay1("E", "HALF", "HALF");
+    const F = await pay1("F", "HALF", "NO_CHARGE");
+    const G = await pay1("G", "QUARTER");
+    const H = await pay1("H", "QUARTER", "HALF");
+    const I = await pay1("I", "QUARTER", "NO_CHARGE");
+    const O = await student("O", [ict]);
+    return { teacher, ict, month, students: { A, B, C, D, E, F, G, H, I, O } };
+  }
+
   // ---- Daily Summary ----------------------------------------------------------------------------
 
   test("DAILY SUMMARY, hand-computed: Full / Half / Quarter tier students each paying Full, a Half month and No charge", async () => {
-    const { ict, month } = await institute(2);
-    const m = NOV(month);
-    const A = await student("A", [ict]); await take(A.id, [{ courseId: ict.id, ...m }]); //                     Full tier, Full           2500.00
-    const B = await student("B", [ict]); await take(B.id, [{ courseId: ict.id, ...m, mode: "HALF" }]); //       Full tier, HALF MONTH     1250.00
-    const C = await student("C", [ict]); await take(C.id, [{ courseId: ict.id, ...m, mode: "NO_CHARGE" }]); //  Full tier, No charge         0.00
-    const D = await student("D", [ict], "HALF"); await take(D.id, [{ courseId: ict.id, ...m }]); //             Half tier, normal         1250.00
-    const E = await student("E", [ict], "HALF"); await take(E.id, [{ courseId: ict.id, ...m, mode: "HALF" }]); // Half tier, HALF MONTH      625.00
-    const F = await student("F", [ict], "HALF"); await take(F.id, [{ courseId: ict.id, ...m, mode: "NO_CHARGE" }]); // Half tier, No charge    0.00
-    const G = await student("G", [ict], "QUARTER"); await take(G.id, [{ courseId: ict.id, ...m }]); //         Quarter tier, normal       625.00
-    const H = await student("H", [ict], "QUARTER"); await take(H.id, [{ courseId: ict.id, ...m, mode: "HALF" }]); // Quarter tier, HALF MONTH 312.50
-    const I = await student("I", [ict], "QUARTER"); await take(I.id, [{ courseId: ict.id, ...m, mode: "NO_CHARGE" }]); // Quarter, No charge  0.00
-    await student("O", [ict]); //                                                                               never paid
-
+    const { ict, month } = await tierMatrix(2);
     const s = await summary(month);
     // registered 10. Paid, by TIER: Full A + B = 2; Half D + E = 2; Quarter G + H = 2. The three No-charge
     // students (C, F, I) paid nothing, so they are NOT paid; with O that is 4 not paid. 10 = 6 + 4 + 0.
@@ -204,5 +224,129 @@ describe("Half and No-charge months in the reports (hand-computed)", { skip: dbS
       assert.equal(row.reconciles, true, `${from}..${to}`);
       assert.equal(row.registered, row.paidFull + row.paidHalf + row.paidQuarter + row.notPaid + row.free);
     }
+  });
+
+  // ---- Payslips and the month-end roll-up ---------------------------------------------------------
+
+  const slipOf = async (teacherId: number, month: number) => (await payslips.buildPayslips({ year: 2026, month, teacherIds: [teacherId], includeInstitute: false })).slips[0];
+  const lineShape = (l: { billingLabel: string; cards: number; rate: string; gross: string; halfMonth?: true }) => [l.billingLabel, l.cards, l.rate, l.gross, l.halfMonth === true];
+
+  test("PAYSLIP, hand-computed: tiers, lines, cards, shares — No charge is no student, no card, no line; a Half month is its own labelled line", async () => {
+    const { teacher, month } = await tierMatrix(9);
+    const slip = await slipOf(teacher.id, month);
+
+    // Six paying students: A, B (Full tier), D, E (Half tier), G, H (Quarter tier). C, F, I paid nothing.
+    assert.equal(slip.payingStudents, 6);
+    assert.equal(slip.courses.length, 1);
+    assert.deepEqual([slip.courses[0].course, slip.courses[0].payingStudents, slip.courses[0].collected, slip.courses[0].instituteShare, slip.courses[0].teacherShare],
+      [slip.courses[0].course, 6, "6562.50", "1312.50", "5250.00"]); // 6562.50 at 20%
+    // The tier counts stay TIER counts: a Half-month payer is a normal payer of their tier. (Biggest first, then label.)
+    assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["QUARTER", 2], ["FULL", 2], ["HALF", 2]]);
+    // The sheet: one line per course x month x rate x (Half month or not). cards x rate = gross on every one.
+    assert.deepEqual(slip.lines.map(lineShape), [
+      ["Sep 2026", 1, "2500.00", "2500.00", false], //  A
+      ["Sep 2026", 1, "1250.00", "1250.00", false], //  D (Half TIER, normal month)
+      ["Sep 2026", 1, "1250.00", "1250.00", true], //   B (Full tier, HALF MONTH) — not merged with D
+      ["Sep 2026", 1, "625.00", "625.00", false], //    G
+      ["Sep 2026", 1, "625.00", "625.00", true], //     E (Half tier, HALF MONTH)
+      ["Sep 2026", 1, "312.50", "312.50", true], //     H (Quarter tier, HALF MONTH)
+    ]);
+    for (const l of slip.lines) assert.equal((l.cards * Number(l.rate)).toFixed(2), l.gross);
+    assert.equal(slip.lineCards, 6);
+    assert.deepEqual(slip.halfMonths, { cards: 3, gross: "2187.50" }); // B 1250 + E 625 + H 312.50
+    assert.deepEqual([slip.totalCollected, slip.totalInstituteShare, slip.totalTeacherShare, slip.advances, slip.finalSalary], ["6562.50", "1312.50", "5250.00", "0.00", "5250.00"]);
+    // a payslip total equals the sum of its lines
+    assert.equal(slip.lines.reduce((t, l) => t + Number(l.gross), 0).toFixed(2), slip.totalCollected);
+  });
+
+  test("MONTH-END ROLL-UP follows the payslip: the teacher's students are the paying students, the money is unchanged, and it reconciles", async () => {
+    const { teacher, month } = await tierMatrix(10);
+    const report = await income.buildMonthlyIncome(2026, month);
+    const row = report.byTeacher.find((t) => t.teacherId === teacher.id)!;
+    assert.deepEqual([row.students, row.collected, row.instituteShare, row.teacherShare, row.finalSalary], [6, "6562.50", "1312.50", "5250.00", "5250.00"]);
+    assert.deepEqual(report.institute, {
+      totalCollected: "6562.50", totalInstituteShare: "1312.50", totalTeacherShare: "5250.00",
+      admissionIncome: "0.00", smartCardIncome: "0.00", teacherAdvances: "0.00", xenonExpenses: "0.00", instituteProfit: "1312.50",
+    });
+    assert.deepEqual(report.reconciles, { shares: true, profit: true });
+    assert.equal("halfMonths" in report, false, "no Half figure on the month-end roll-up (decided)");
+  });
+
+  test("PAYSLIP: a normal row AND a No-charge row in the same course still make a paying student, with no 0.00 line; a No-charge-only student is none", async () => {
+    const { teacher, ict, month } = await institute(11);
+    const J = await student("J", [ict]);
+    await take(J.id, [{ courseId: ict.id, year: 2026, month: 1, mode: "NO_CHARGE" }, { courseId: ict.id, ...NOV(month) }]);
+    const K = await student("K", [ict]);
+    await take(K.id, [{ courseId: ict.id, year: 2026, month: 1, mode: "NO_CHARGE" }]);
+    const slip = await slipOf(teacher.id, month);
+    assert.equal(slip.payingStudents, 1);
+    assert.equal(slip.courses[0].payingStudents, 1);
+    assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["FULL", 1]]);
+    assert.deepEqual(slip.lines.map(lineShape), [["Nov 2026", 1, "2500.00", "2500.00", false]]);
+    assert.equal(slip.lineCards, 1);
+    assert.equal(slip.halfMonths, undefined);
+  });
+
+  test("PAYSLIP, a combo: No charge on one class leaves the other at its combo rate; combo months paid as Half are labelled — every figure by hand", async () => {
+    const { teacher, ict, chem, month } = await institute(12, { ict: "2500", chem: "3400" });
+    await makeCombo(db, { teacherId: teacher.id, items: [{ courseId: ict.id, fee: "2000" }, { courseId: chem!.id, fee: "2600" }] });
+    const K = await student("K", [ict, chem!]);
+    const L = await student("L", [ict, chem!]);
+    for (const s of [K, L]) for (const c of [ict, chem!]) await attend(db, { studentId: s.id, courseId: c.id, date: "2026-11-07", markedById: w.admin.id });
+    await take(K.id, [{ courseId: ict.id, ...NOV(month) }, { courseId: chem!.id, ...NOV(month), mode: "NO_CHARGE" }]);
+    await take(L.id, [{ courseId: ict.id, ...NOV(month), mode: "HALF" }, { courseId: chem!.id, ...NOV(month), mode: "HALF" }]);
+
+    const slip = await slipOf(teacher.id, month);
+    // ICT: K 2000 (combo) + L 1000 (half of 2000) = 3000 at 20% -> institute 600.00. Chemistry: L 1300 (half of 2600) at 25% -> 325.00.
+    assert.deepEqual(slip.courses.map((c) => [c.payingStudents, c.collected, c.sharePercent, c.instituteShare, c.teacherShare]), [
+      [2, "3000.00", "20.00", "600.00", "2400.00"],
+      [1, "1300.00", "25.00", "325.00", "975.00"],
+    ]);
+    assert.equal(slip.payingStudents, 2); // K (ICT) and L
+    assert.equal(slip.lineCards, 3);
+    assert.deepEqual(slip.lines.map((l) => [l.course.startsWith("ICT") ? "ICT" : "CHEM", l.rate, l.halfMonth === true]), [["CHEM", "1300.00", true], ["ICT", "2000.00", false], ["ICT", "1000.00", true]]);
+    assert.deepEqual(slip.halfMonths, { cards: 2, gross: "2300.00" });
+    assert.deepEqual([slip.totalCollected, slip.totalInstituteShare, slip.totalTeacherShare], ["4300.00", "925.00", "3375.00"]);
+    assert.equal(slip.lines.reduce((t, l) => t + Number(l.gross), 0).toFixed(2), slip.totalCollected);
+  });
+
+  test("PAYSLIP: two Half months at the same price are ONE line of 2 cards, and the Half note counts CARDS, not lines", async () => {
+    const { teacher, ict, month } = await institute(1);
+    for (const name of ["p", "q"]) {
+      const s = await student(name, [ict]);
+      await take(s.id, [{ courseId: ict.id, ...NOV(month), mode: "HALF" }]);
+    }
+    const slip = await slipOf(teacher.id, month);
+    assert.deepEqual(slip.lines.map(lineShape), [["Jan 2026", 2, "1250.00", "2500.00", true]]); // 2 cards x 1250 = 2500
+    assert.equal(slip.lineCards, 2);
+    assert.deepEqual(slip.halfMonths, { cards: 2, gross: "2500.00" });
+    assert.equal(slip.payingStudents, 2);
+  });
+
+  test("PAYSLIP and roll-up: cancelled Half and cancelled No-charge rows are in no count, no line, no Half note and no total", async () => {
+    const { teacher, ict, month } = await institute(1);
+    const keep = await student("keep", [ict]); await take(keep.id, [{ courseId: ict.id, ...NOV(month) }]);
+    const voidHalf = await student("voidHalf", [ict]); await take(voidHalf.id, [{ courseId: ict.id, ...NOV(month), mode: "HALF" }]);
+    const voidFree = await student("voidFree", [ict]); await take(voidFree.id, [{ courseId: ict.id, ...NOV(month), mode: "NO_CHARGE" }]);
+    await cancel(voidHalf.id);
+    await cancel(voidFree.id);
+
+    const slip = await slipOf(teacher.id, month);
+    assert.equal(slip.payingStudents, 1);
+    assert.deepEqual(slip.lines.map(lineShape), [["Jan 2026", 1, "2500.00", "2500.00", false]]);
+    assert.equal(slip.halfMonths, undefined);
+    assert.deepEqual([slip.totalCollected, slip.totalInstituteShare, slip.totalTeacherShare], ["2500.00", "500.00", "2000.00"]);
+    const row = (await income.buildMonthlyIncome(2026, month)).byTeacher.find((t) => t.teacherId === teacher.id)!;
+    assert.deepEqual([row.students, row.collected], [1, "2500.00"]);
+  });
+
+  test("PAYSLIP: with no Half and no No-charge month a slip and its lines have exactly the keys they always had", async () => {
+    const { teacher, ict, month } = await institute(1);
+    const a = await student("plain", [ict]);
+    await take(a.id, [{ courseId: ict.id, ...NOV(month) }]);
+    const slip = await slipOf(teacher.id, month);
+    assert.equal("halfMonths" in slip, false);
+    assert.deepEqual(Object.keys(slip), ["teacherId", "teacher", "courses", "payingStudents", "lines", "lineCards", "advanceLines", "tierCounts", "totalCollected", "totalInstituteShare", "totalTeacherShare", "advances", "finalSalary"]);
+    assert.deepEqual(Object.keys(slip.lines[0]), ["courseId", "course", "billingLabel", "billingOrder", "cards", "rate", "gross", "sharePercent", "instituteShare", "teacherShare"]);
   });
 });
