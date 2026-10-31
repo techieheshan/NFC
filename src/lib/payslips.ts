@@ -33,8 +33,11 @@ export function lastCompletedMonth(at: Date = new Date()): { year: number; month
   return m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
 }
 
-/** Half-open [month start, next month start) as real UTC instants, for `paidAt`. */
-function monthInstants(year: number, month: number) {
+/**
+ * Half-open [month start, next month start) as real UTC instants, for `paidAt`. Exported so the other
+ * cash-basis reports (the Half and No-charge view) cut the month at exactly the same Colombo midnight.
+ */
+export function monthInstants(year: number, month: number) {
   const nextY = month === 12 ? year + 1 : year;
   const nextM = month === 12 ? 1 : month + 1;
   return {
