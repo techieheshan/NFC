@@ -18,7 +18,8 @@ import type { PrismaClient } from "@prisma/client";
  *   - Daily Summary's paid Full / Half / 25% counts;
  *   - the payslip's paying students, tier counts, sheet lines and "cards".
  * A no-charge month is recorded, settled and free, but nobody paid. The gate for the menu
- * switch is in AGENTS.md: reports must skip NO_CHARGE rows in paid counts and lines first.
+ * switch is in AGENTS.md: reports must skip NO_CHARGE rows in paid counts and lines first,
+ * and a HALF-month row must not read as a full month there either.
  *
  * Clock frozen at 10 Nov 2026 (Colombo).
  */
@@ -121,6 +122,26 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
     assert.equal(slip.courses.length, 0); // "courses with no money are dropped"
     const report = await income.buildMonthlyIncome(2026, 11);
     assert.equal(report.byTeacher.find((t) => t.teacherId === teacher.id), undefined);
+  });
+
+  test("CURRENT BEHAVIOUR (will change in job 5): a HALF MONTH on a FULL-tier student reads as a full-tier payer — and nobody shows as a Half-month payer", async () => {
+    // "Half" in these reports means the HALF TIER. The student below is FULL tier and paid half of
+    // one month: Daily Summary counts them under paidFull (paidHalf stays 0), and the payslip's tier
+    // counts say "1 FULL". After job 5 they are not read as a full month and are not invisible.
+    const teacher = await makeTeacher(db);
+    const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `Half${Math.random().toString(36).slice(2, 6)}` });
+    const s = await makeStudent(db);
+    await enrol(db, { studentId: s.id, courseId: course.id, tierId: w.tiers.FULL.id, since: SINCE });
+    setSession("ADMIN", w.admin.id);
+    assert.equal((await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, ...NOV, mode: "HALF" }] })).ok, true);
+
+    const row = (await reports.dailySummary("2026-11-10", "2026-11-10")).courses.find((c) => c.courseId === course.id)!;
+    assert.equal(row.amount, "1000.00");
+    assert.deepEqual([row.paidFull, row.paidHalf, row.paidQuarter], [1, 0, 0]);
+
+    const slip = (await payslips.buildPayslips({ year: 2026, month: 11, teacherIds: [teacher.id], includeInstitute: false })).slips[0];
+    assert.deepEqual(slip.tierCounts.map((t) => [t.code, t.students]), [["FULL", 1]]);
+    assert.deepEqual(slip.lines.map((l) => [l.cards, l.rate, l.gross]), [[1, "1000.00", "1000.00"]]);
   });
 
   test("the paid-FULL count and the payslip counts agree with each other today (both count rows) — job 5 must change them together", async () => {
