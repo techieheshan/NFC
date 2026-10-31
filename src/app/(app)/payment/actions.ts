@@ -354,8 +354,11 @@ export async function takePayment(input: {
     return { ok: false, error: "Nothing selected to charge." };
   }
 
-  const now = colomboNow();
+  // ONE instant for the whole request: the month limits, the "before enrolment" check, the
+  // combo state and `paidAt` are all judged at it, so a request that straddles midnight (or
+  // the 1st) cannot be judged against two different months.
   const paidAt = new Date();
+  const now = colomboNow(paidAt);
   /**
    * One reference for everything this checkout writes. A combo across three
    * courses, or a three-month catch-up, is a single receipt — this is what lets
@@ -441,7 +444,7 @@ export async function takePayment(input: {
    * `comboStates` is the one rule (see combos.ts).
    */
   const switchedOff = new Set(comboDecisions.filter((d) => d.off).map((d) => d.comboId));
-  const combos = await comboStates(studentId, { switchedOff });
+  const combos = await comboStates(studentId, { switchedOff, at: paidAt });
   const comboByCourse = new Map<number, { comboId: number; comboFee: string }>();
   for (const combo of combos) {
     for (const item of combo.items) {
