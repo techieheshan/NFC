@@ -106,7 +106,7 @@ describe("a payment that cannot get the student's lock in time, against a real d
 
     // Make the transaction slow for this request only: it sleeps longer than the 6 s limit before
     // doing any work, so Prisma expires it (no lock involved).
-    const original = db.$transaction.bind(db) as (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) => Promise<unknown>;
+    const original = db.$transaction.bind(db) as unknown as (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) => Promise<unknown>;
     Object.defineProperty(db, "$transaction", {
       configurable: true,
       value: (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) =>
