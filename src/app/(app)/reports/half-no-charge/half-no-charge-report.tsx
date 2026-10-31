@@ -182,7 +182,7 @@ const recorded = (r: DetailRow) => `${friendlyDate(r.date)} ${to12Hour(r.at)}`;
 
 function ReceiptLink({ row }: { row: DetailRow }) {
   return (
-    <Link href={`/receipts?key=${encodeURIComponent(row.receiptKey)}&cancelled=1`} className="inline-flex min-h-11 items-center font-mono font-semibold text-[#4C1D95] underline-offset-2 hover:underline sm:min-h-0">
+    <Link href={`/receipts?key=${encodeURIComponent(row.receiptKey)}&cancelled=1`} className="inline-flex min-h-11 min-w-11 items-center font-mono font-semibold text-[#4C1D95] underline-offset-2 hover:underline sm:min-h-0 sm:min-w-0">
       {row.receipt}
     </Link>
   );
