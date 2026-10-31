@@ -80,7 +80,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
   test("the second charge for the same card is refused with the plain message, and writes nothing", async () => {
     const s = await student();
     assert.equal((await charge(s.id, null, [], { smartCard: true })).ok, true);
-    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("2026-11-10") });
+    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("10 Nov 2026") });
     assert.equal((await cards(s.id)).length, 1);
   });
 
@@ -92,7 +92,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     } finally {
       freezeClock(NOW);
     }
-    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("2026-11-01") });
+    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("1 Nov 2026") });
   });
 
   test("with repeat charges on record for one UID (old data), the message names the LATEST one", async () => {
@@ -101,7 +101,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     for (const paidAt of ["2026-08-02T06:00:00Z", "2026-09-20T06:00:00Z", "2026-07-01T06:00:00Z"]) {
       await db.payment.create({ data: { kind: "SMART_CARD", studentId: s.id, amount: "500.00", cardUidIssued: u, takenById: w.admin.id, paidAt: new Date(paidAt) } });
     }
-    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("2026-09-20") });
+    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("20 Sep 2026") });
   });
 
   test("a REPLACEMENT card (a new UID, changed in Registration) is chargeable again", async () => {
@@ -113,7 +113,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     assert.equal(rs.length, 2);
     assert.notEqual(rs[0].cardUidIssued, rs[1].cardUidIssued);
     // ...and the NEW card is now charged once too
-    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("2026-11-10") });
+    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("10 Nov 2026") });
   });
 
   test("a CANCELLED card charge does not count: cancel it and the card can be charged again", async () => {
@@ -158,7 +158,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     const s = await student({ course: c });
     assert.equal((await charge(s.id, null, [], { smartCard: true })).ok, true);
     const res = await charge(s.id, c.id, [NOV], { smartCard: true, admission: true });
-    assert.deepEqual(res, { ok: false, error: CARD_MESSAGE("2026-11-10") });
+    assert.deepEqual(res, { ok: false, error: CARD_MESSAGE("10 Nov 2026") });
     assert.equal((await rows(s.id)).length, 1);
     assert.equal((await db.student.findUniqueOrThrow({ where: { id: s.id } })).admissionPaid, false);
   });
@@ -220,7 +220,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
       const s = await student();
       const rs = await Promise.all([charge(s.id, null, [], { smartCard: true }), charge(s.id, null, [], { smartCard: true })]);
       assert.equal(oks(rs), 1, `round ${i}: ${JSON.stringify(rs)}`);
-      assert.deepEqual(errors(rs), [CARD_MESSAGE("2026-11-10")], `round ${i}`);
+      assert.deepEqual(errors(rs), [CARD_MESSAGE("10 Nov 2026")], `round ${i}`);
       assert.equal((await cards(s.id)).length, 1, `round ${i}`);
     }
   });
@@ -268,7 +268,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     assert.equal(rejected.length, 0, `requests threw: ${rejected.map((r) => String((r as PromiseRejectedResult).reason).slice(0, 120)).join(" | ")}`);
     const rs = settled.map((r) => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof charge>>>).value);
     assert.equal(oks(rs), 1);
-    assert.deepEqual(errors(rs), Array(14).fill(CARD_MESSAGE("2026-11-10")));
+    assert.deepEqual(errors(rs), Array(14).fill(CARD_MESSAGE("10 Nov 2026")));
     assert.equal((await cards(s.id)).length, 1);
   });
 

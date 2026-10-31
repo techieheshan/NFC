@@ -10,6 +10,7 @@ import { applicableCombos, comboStates, type ApplicableCombo } from "@/lib/combo
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
+import { friendlyDate } from "@/lib/friendly-date";
 import {
   chargeModeSuffix,
   monthLabel,
@@ -637,7 +638,7 @@ export async function takePayment(input: {
       });
       if (prior) {
         return {
-          refused: `This card was already charged on ${colomboNow(prior.paidAt).date}. If it is a replacement card, change the card number and UID in Registration first.`,
+          refused: `This card was already charged on ${friendlyDate(colomboNow(prior.paidAt).date)}. If it is a replacement card, change the card number and UID in Registration first.`,
         };
       }
     }

@@ -310,7 +310,7 @@ describe("takePayment / loadPanel against a real database", { skip: dbSkip }, ()
     const again = await charge(student.id, [], { smartCard: true });
     assert.deepEqual(again, {
       ok: false,
-      error: "This card was already charged on 2026-10-15. If it is a replacement card, change the card number and UID in Registration first.",
+      error: "This card was already charged on 15 Oct 2026. If it is a replacement card, change the card number and UID in Registration first.",
     });
     assert.equal((await rows(student.id)).filter((p) => p.kind === "SMART_CARD" && !p.cancelled).length, 1);
   });
