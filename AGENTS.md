@@ -417,6 +417,28 @@ beside the tier counts, and the lines and totals stay as they are.
 - **A month recorded as No charge says so when charged again** (not "already
   paid"); only an administrator can cancel that record. (Finding 10.)
 
+**The new payment screens (`/payment-new`, job 3B):**
+
+- **ADMIN only until the menu switch**, through ONE constant, `PAYMENT_NEW_ROLES` in
+  `src/app/(app)/payment-new/access.ts`, read by both pages and both read actions.
+  At the menu switch flip it to `OPERATIONAL_ROLES` (ADMIN + STAFF). That is the
+  whole change; `payment-new-actions.test.ts` is tied to the constant and its
+  `FLIP` lines change with it. This blocks the screens, not a hand-crafted request
+  to `takePayment` — that action is shared with the old screen and stays ADMIN + STAFF.
+- **Two server rules are RESTATED on the read side, on purpose, for now:** the Half
+  amount (`halfMonthly` / `halfComboMonthly` in `buildPaymentView`, the same
+  `money(Number(full) * 0.5)` as `takePayment`) and the smart-card "already
+  charged" check (`smartCard.chargedOn`, the same query as the server's guard).
+  `takePayment` lives in a `"use server"` file, so neither can be shared without
+  moving it. The parity tests (`payment-view.test.ts`, `payment-screen-rules.test.ts`)
+  fail on any drift, and the server stays the authority. **A later cleanup job
+  should merge each pair into ONE shared source** (the screen would then
+  show what the server function itself returns).
+- The screen's Total is the receipt's total: every price is a server-built string,
+  one pure function (`comboApplies` in `payment-charge.ts`) says when a combo
+  applies, and `payment-screen-rules.test.ts` compares the displayed Total with the
+  real receipt for every state, switch, answer and mode.
+
 Not covered, on purpose: receipt printing (no automated way). The overlapping-request
 guards are tested in-process against a direct Postgres connection; the Neon pooler
 path is not reproducible locally, so run the race scenario against demo through the
