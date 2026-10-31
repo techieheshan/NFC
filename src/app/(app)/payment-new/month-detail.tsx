@@ -173,7 +173,7 @@ export function MonthDetailSheet({
               {(
                 [
                   ["FULL", "Full", shortMoney(fullAmount)],
-                  ["HALF", "Half", shortMoney(halfAmount)],
+                  ["HALF", "Half month", shortMoney(halfAmount)],
                   ["NO_CHARGE", "No charge", "0"],
                 ] as const
               ).map(([value, label, amount]) => (
