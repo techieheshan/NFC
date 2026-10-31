@@ -254,7 +254,7 @@ describe("takePayment / loadPanel against a real database", { skip: dbSkip }, ()
     assert.equal(p.comboId, null);
   });
 
-  test("CURRENT BEHAVIOUR (will change in job 3: combo rules): paying ONE course of a combo still needs a decision, and 'apply' gives that course its combo fee", async () => {
+  test("paying ONE course of a combo (job 3A rule): the state belongs to the combo, so with 0 days last month a decision is still needed, and 'apply' gives that course its combo fee", async () => {
     // Eligibility is 'all courses enrolled', not 'all courses paid this checkout'.
     const { a, combo, student } = await comboSetup();
     receiptOf(await charge(student.id, [{ courseId: a.id, ...OCT }], { comboDecisions: [{ comboId: combo.id, apply: true }] }));

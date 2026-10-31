@@ -122,7 +122,7 @@ describe("applicableCombos against a real database", { skip: dbSkip }, () => {
 
   // ---- the "last completed month" attendance count --------------------------------------
 
-  test("CURRENT BEHAVIOUR (will change in job 3: combo rules): attendance is shown but never decides eligibility", async () => {
+  test("attendance never decides ELIGIBILITY (job 3A rule): a student with no attendance still qualifies; attendance only decides whether a question is asked (see comboStates)", async () => {
     const { teacherId, list: [a, b] } = await courses(2);
     await combo(teacherId, [a.id, b.id]);
     const s = await student([a.id, b.id]); // no attendance at all

@@ -322,14 +322,14 @@ A test that locks something we plan to change is named
 `CURRENT BEHAVIOUR (will change in job N): …`. When that job lands, the failing
 test points at the sentence to update. Checklist:
 
-- **Job 3 — any past month payable:** the server already accepts months older
+- **Job 3B — any past month payable:** the server already accepts months older
   than the panel's window; the panel offers 5 past + current + 3 ahead; arrears
-  are unlimited (`payment-take`, `arrears-db`).
-- **Job 3 — smart card is unguarded:** the same card can be charged repeatedly.
-- **Job 3 — duplicate in one request:** the same course and month listed twice
-  is charged twice.
-- **Job 3 — combo rules:** paying ONE course of a combo still needs a decision
-  and gets the combo fee; attendance is shown but never decides eligibility.
+  are unlimited (`payment-take`, `arrears-db`, `payment-view`). Screens only.
+- **Job 3A — settled, now RULES (no longer CURRENT BEHAVIOUR):** a card is
+  charged once per UID; the same course+month twice in one request is refused;
+  one charge per student at a time (advisory lock, checks under it); combo state
+  (`auto` / `needs-confirmation` / `exempt-new` / `exempt-free` / `off`, in
+  `combos.ts`); Half month and No charge (`Payment.chargeMode`). See below.
 - **Job 3 — one `lastCompletedMonth`:** `combos.ts` and `payslips.ts` each have
   their own copy (`last-completed-month`). Merge them, then keep the cases.
 - **Rounding (`report 9.2`):** money is a JS float then `toFixed(2)`, so half-cent
@@ -342,6 +342,32 @@ test points at the sentence to update. Checklist:
 - **Quirk, not planned to change:** a student with no active enrolment reads as
   grey "Free tier".
 
-Not covered, on purpose: receipt printing (no automated way), and the real
-concurrent double-submit race (not deterministic). The race has no DB constraint
-behind it — the clash check runs outside the transaction.
+**Gate — read before the menu switches to the new payment screen.** Reports must
+skip NO_CHARGE rows in paid counts and lines before the menu switches to the new
+payment screen. Today a NO_CHARGE row is settled and contributes 0.00 (correct),
+but every count that means "someone paid" counts rows, so it inflates:
+Daily Summary's paid Full / Half / 25% counts, the payslip's paying students,
+tier counts, sheet lines and "cards", and the monthly income report's
+"students". `payment-reports-nocharge.test.ts` documents each one as
+`CURRENT BEHAVIOUR (will change in job 5)`; the fix is job 5, and it is a gate.
+
+**Rules for the money rules (job 3A) that later work must keep:**
+
+- `takePayment` inputs only ever GROW, and every new field is optional with
+  today's meaning when absent (`mode`, `off`). Old phones and terminals keep
+  sending the old shape for days. `payment-golden.test.ts` replays 26 old-style
+  requests and must stay byte-identical; its fixture came from the code before
+  the change and is refreshed only for a change someone chose, in its own commit.
+- `Payment.chargeMode` is NULL for a full-fee row (everything written before it
+  existed and by any old client). NEVER filter it with `{ not: … }`: in SQL that
+  drops the NULL rows. A NO_CHARGE row is an ordinary CLASS row with amount 0.00,
+  so `SETTLED_PAYMENT_WHERE` is the only paid-check it needs.
+- The combo rule lives in `comboStateOf` / `comboStates` and nowhere else; the
+  server decides whether a question is due, the client never asserts it.
+- The migration reaches a database BEFORE the code that selects its column
+  (Prisma selects every column): demo, then production, then merge and deploy.
+
+Not covered, on purpose: receipt printing (no automated way). The overlapping-request
+guards are tested in-process against a direct Postgres connection; the Neon pooler
+path is not reproducible locally, so run the race scenario against demo through the
+pooled URL before relying on it in production.
