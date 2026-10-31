@@ -83,8 +83,6 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
   const [selected, setSelected] = useState<Selection>(new Map());
   /** Combos staff switched off (the switch is theirs; the state it sits on is the server's). */
   const [comboOff, setComboOff] = useState<ReadonlySet<number>>(new Set());
-  /** Courses whose 0-day "Ignore this month?" notice has been answered. */
-  const [answered, setAnswered] = useState<ReadonlySet<number>>(new Set());
   const [pendingCombos, setPendingCombos] = useState<PaymentView["combos"]>([]);
   const [decisions, setDecisions] = useState<ComboDecision[]>([]);
   const [calendarFor, setCalendarFor] = useState<number | null>(null);
@@ -192,8 +190,6 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
       return mode === undefined ? [] : [{ month: m, mode }];
     });
 
-  const answer = (courseId: number) => setAnswered((prev) => new Set(prev).add(courseId));
-
   const calendarCourse = view.courses.find((c) => c.courseId === calendarFor) ?? null;
   const detailCourse = detail ? view.courses.find((c) => c.courseId === detail.courseId) : null;
   const detailCharge = detail ? chargeOf.get(detail.courseId) : undefined;
@@ -249,9 +245,11 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
         {view.courses.map((c) => {
           const picked = pickedFor(c);
           const cc = chargeOf.get(c.courseId)!;
-          // Ask about a 0-day month only for a COMPLETED month (`owed`), once, and only while nothing is picked.
-          const notice =
-            !c.free && c.cardMonth !== null && c.cardMonth.owed && c.cardMonth.attended === 0 && !answered.has(c.courseId) && picked.length === 0;
+          // Ask about a 0-day month only for a COMPLETED month (`owed`), and only while nothing is
+          // picked. Answering ALWAYS picks the month (Ignore -> No charge, Charge -> Full), so the
+          // notice is gone while it is picked and comes back when the card is un-picked — nothing
+          // is remembered, so there is nothing to reset.
+          const notice = !c.free && c.cardMonth !== null && c.cardMonth.owed && c.cardMonth.attended === 0 && picked.length === 0;
           return (
             <CourseCard
               key={c.courseId}
@@ -261,10 +259,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
               comboApplied={courseComboApplied(cc, comboOff, decisions)}
               notice={notice}
               disabled={pending}
-              onToggle={() => {
-                if (notice) answer(c.courseId); // tapping the card is "Charge"
-                setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev));
-              }}
+              onToggle={() => setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev))}
               onOpenCalendar={() => setCalendarFor(c.courseId)}
               onSwitch={() => {
                 const id = c.comboId;
@@ -276,14 +271,8 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
                   return next;
                 });
               }}
-              onIgnore={() => {
-                answer(c.courseId);
-                setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev, "NO_CHARGE"));
-              }}
-              onCharge={() => {
-                answer(c.courseId);
-                setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev, "FULL"));
-              }}
+              onIgnore={() => setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev, "NO_CHARGE"))}
+              onCharge={() => setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev, "FULL"))}
             />
           );
         })}
