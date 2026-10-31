@@ -19,6 +19,7 @@ import {
   setMonthMode,
   toggleCard,
   toggleMonth,
+  zeroDayNotice,
   type ChargeCourse,
   type Selection,
 } from "@/lib/payment-charge";
@@ -246,11 +247,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
         {view.courses.map((c) => {
           const picked = pickedFor(c);
           const cc = chargeOf.get(c.courseId)!;
-          // Ask about a 0-day month only for a COMPLETED month (`owed`), and only while nothing is
-          // picked. Answering ALWAYS picks the month (Ignore -> No charge, Charge -> Full), so the
-          // notice is gone while it is picked and comes back when the card is un-picked — nothing
-          // is remembered, so there is nothing to reset.
-          const notice = !c.free && c.cardMonth !== null && c.cardMonth.owed && c.cardMonth.attended === 0 && picked.length === 0;
+          const notice = zeroDayNotice(c, picked); // see payment-charge.ts
           return (
             <CourseCard
               key={c.courseId}

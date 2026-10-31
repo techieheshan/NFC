@@ -241,6 +241,20 @@ export function toggleCard(
   return next;
 }
 
+/**
+ * Whether the card asks "No classes attended in <Mon>. Ignore this month?". Only for a paying
+ * course, only for a COMPLETED month (`owed`; 0 days so far in the current month is normal),
+ * only when 0 days were attended — and only while nothing of this course is picked. Answering
+ * always picks the month (Ignore → No charge, Charge → Full), so the question is gone while it
+ * is picked and comes back when the card is un-picked. Nothing is remembered.
+ */
+export function zeroDayNotice(
+  course: { free: boolean; cardMonth: { owed: boolean; attended: number } | null },
+  picked: readonly unknown[],
+): boolean {
+  return !course.free && course.cardMonth !== null && course.cardMonth.owed && course.cardMonth.attended === 0 && picked.length === 0;
+}
+
 /** Pick a month as Full, or un-pick it if it is already picked (in any mode). */
 export function toggleMonth(selected: SelectionLike, key: string): Map<string, PaymentMode> {
   const next = new Map(asSelection(selected));

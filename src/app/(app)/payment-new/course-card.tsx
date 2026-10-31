@@ -331,7 +331,7 @@ export function CourseCard({
           </div>
         </div>
 
-        {/* Board 7, state 5: an unpaid, completed month with 0 days attended — ask once. */}
+        {/* Board 7, state 5: an unpaid, completed month with 0 days attended — asked while the card is not picked (zeroDayNotice). */}
         {notice && first && (
           <div className="flex flex-col gap-2.5 rounded-xl border border-[#E8851C] bg-[#FFF4E5] p-3 text-[#4A2600]">
             <p className="text-[13px] leading-snug">

@@ -20,6 +20,7 @@ import {
   toggleCard,
   toggleMonth,
   touchedComboIds,
+  zeroDayNotice,
   type ChargeCourse,
 } from "@/lib/payment-charge";
 
@@ -328,4 +329,22 @@ test("chargeCoursesFrom carries the combo state and the half amounts, and still 
   assert.equal(c.comboState, "exempt-new");
   assert.deepEqual([c.halfMonthly, c.halfComboMonthly], ["1250.00", "1000.00"]);
   assert.deepEqual(c.months, [{ year: 2026, month: 11 }]);
+});
+
+test("zeroDayNotice: asked for a paying course's COMPLETED month with 0 days, only while nothing is picked", () => {
+  const card = (o: { free?: boolean; owed?: boolean; attended?: number; none?: boolean } = {}) => ({
+    free: o.free ?? false,
+    cardMonth: o.none ? null : { owed: o.owed ?? true, attended: o.attended ?? 0 },
+  });
+  assert.equal(zeroDayNotice(card(), []), true);
+  // answering picks the month (Ignore -> No charge, Charge -> Full): the question is gone...
+  assert.equal(zeroDayNotice(card(), [{ mode: "NO_CHARGE" }]), false);
+  assert.equal(zeroDayNotice(card(), [{ mode: "FULL" }]), false);
+  // ...and it comes back when the card is un-picked: nothing is remembered
+  assert.equal(zeroDayNotice(card(), []), true);
+  // never asked: a day was attended, the CURRENT month (not owed yet), a free course, no card month
+  assert.equal(zeroDayNotice(card({ attended: 1 }), []), false);
+  assert.equal(zeroDayNotice(card({ owed: false }), []), false);
+  assert.equal(zeroDayNotice(card({ free: true }), []), false);
+  assert.equal(zeroDayNotice(card({ none: true }), []), false);
 });
