@@ -517,7 +517,10 @@ model Payment {
   chargeMode ChargeMode?
 
   // Combined-payment audit (CLASS only). If combo applied, comboId set +
-  // comboApplied true. If refused, comboApplied false + reason REQUIRED.
+  // comboApplied true. If refused by staff, comboApplied false + reason REQUIRED.
+  // comboId set + comboApplied false + reason NULL = the combo was SWITCHED OFF by
+  // staff for that payment (normal rate, no reason asked). comboId NULL on a
+  // NO_CHARGE row: that month is outside the combo whatever the student qualifies for.
   combo              Combo?  @relation(fields: [comboId], references: [id])
   comboId            Int?
   comboApplied       Boolean @default(false)
