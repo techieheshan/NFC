@@ -22,6 +22,7 @@ import {
   type ChargeCourse,
   type Selection,
 } from "@/lib/payment-charge";
+import { friendlyDate } from "@/lib/friendly-date";
 import type { MonthDetail, PaymentView } from "@/lib/payment-view";
 import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
@@ -286,7 +287,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
             <span className="min-w-0 flex-1">
               <span className="block text-base font-semibold text-[#5B5670]">Smart card</span>
               <span className="block text-[13px] leading-snug text-[#6B3200]">
-                Already charged for this card on {view.smartCard.chargedOn}. If it is a replacement card, change the card number and UID in Registration first.
+                Already charged for this card on {friendlyDate(view.smartCard.chargedOn)}. If it is a replacement card, change the card number and UID in Registration first.
               </span>
             </span>
             <span className="text-base font-bold text-[#8A849C] tabular-nums">{view.smartCard.amount}</span>
