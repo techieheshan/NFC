@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  chargeCoursesFrom,
   chargeInput,
   chargeTotal,
   monthKey,
@@ -142,4 +143,28 @@ test("shortMoney drops only a whole-rupee .00 — real cents are never hidden", 
   assert.equal(shortMoney("100.05"), "100.05");
   assert.equal(shortMoney("0.00"), "0");
   assert.equal(shortMoney(null), "—");
+});
+
+test("a PAID month can never be in the total or the request, even if its key is selected", () => {
+  const courses = chargeCoursesFrom([
+    {
+      courseId: 1, free: false, monthly: "2500.00", comboMonthly: null, comboId: null,
+      months: [
+        { year: 2026, month: 8, state: "paid" },
+        { year: 2026, month: 9, state: "paid" },
+        { year: 2026, month: 10, state: "unpaid" },
+        { year: 2026, month: 11, state: "ahead" },
+      ],
+    },
+  ]);
+  const everything = sel(monthKey(1, 2026, 8), monthKey(1, 2026, 9), monthKey(1, 2026, 10), monthKey(1, 2026, 11));
+  assert.equal(chargeTotal({ ...base, courses, selected: everything }), 5000); // Oct + Nov only
+  assert.deepEqual(selectedClassMonths(courses, everything).map((m) => m.month), [10, 11]);
+  assert.equal(chargeTotal({ ...base, courses, selected: sel(monthKey(1, 2026, 8)) }), 0);
+  assert.deepEqual(selectedClassMonths(courses, sel(monthKey(1, 2026, 9))), []);
+});
+
+test("chargeCoursesFrom keeps prices and combo ids exactly as given", () => {
+  const [c] = chargeCoursesFrom([{ courseId: 4, free: true, monthly: null, comboMonthly: "1300.00", comboId: 9, months: [] }]);
+  assert.deepEqual(c, { courseId: 4, free: true, monthly: null, comboMonthly: "1300.00", comboId: 9, months: [] });
 });

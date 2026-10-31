@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 import type { PrismaClient } from "@prisma/client";
 
-import { chargeInput, chargeTotal, monthKey, touchedComboIds, type ChargeCourse } from "@/lib/payment-charge";
+import { chargeCoursesFrom, chargeInput, chargeTotal, monthKey, touchedComboIds, type ChargeCourse } from "@/lib/payment-charge";
 
 /*
  * Job 2 safety check: the NEW screen must show the same totals as the OLD one for the
@@ -103,7 +103,7 @@ describe("new screen vs old screen: same totals, same input, same charge", { ski
     assert.equal(res.status, "ok");
     const panel = (res as { panel: Panel }).panel;
     const v = await view.buildPaymentView(panel);
-    const charge: ChargeCourse[] = v.courses.map((c) => ({ courseId: c.courseId, free: c.free, monthly: c.monthly, comboMonthly: c.comboMonthly, comboId: c.comboId, months: c.months.map((m) => ({ year: m.year, month: m.month })) }));
+    const charge: ChargeCourse[] = chargeCoursesFrom(v.courses);
     return { panel, v, charge };
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, CheckCircle2, UserRound } from "lucide-react";
@@ -8,6 +8,7 @@ import { Check, CheckCircle2, UserRound } from "lucide-react";
 import type { ChargeResult, ComboDecision, Receipt } from "@/app/(app)/payment/actions";
 import { AutoPrintReceipt } from "@/app/(app)/payment/payment-screen";
 import {
+  chargeCoursesFrom,
   chargeInput,
   chargeTotal,
   monthKey,
@@ -75,18 +76,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
   const [calendarFor, setCalendarFor] = useState<number | null>(null);
   const [detail, setDetail] = useState<{ courseId: number; year: number; month: number } | null>(null);
 
-  const charge: ChargeCourse[] = useMemo(
-    () =>
-      view.courses.map((c) => ({
-        courseId: c.courseId,
-        free: c.free,
-        monthly: c.monthly,
-        comboMonthly: c.comboMonthly,
-        comboId: c.comboId,
-        months: c.months.map((m) => ({ year: m.year, month: m.month })),
-      })),
-    [view.courses],
-  );
+  const charge: ChargeCourse[] = useMemo(() => chargeCoursesFrom(view.courses), [view.courses]);
 
   const total = useMemo(
     () =>
@@ -102,8 +92,14 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
     [admission, smartCard, view.admission.amount, view.smartCard.amount, charge, selected, decisions],
   );
 
+  // `pending` only turns true on the next render, so two taps in the same tick could both
+  // get through. This ref closes that gap: one request in flight, ever.
+  const inFlight = useRef(false);
+
   const submit = useCallback(
     (finalDecisions: ComboDecision[]) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
       setError(null);
       startTransition(async () => {
         try {
@@ -128,6 +124,8 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
           setError(
             "Couldn't reach the server, so this payment may not have gone through. Check Receipts before trying again, so nobody is charged twice.",
           );
+        } finally {
+          inFlight.current = false;
         }
       });
     },
@@ -136,6 +134,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
 
   /** One pop-up per combo this selection touches; the last answer charges. Nothing is remembered. */
   const confirm = useCallback(() => {
+    if (inFlight.current) return;
     setError(null);
     const touched = new Set(touchedComboIds(charge, selected));
     const queue = view.combos.filter((c) => touched.has(c.comboId));
@@ -213,7 +212,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
           <CourseCard
             key={c.courseId}
             course={c}
-            selectedMonths={c.months.filter((m) => selected.has(monthKey(c.courseId, m.year, m.month)))}
+            selectedMonths={c.months.filter((m) => m.state !== "paid" && selected.has(monthKey(c.courseId, m.year, m.month)))}
             disabled={pending}
             onToggle={() => setSelected((prev) => toggleCard(c.courseId, c.cardMonth, prev))}
             onOpenCalendar={() => setCalendarFor(c.courseId)}
@@ -291,7 +290,10 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
           state={detailMonth.state}
           selected={selected.has(monthKey(detail.courseId, detail.year, detail.month))}
           load={loadMonthDetail}
-          onUse={() => setSelected((prev) => toggleMonth(prev, monthKey(detail.courseId, detail.year, detail.month)))}
+          onUse={() => {
+            if (detailMonth.state === "paid") return;
+            setSelected((prev) => toggleMonth(prev, monthKey(detail.courseId, detail.year, detail.month)));
+          }}
           onClose={() => setDetail(null)}
         />
       )}

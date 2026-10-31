@@ -25,6 +25,32 @@ export type ChargeDecision = { comboId: number; apply: boolean; reason?: string 
 export const monthKey = (courseId: number, year: number, month: number) =>
   `${courseId}:${year}:${month}`;
 
+/**
+ * The courses the total and the request are built from. A PAID month is left out
+ * entirely, so no selection — a stale key, a bug in a pop-up — can ever put an
+ * already-settled month into the Total or into `takePayment`. (The server would
+ * refuse it as "already paid" anyway; this keeps the screen from ever showing it.)
+ */
+export function chargeCoursesFrom(
+  courses: {
+    courseId: number;
+    free: boolean;
+    monthly: string | null;
+    comboMonthly: string | null;
+    comboId: number | null;
+    months: { year: number; month: number; state: "paid" | "unpaid" | "ahead" }[];
+  }[],
+): ChargeCourse[] {
+  return courses.map((c) => ({
+    courseId: c.courseId,
+    free: c.free,
+    monthly: c.monthly,
+    comboMonthly: c.comboMonthly,
+    comboId: c.comboId,
+    months: c.months.filter((m) => m.state !== "paid").map((m) => ({ year: m.year, month: m.month })),
+  }));
+}
+
 export function chargeTotal(input: {
   admission: boolean;
   smartCard: boolean;
