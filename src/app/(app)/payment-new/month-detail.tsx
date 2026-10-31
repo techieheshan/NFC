@@ -189,7 +189,7 @@ export function MonthDetailSheet({
                       : "border-[#CFC6E6] bg-white text-foreground"
                   }`}
                 >
-                  <span className="text-sm font-semibold">{label}</span>
+                  <span className="text-sm font-semibold whitespace-nowrap">{label}</span>
                   <span className="text-lg font-bold tabular-nums">{amount}</span>
                 </button>
               ))}

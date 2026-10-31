@@ -214,7 +214,7 @@ export function MonthSheet({
                     <Check className="size-3.5" strokeWidth={3} aria-hidden />
                     {m.paidMode === "NO_CHARGE" ? "No charge" : (m.paidDay ?? "")}
                   </span>
-                  {m.paidMode === "HALF" && <span className="rounded-full bg-white/80 px-1.5 text-[10px] leading-4 font-bold">½ month</span>}
+                  {m.paidMode === "HALF" && <span className="rounded-full bg-white/80 px-1.5 text-[10px] leading-4 font-bold whitespace-nowrap">½ month</span>}
                 </Tile>
               );
             }
@@ -260,7 +260,7 @@ export function MonthSheet({
             Paid, the number is the day paid
           </p>
           <p className="flex items-center gap-2">
-            <span className="flex h-5 w-11 items-center justify-center rounded-md border border-[#2E9E5B] bg-[#D6F2DF] text-[10px] font-bold text-[#0B4A24]">
+            <span className="flex h-5 w-auto min-w-11 shrink-0 items-center justify-center rounded-md border border-[#2E9E5B] bg-[#D6F2DF] px-1 text-[10px] font-bold whitespace-nowrap text-[#0B4A24]">
               ½ month
             </span>
             Paid as a half month; a tile reads No charge if nothing was charged
