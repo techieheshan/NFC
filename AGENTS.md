@@ -351,6 +351,14 @@ tier counts, sheet lines and "cards", and the monthly income report's
 "students". `payment-reports-nocharge.test.ts` documents each one as
 `CURRENT BEHAVIOUR (will change in job 5)`; the fix is job 5, and it is a gate.
 
+**The same gate covers HALF-month rows.** A row with `chargeMode = HALF` is a
+paid month at half the amount, but the Daily Summary (`reports.ts`, paid Full /
+Half / 25% counts) and the payslip `tierCounts` count it under the student's TIER,
+so a FULL-tier student charged a Half month reads as a full month there. In those
+reports "Half" means the HALF TIER. A Half-month payer must neither read as a full
+month nor be invisible: job 5 shows them on their own line (or in their own count),
+beside the tier counts, and the lines and totals stay as they are.
+
 **Rules for the money rules (job 3A) that later work must keep:**
 
 - `takePayment` inputs only ever GROW, and every new field is optional with
@@ -366,6 +374,43 @@ tier counts, sheet lines and "cards", and the monthly income report's
   server decides whether a question is due, the client never asserts it.
 - The migration reaches a database BEFORE the code that selects its column
   (Prisma selects every column): demo, then production, then merge and deploy.
+- **All guards run before the first write, and a refusal writes nothing.** In the
+  charge transaction every check (admission, clash, smart card) comes before the
+  first `create`/`update`; a refusal is returned from the callback, which COMMITS —
+  that is only safe while no write precedes a guard. A new guard goes above the
+  writes, never below. A new write goes below the guards, never above.
+- **One clock per request.** `takePayment` takes `paidAt` once and judges the month
+  limits, "before enrolment" and `comboStates` (`at: paidAt`) at that instant.
+- **A busy student is answered, not thrown.** A request that cannot get the
+  per-student lock in 4 s (`lock_timeout`), or whose transaction expires
+  (P2028; `maxWait` 2 s, `timeout` 6 s), returns `{ ok: false, error: "Another
+  payment for this student is in progress — check Receipts, then try again." }` and
+  writes nothing. The old screen has no catch; a throw is a browser crash page. No
+  `maxDuration` is set in the repo, so keep the sum of the limits under the
+  platform's (10 s without Fluid compute).
+- **Inside the transaction use `tx`, never `db`.** A read through `db` there takes a
+  second pooled connection while the lock is held and can starve the pool.
+
+**Decisions recorded from the 3A independent review (Kavin, accepted as built):**
+
+- **Half and No charge are free for staff.** Any month, any student, no note and no
+  role limit: staff run the counter and admins review. The server does not limit
+  NO_CHARGE (a crafted STAFF request can waive months too) — accepted. Job 5 gives
+  admins a "Half and No-charge months, by staff" view so they can review who
+  recorded what (`takenById` is on every row). `PAYMENT_NEW_ROLES` only decides who
+  sees the NEW screens before the menu switch; it is not a limit on the modes.
+- **A re-enrolled class is not "new".** "New" uses `Enrollment.createdAt`, and
+  re-enrolling reactivates the old row without resetting it, so a student who
+  dropped Chemistry in March and came back on 3 Nov with 0 days in October gets a
+  needs-confirmation question, not exempt-new. (Review finding 7.)
+- **One FREE class exempts the whole combo.** In a three-class combo, FREE +
+  Physics (5 days) + Chemistry (0 days) is `exempt-free`: no question, and
+  Chemistry is billed at the combo rate. FREE is checked before 0 days. (Finding 8.)
+- **No charge on one class does not stop the combo on the other.** Combo A+B, A
+  recorded as No charge and B as Full: B is charged the combo rate. A NO_CHARGE row
+  stores `comboId` null. (Finding 9.)
+- **A month recorded as No charge says so when charged again** (not "already
+  paid"); only an administrator can cancel that record. (Finding 10.)
 
 Not covered, on purpose: receipt printing (no automated way). The overlapping-request
 guards are tested in-process against a direct Postgres connection; the Neon pooler
