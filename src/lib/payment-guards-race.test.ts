@@ -249,6 +249,29 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     }
   });
 
+  test("POOL: 15 overlapping requests that each read a fee setting for ONE student — one wins, 14 are refused, none throws", async () => {
+    // The pool holds 10 connections. The lock holder reads the fee setting while the other
+    // requests sit blocked on its lock, each holding a connection; if that read took a SECOND
+    // connection the holder would wait for one that the waiters never give back.
+    const s = await student();
+    const settled = await Promise.allSettled(Array.from({ length: 15 }, () => charge(s.id, null, [], { smartCard: true })));
+    const rejected = settled.filter((r) => r.status === "rejected");
+    assert.equal(rejected.length, 0, `requests threw: ${rejected.map((r) => String((r as PromiseRejectedResult).reason).slice(0, 120)).join(" | ")}`);
+    const rs = settled.map((r) => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof charge>>>).value);
+    assert.equal(oks(rs), 1);
+    assert.deepEqual(errors(rs), Array(14).fill(CARD_MESSAGE("2026-11-10")));
+    assert.equal((await cards(s.id)).length, 1);
+  });
+
+  test("POOL: the same for the admission fee — 15 overlapping admission requests, one wins, 14 are refused, none throws", async () => {
+    const s = await student();
+    const settled = await Promise.allSettled(Array.from({ length: 15 }, () => charge(s.id, null, [], { admission: true })));
+    assert.equal(settled.filter((r) => r.status === "rejected").length, 0);
+    const rs = settled.map((r) => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof charge>>>).value);
+    assert.equal(oks(rs), 1);
+    assert.deepEqual(errors(rs), Array(14).fill("Admission has already been paid."));
+  });
+
   test("after a refusal the lock is gone: the very next request for the same student goes straight through", async () => {
     const c = await course();
     const s = await student({ course: c });

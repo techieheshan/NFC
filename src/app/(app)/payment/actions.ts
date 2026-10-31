@@ -139,8 +139,18 @@ function classFee(defaultFee: unknown, multiplier: unknown): number {
   return Number(String(defaultFee)) * Number(String(multiplier));
 }
 
-async function settingAmount(key: string, fallback: string): Promise<string> {
-  const row = await db.setting.findUnique({ where: { key } });
+/**
+ * `client` is `db` by default. Inside the charge transaction pass `tx`: the transaction already
+ * holds one pooled connection, and a read through `db` there would need a SECOND one while the
+ * per-student lock is held — with enough overlapping requests the pool runs dry and the lock
+ * holder waits for a connection that the waiters (blocked on its lock) never give back.
+ */
+async function settingAmount(
+  key: string,
+  fallback: string,
+  client: { setting: typeof db.setting } = db,
+): Promise<string> {
+  const row = await client.setting.findUnique({ where: { key } });
   return money(Number(row?.value ?? fallback));
 }
 
@@ -583,7 +593,7 @@ export async function takePayment(input: {
     const ids: number[] = [];
 
     if (admission) {
-      const amount = await settingAmount("admission_fee", "0");
+      const amount = await settingAmount("admission_fee", "0", tx);
       const row = await tx.payment.create({
         data: {
           kind: "ADMISSION",
@@ -603,7 +613,7 @@ export async function takePayment(input: {
     }
 
     if (smartCard) {
-      const amount = await settingAmount("smart_card_fee", "0");
+      const amount = await settingAmount("smart_card_fee", "0", tx);
       const row = await tx.payment.create({
         data: {
           kind: "SMART_CARD",
