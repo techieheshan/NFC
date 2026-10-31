@@ -47,7 +47,7 @@ export default async function HalfNoChargePage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <Button asChild variant="ghost" size="sm" className="-ml-3 mb-1">
+        <Button asChild variant="ghost" className="-ml-3 mb-1 h-11 px-3">
           <Link href="/reports">&larr; Reports</Link>
         </Button>
         <h1 className="text-2xl font-semibold tracking-tight">Half and No-charge months</h1>
@@ -80,8 +80,8 @@ export default async function HalfNoChargePage({
           </select>
         </div>
         <div className="flex gap-2">
-          <Button type="submit" className="h-11 flex-1">Show</Button>
-          <Button asChild variant="ghost" className="h-11"><Link href={ROUTE}>This month</Link></Button>
+          <Button type="submit" className="h-12 flex-1">Show</Button>
+          <Button asChild variant="ghost" className="h-12"><Link href={ROUTE}>This month</Link></Button>
         </div>
       </form>
 
