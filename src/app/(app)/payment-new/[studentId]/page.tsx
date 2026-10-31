@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 
-import { requireNavAccess } from "@/lib/authz";
 import { buildPaymentView } from "@/lib/payment-view";
 import { getToggle } from "@/lib/settings";
 
 import { loadPanel, takePayment } from "../../payment/actions";
+import { requirePaymentNewPage } from "../access";
 import { loadMonthDetail } from "../actions";
 import { StudentScreen } from "../student-screen";
 
@@ -17,7 +17,7 @@ export const metadata = { title: "Payment" };
  * `takePayment`, with the input it has always taken.
  */
 export default async function PaymentNewStudentPage({ params }: PageProps<"/payment-new/[studentId]">) {
-  await requireNavAccess("/payment");
+  await requirePaymentNewPage();
 
   const { studentId } = await params;
   const id = Number(studentId);

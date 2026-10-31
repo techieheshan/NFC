@@ -29,7 +29,7 @@ describe("identifyStudent against a real database", { skip: dbSkip }, () => {
 
   test("a tapped card finds its student whichever way the reader formats the UID (rule 12)", async () => {
     const s = await makeStudent(db, { cardUid: "04A22B9C" });
-    setSession("STAFF", w.staff.id);
+    setSession("ADMIN", w.admin.id);
     for (const raw of ["04:a2:2b:9c", "04A22B9C", "04-a2-2b-9c", " 04 A2 2B 9C "]) {
       assert.deepEqual(await actions.identifyStudent({ cardUid: raw }), { studentId: s.id }, raw);
     }
@@ -45,7 +45,7 @@ describe("identifyStudent against a real database", { skip: dbSkip }, () => {
 
   test("identifyStudent returns the student id and NOTHING else (the screen opens by id alone)", async () => {
     const s = await makeStudent(db, { cardUid: "04A22B9D" });
-    setSession("STAFF", w.staff.id);
+    setSession("ADMIN", w.admin.id);
     const found = await actions.identifyStudent({ cardUid: "04:a2:2b:9d" });
     assert.deepEqual(found, { studentId: s.id });
     assert.deepEqual(Object.keys(found!), ["studentId"]);

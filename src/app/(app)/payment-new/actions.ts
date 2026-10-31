@@ -2,16 +2,18 @@
 
 import { z } from "zod";
 
-import { requireOperationalAccess } from "@/lib/authz";
 import { buildMonthDetail, type MonthDetail } from "@/lib/payment-view";
 import { findStudentByIdentifier } from "@/lib/students";
+
+import { requirePaymentNewAction } from "./access";
 
 /**
  * Read-only helpers for the new payment screens. Nothing here writes, and none of
  * it prices anything: charging still goes through the existing `takePayment`.
  *
  * Each is its own HTTP endpoint, so each re-checks the role (AGENTS rule 10) —
- * the page guard does not cover them.
+ * the page guard does not cover them. Both use the same role constant as the pages
+ * (`PAYMENT_NEW_ROLES`, ADMIN only until the menu switch).
  */
 
 /**
@@ -23,7 +25,7 @@ export async function identifyStudent(input: {
   cardUid?: string;
   cardNumber?: string;
 }): Promise<{ studentId: number } | null> {
-  await requireOperationalAccess();
+  await requirePaymentNewAction();
   const parsed = z
     .object({ cardUid: z.string().trim().max(100).optional(), cardNumber: z.string().trim().max(100).optional() })
     .safeParse(input);
@@ -46,7 +48,7 @@ export async function loadMonthDetail(input: {
   year: number;
   month: number;
 }): Promise<MonthDetail | null> {
-  await requireOperationalAccess();
+  await requirePaymentNewAction();
   const parsed = monthInput.safeParse(input);
   if (!parsed.success) return null;
   return buildMonthDetail(parsed.data);
