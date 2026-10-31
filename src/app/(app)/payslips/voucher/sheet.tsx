@@ -96,8 +96,10 @@ export function PayslipSheet({
               <tr key={`${l.courseId}-${l.billingOrder}-${l.rate}-${i}`} className="border-b border-neutral-300">
                 <td className="py-1 pr-2">
                   {l.course}
-                  {/* Text only, inside the existing cell: no column, no width, no row is added. */}
-                  {l.halfMonth && " (Half month)"}
+                  {/* Text only, inside the existing cell: no column is added and the column does not grow.
+                      `w-0 min-w-full` makes the label add NOTHING to the column's natural width (it takes the
+                      width the other cells give it), so it sits on a second line of the same cell. */}
+                  {l.halfMonth && <span className="block w-0 min-w-full">(Half month)</span>}
                 </td>
                 <td className="px-2 py-1 whitespace-nowrap">{l.billingLabel}</td>
                 <td className="px-2 py-1 text-right tabular-nums">{l.cards}</td>
