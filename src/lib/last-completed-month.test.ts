@@ -37,3 +37,9 @@ test("the combos copy also carries the label the pop-up shows", () => {
   assert.equal(forCombos(new Date("2026-08-15T06:00:00Z")).label, "Jul 2026");
   assert.equal(forCombos(new Date("2026-01-10T06:00:00Z")).label, "Dec 2025");
 });
+
+test("CURRENT BEHAVIOUR (will change in job 3: one lastCompletedMonth instead of two): combos.ts and payslips.ts each define their OWN copy", () => {
+  // Two separate functions that happen to agree today (every case above). When job 3
+  // merges them this test fails: delete it, and keep the cases above against the one copy.
+  assert.notEqual(forCombos, forPayslips);
+});
