@@ -192,7 +192,10 @@ export const makeCombo = (
     },
   });
 
-export const attend = (db: PrismaClient, o: { studentId: number; courseId: number; date: string; markedById: string }) =>
+export const attend = (
+  db: PrismaClient,
+  o: { studentId: number; courseId: number; date: string; markedById: string; markedAt?: string },
+) =>
   db.attendance.create({
     data: {
       studentId: o.studentId,
@@ -200,6 +203,7 @@ export const attend = (db: PrismaClient, o: { studentId: number; courseId: numbe
       date: new Date(`${o.date}T00:00:00Z`),
       method: "SEARCH",
       markedById: o.markedById,
+      markedAt: o.markedAt ? new Date(o.markedAt) : undefined,
       clientRef: uniq("ref"),
     },
   });
