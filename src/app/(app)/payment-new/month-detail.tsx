@@ -125,9 +125,7 @@ export function MonthDetailSheet({
               <span className="text-[34px] leading-none font-bold">{detail.attended}</span>
               <div>
                 <p className="text-[15px] font-bold">{detail.attended === 1 ? "class attended" : "classes attended"}</p>
-                <p className="text-sm">
-                  {detail.lastAttended ? `Last attended ${lastLabel(detail.lastAttended)}` : "No class attended this month"}
-                </p>
+                {detail.lastAttended && <p className="text-sm">Last attended {lastLabel(detail.lastAttended)}</p>}
               </div>
             </div>
 
