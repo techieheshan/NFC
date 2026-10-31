@@ -106,7 +106,8 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     assert.match(out, /href="\/receipts\?key=ref%3A[0-9a-f-]+&amp;cancelled=1"/);
     assert.ok(out.includes("1 cancelled row is shown greyed and counted nowhere."));
     assert.ok(out.includes("<svg"), "the chips carry an icon as well as the word");
-    assert.ok(out.includes("line-through"), "a cancelled amount is struck through");
+    assert.match(out, /tabular-nums line-through">\d+\.\d\d<\/td>/, "a cancelled amount is struck through in the table");
+    assert.match(out, /font-semibold tabular-nums line-through">\d+\.\d\d<\/span>/, "...and on the phone card");
     assert.ok(!out.includes("Showing the newest"), "not capped");
     assert.ok(!/\d{4}-\d{2}-\d{2}/.test(out.replace(/value="[^"]*"/g, "").replace(/href="[^"]*"/g, "")), "no raw ISO date for staff to read");
   });
@@ -116,7 +117,9 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     const one = await html({ month: "2026-11", staff: w.staff.id });
     assert.ok(one.includes("Sadun Staff") && !new RegExp(`>${w.admin.username}</td>`).test(one));
     const half = await html({ month: "2026-11", mode: "half" });
-    assert.ok(!/No charge<\/span>/.test(half), "Half only: no No-charge row chip");
+    // a row's No-charge chip is an icon then the words; the totals line ("0 No charge") is not a chip
+    assert.ok(/<\/svg>No charge<\/span>/.test(await html({ month: "2026-11" })), "control: both modes show a No-charge chip");
+    assert.ok(!/<\/svg>No charge<\/span>/.test(half), "Half only: no No-charge row chip");
     assert.ok(/Half month<\/span>/.test(half));
     assert.match(half, /<option value="half" selected/);
     for (const junk of [{ month: "garbage" }, { month: "2026-13" }, { month: "2026-11", mode: "bogus", staff: "no-such-user" }]) {
