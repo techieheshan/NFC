@@ -340,6 +340,31 @@ describe("last 10 receipts and receipt search against a real database", { skip: 
     for (const t of s.receipts) assert.equal(t.lines.length, 23);
   });
 
+  test("CURRENT BEHAVIOUR (old Receipts page, NOT changed in job 4): findTransactions groups at most 300 ROWS, so a receipt cut at that boundary loses lines and part of its total — the new lookup does not", async () => {
+    const kid = await student("Cut Kid", "CUT-0001");
+    // The big receipt is the OLDEST: 23 lines. 290 newer single-line receipts come before it, so the
+    // 300-row window ends 10 rows into it.
+    const bigRef = await bulkReceipt(kid.id, 23, 0);
+    await db.payment.createMany({
+      data: Array.from({ length: 290 }, (_, i) => ({
+        kind: "CLASS" as const, studentId: kid.id, courseId: courseA.id, billingYear: 2000 + Math.floor(i / 12), billingMonth: (i % 12) + 1,
+        amount: "10.00", takenById: w.admin.id, paidAt: new Date(BASE + (10 + i) * 60_000), transactionRef: randomUUID(),
+      })),
+    });
+    const complete = await receipts.loadTransaction(`ref:${bigRef}`);
+    assert.equal(complete?.lines.length, 23);
+
+    const old = (await receipts.findTransactions({ q: "Cut Kid", includeCancelled: true })).find((t) => t.key === `ref:${bigRef}`)!;
+    assert.equal(old.lines.length, 10, "the old page shows 10 of the 23 lines");
+    assert.deepEqual([old.total, complete!.total], ["1000.00", "2300.00"], "...and 1000.00 of the 2300.00 (its receipt NUMBER is only right when the lowest-id rows happen to survive the cut)");
+
+    // The new lookup reads every row of the receipt: by its number it is complete.
+    const byNumber = await lookup.receiptByNumber(Math.min(...complete!.paymentIds));
+    assert.deepEqual(byNumber, complete);
+    assert.equal(byNumber?.lines.length, 23);
+    assert.deepEqual((await lookup.searchReceipts(complete!.reference)).receipts, [complete]);
+  });
+
   // ---- reprint ----------------------------------------------------------------------------------
 
   test("reprint gives the same document as the Receipts page for the same key (and a STAFF login may reprint)", async () => {

@@ -337,6 +337,11 @@ test points at the sentence to update. Checklist:
   `10.15×0.5 → 5.08`).
 - **Rounding (`report 9.3`):** a slip rounds each teacher's two halves separately,
   so slips and the month-end roll-up can differ by a cent.
+- **Quirk, old Receipts page (not changed in job 4):** `findTransactions` groups only
+  the newest 300 ROWS, so a receipt cut at that boundary shows fewer lines and a
+  smaller total (and a number that is only right when its lowest-id row survives).
+  The new screen does not use it. `receipt-lookup.test.ts` documents it as
+  `CURRENT BEHAVIOUR (old Receipts page, NOT changed in job 4)`.
 - **Silent zero fee:** a missing or empty `admission_fee` / `smart_card_fee`
   setting charges `0.00` instead of failing.
 - **Quirk, not planned to change:** a student with no active enrolment reads as
@@ -444,6 +449,21 @@ beside the tier counts, and the lines and totals stay as they are.
   (`src/lib/friendly-date.ts`): the smart-card row ("already charged on …" and "last
   …") and the server's smart-card refusal. Attendance dates keep their short
   "26 Sep" form. Never print a raw `YYYY-MM-DD` to staff.
+- **Last 10 receipts (`/payment-new/receipts`, job 4) is READ-ONLY.** Same
+  `PAYMENT_NEW_ROLES` guard as the other new pages; no server action of its own is
+  exposed (it reads on the server), and Reprint is the existing `reprintTransaction`
+  with `ReceiptView`. There is no Cancel there — that stays admin-only on `/receipts`.
+  The lookup (`src/lib/receipt-lookup.ts`) returns WHOLE receipts: it walks payments
+  newest first to collect distinct transaction keys (never filtering on
+  `transactionRef: null`), then loads each through `loadTransaction`, so the list, the
+  Receipts page and a reprint cannot disagree. `XN-n` names a receipt only when n is
+  the LOWEST payment id of its transaction; a middle row's id matches nothing. List
+  cap 10, search cap 20, names need 2 characters, cancelled receipts are included
+  with their chip. The search is a GET form (a searchParam, rule 17). Tests lock it
+  read-only twice: in the source and on a database that refuses every write.
+- **`public/sw.js` is proven not to cache any payment or receipt page**
+  (`service-worker-payment-pages.test.ts` runs the real worker in a sandbox, with
+  `/attendance` as the positive control). Keep that test when the worker changes.
 - The screen's Total is the receipt's total: every price is a server-built string,
   one pure function (`comboApplies` in `payment-charge.ts`) says when a combo
   applies, and `payment-screen-rules.test.ts` compares the displayed Total with the
