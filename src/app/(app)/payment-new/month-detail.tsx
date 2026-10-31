@@ -8,7 +8,9 @@ import { shortMoney } from "@/lib/payment-charge";
 import type { MonthDetail, MonthDetailRow } from "@/lib/payment-view";
 
 /**
- * Board 5 — one month's attendance for one course.
+ * Board 5 — one month's attendance for one course: the classes the student ACTUALLY
+ * attended, and nothing else. No expected class days, no absences, no "of N": those
+ * would be derived from today's timetable, which has no history.
  *
  * Built with the Full fee only. Half and No charge are drawn, visibly disabled and
  * labelled "Coming soon": they need the money logic and a new column (job 3), so
@@ -21,29 +23,14 @@ const lastLabel = (iso: string) => `${Number(iso.slice(8, 10))} ${SHORT[Number(i
 
 const CHIP = "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[13px] font-semibold";
 
-function StatusChip({ row }: { row: MonthDetailRow }) {
-  if (row.status === "present") {
-    return (
-      <span className="flex items-center gap-2">
-        {row.time && <span className="text-xs text-[#5B5670] tabular-nums">{row.time}</span>}
-        <span className={`${CHIP} border-[#2E9E5B] bg-[#D6F2DF] text-[#0B4A24]`}>
-          <Check className="size-3.5" strokeWidth={3} aria-hidden />
-          Present
-        </span>
-      </span>
-    );
-  }
-  if (row.status === "absent") {
-    return (
-      <span className={`${CHIP} border-[#D64545] bg-[#FDE0E0] text-[#8A1C1C]`}>
-        <X className="size-3.5" strokeWidth={3} aria-hidden />
-        Absent
-      </span>
-    );
-  }
+function Attended({ row }: { row: MonthDetailRow }) {
   return (
-    <span className={`${CHIP} border-[#CFC6E6] bg-white text-[#5B5670]`}>
-      {row.status === "today" ? "Today" : "Upcoming"}
+    <span className="flex items-center gap-2">
+      <span className="text-xs text-[#5B5670] tabular-nums">{row.time}</span>
+      <span className={`${CHIP} border-[#2E9E5B] bg-[#D6F2DF] text-[#0B4A24]`}>
+        <Check className="size-3.5" strokeWidth={3} aria-hidden />
+        Present
+      </span>
     </span>
   );
 }
@@ -89,8 +76,6 @@ export function MonthDetailSheet({
     });
   }, [load, studentId, courseId, year, month]);
 
-  const allAttended = detail && detail.held > 0 && detail.attended === detail.held;
-
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent showCloseButton={false} className="gap-3 p-4 sm:max-w-md">
@@ -132,17 +117,14 @@ export function MonthDetailSheet({
           <>
             <div
               className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${
-                allAttended
+                detail.attended > 0
                   ? "border-[#2E9E5B] bg-[#E8F7EE] text-[#0B4A24]"
                   : "border-[#E8851C] bg-[#FFF4E5] text-[#4A2600]"
               }`}
             >
-              <p className="flex items-baseline gap-1">
-                <span className="text-[34px] leading-none font-bold">{detail.attended}</span>
-                <span className="text-lg font-bold">of {detail.held}</span>
-              </p>
+              <span className="text-[34px] leading-none font-bold">{detail.attended}</span>
               <div>
-                <p className="text-[15px] font-bold">classes attended</p>
+                <p className="text-[15px] font-bold">{detail.attended === 1 ? "class attended" : "classes attended"}</p>
                 <p className="text-sm">
                   {detail.lastAttended ? `Last attended ${lastLabel(detail.lastAttended)}` : "No class attended this month"}
                 </p>
@@ -153,20 +135,19 @@ export function MonthDetailSheet({
               <ul className="overflow-hidden rounded-2xl border border-[#E1DAF0]">
                 {detail.rows.map((r) => (
                   <li
-                    key={r.date}
+                    key={`${r.date}-${r.time}`}
                     className="flex min-h-12 items-center justify-between gap-3 border-b border-[#E1DAF0] px-3.5 py-2 last:border-b-0"
                   >
                     <span className="text-[15px]">
                       {dayMonth(r.date)} · {r.weekday}
-                      {r.extra && <span className="ml-2 text-xs text-[#5B5670]">Extra class</span>}
                     </span>
-                    <StatusChip row={r} />
+                    <Attended row={r} />
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="rounded-2xl border border-dashed border-[#D8D2E6] px-3.5 py-4 text-center text-sm text-[#5B5670]">
-                No class days on the timetable for this month.
+                No classes attended this month.
               </p>
             )}
           </>

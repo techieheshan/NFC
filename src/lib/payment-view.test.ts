@@ -236,69 +236,88 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     assert.deepEqual((await load(s.id)).lastAttended, { [c.id]: null });
   });
 
-  // ---- month detail --------------------------------------------------------------------------
+  // ---- month detail: ONLY classes actually attended ------------------------------------------
 
-  async function saturdayCourse(since = AUG) {
+  async function detailCourse(since = AUG) {
     const c = await course();
-    await db.schedule.create({ data: { courseId: c.id, dayOfWeek: "SAT", startTime: "09:00", endTime: "11:00" } });
     const s = await student([{ courseId: c.id, since }]);
     return { c, s };
   }
   const detail = (s: { id: number }, c: { id: number }, year: number, month: number) => view.buildMonthDetail({ studentId: s.id, courseId: c.id, year, month });
 
-  test("month detail: the class days of the month, who was present (with the Colombo time) and who was not", async () => {
-    const { c, s } = await saturdayCourse();
+  test("month detail lists exactly the attended classes, with the Colombo time marked", async () => {
+    const { c, s } = await detailCourse();
     await attend(db, { studentId: s.id, courseId: c.id, date: "2026-10-10", markedById: w.admin.id, markedAt: "2026-10-10T04:45:00Z" });
+    await attend(db, { studentId: s.id, courseId: c.id, date: "2026-10-03", markedById: w.admin.id, markedAt: "2026-10-03T04:50:00Z" });
     const d = await detail(s, c, 2026, 10);
     assert.ok(d);
-    assert.deepEqual(d.rows.map((r) => [r.date, r.weekday, r.status, r.time]), [
-      ["2026-10-03", "Sat", "absent", null],
-      ["2026-10-10", "Sat", "present", "10:15 AM"],
-      ["2026-10-17", "Sat", "absent", null],
-      ["2026-10-24", "Sat", "absent", null],
-      ["2026-10-31", "Sat", "absent", null],
+    assert.deepEqual(d.rows, [
+      { date: "2026-10-03", weekday: "Sat", time: "10:20 AM" },
+      { date: "2026-10-10", weekday: "Sat", time: "10:15 AM" },
     ]);
-    assert.deepEqual([d.attended, d.held, d.lastAttended, d.label], [1, 5, "2026-10-10", "Oct 2026"]);
+    assert.deepEqual([d.attended, d.lastAttended, d.label], [2, "2026-10-10", "Oct 2026"]);
   });
 
-  test("month detail: days before the student enrolled are not expected", async () => {
-    const { c, s } = await saturdayCourse("2026-10-12T06:00:00Z");
+  test("month detail invents nothing: no schedule, no one-off class, no absences, no 'of N'", async () => {
+    // The timetable and additional classes must have NO effect on the result.
+    const bare = await detailCourse();
+    await attend(db, { studentId: bare.s.id, courseId: bare.c.id, date: "2026-10-10", markedById: w.admin.id, markedAt: "2026-10-10T04:45:00Z" });
+
+    const busy = await detailCourse();
+    for (const dow of ["SAT", "SUN", "TUE"] as const) await db.schedule.create({ data: { courseId: busy.c.id, dayOfWeek: dow, startTime: "09:00", endTime: "11:00" } });
+    await db.additionalClass.create({ data: { courseId: busy.c.id, date: new Date("2026-10-14T00:00:00Z"), startTime: "15:00", endTime: "17:00" } });
+    await attend(db, { studentId: busy.s.id, courseId: busy.c.id, date: "2026-10-10", markedById: w.admin.id, markedAt: "2026-10-10T04:45:00Z" });
+
+    const a = await detail(bare.s, bare.c, 2026, 10);
+    const b = await detail(busy.s, busy.c, 2026, 10);
+    assert.deepEqual(b!.rows, a!.rows); // identical, whatever the timetable says
+    assert.equal(b!.rows.length, 1);
+    assert.equal(b!.attended, 1);
+    assert.equal("held" in b!, false);
+  });
+
+  test("a month with no attendance is simply empty — even with a full timetable", async () => {
+    const { c, s } = await detailCourse();
+    await db.schedule.create({ data: { courseId: c.id, dayOfWeek: "SAT", startTime: "09:00", endTime: "11:00" } });
     const d = await detail(s, c, 2026, 10);
-    assert.deepEqual(d!.rows.map((r) => r.date), ["2026-10-17", "2026-10-24", "2026-10-31"]);
+    assert.deepEqual(d!.rows, []);
+    assert.deepEqual([d!.attended, d!.lastAttended], [0, null]);
   });
 
-  test("month detail: a one-off class counts, and a class attended on an unscheduled day is still listed as an extra", async () => {
-    const { c, s } = await saturdayCourse();
-    await db.additionalClass.create({ data: { courseId: c.id, date: new Date("2026-10-14T00:00:00Z"), startTime: "15:00", endTime: "17:00" } });
-    await attend(db, { studentId: s.id, courseId: c.id, date: "2026-10-21", markedById: w.admin.id });
-    const d = await detail(s, c, 2026, 10);
-    const row = (date: string) => d!.rows.find((r) => r.date === date)!;
-    assert.deepEqual([row("2026-10-14").status, row("2026-10-14").extra], ["absent", true]);
-    assert.deepEqual([row("2026-10-21").status, row("2026-10-21").extra], ["present", true]);
-    assert.equal(row("2026-10-03").extra, false);
-    assert.equal(d!.held, 7); // 5 Saturdays + the one-off + the attended extra
+  test("a class attended on a day that is not on the timetable is listed like any other", async () => {
+    const { c, s } = await detailCourse();
+    await db.schedule.create({ data: { courseId: c.id, dayOfWeek: "SAT", startTime: "09:00", endTime: "11:00" } });
+    await attend(db, { studentId: s.id, courseId: c.id, date: "2026-10-21", markedById: w.admin.id, markedAt: "2026-10-21T04:45:00Z" }); // a Wednesday
+    assert.deepEqual((await detail(s, c, 2026, 10))!.rows.map((r) => [r.date, r.weekday]), [["2026-10-21", "Wed"]]);
   });
 
-  test("month detail: in the CURRENT month later days are 'upcoming', today is 'today', and neither counts as held", async () => {
-    const { c, s } = await saturdayCourse();
-    // 10 Nov is a Tuesday; add a Tuesday schedule so 'today' is a class day.
-    await db.schedule.create({ data: { courseId: c.id, dayOfWeek: "TUE", startTime: "16:00", endTime: "18:00" } });
-    await attend(db, { studentId: s.id, courseId: c.id, date: "2026-11-03", markedById: w.admin.id });
-    const d = await detail(s, c, 2026, 11);
-    const status = (date: string) => d!.rows.find((r) => r.date === date)?.status;
-    assert.equal(status("2026-11-03"), "present");
-    assert.equal(status("2026-11-07"), "absent"); // Saturday, already past
-    assert.equal(status("2026-11-10"), "today");
-    assert.equal(status("2026-11-14"), "upcoming");
-    assert.equal(d!.held, 2); // Tue 3 (present) and Sat 7 (absent); today and later are not counted yet
+  test("month detail counts only THIS student, THIS course and THIS month — the same rows the calendar counts", async () => {
+    const [a, b] = [await course(), await course()];
+    const s = await student([{ courseId: a.id }, { courseId: b.id }]);
+    const other = await student([{ courseId: a.id }]);
+    for (const d of ["2026-09-26", "2026-10-03", "2026-10-31", "2026-11-07"]) await attend(db, { studentId: s.id, courseId: a.id, date: d, markedById: w.admin.id });
+    await attend(db, { studentId: s.id, courseId: b.id, date: "2026-10-04", markedById: w.admin.id });
+    await attend(db, { studentId: other.id, courseId: a.id, date: "2026-10-10", markedById: w.admin.id });
+    const d = await detail(s, a, 2026, 10);
+    assert.deepEqual(d!.rows.map((r) => r.date), ["2026-10-03", "2026-10-31"]); // both ends of the month, nothing outside it
+    const calendar = (await load(s.id)).courses[0].months.find((m) => m.month === 10)!;
+    assert.equal(d!.attended, calendar.attended);
   });
 
-  test("month detail: an inactive schedule is ignored, and a student not enrolled in the course gets null", async () => {
+  test("month detail returns null unless the student is actively enrolled in the course", async () => {
     const c = await course();
-    await db.schedule.create({ data: { courseId: c.id, dayOfWeek: "SAT", startTime: "09:00", endTime: "11:00", active: false } });
-    const s = await student([{ courseId: c.id }]);
-    assert.deepEqual((await detail(s, c, 2026, 10))!.rows, []);
     const stranger = await makeStudent(db);
     assert.equal(await detail(stranger, c, 2026, 10), null);
+    const dropped = await makeStudent(db);
+    await enrol(db, { studentId: dropped.id, courseId: c.id, tierId: w.tiers.FULL.id, since: AUG, status: "DROPPED" });
+    assert.equal(await detail(dropped, c, 2026, 10), null);
+  });
+
+  test("month detail returns ONLY what the pop-up displays", async () => {
+    const { c, s } = await detailCourse();
+    await attend(db, { studentId: s.id, courseId: c.id, date: "2026-10-10", markedById: w.admin.id, markedAt: "2026-10-10T04:45:00Z" });
+    const d = await detail(s, c, 2026, 10);
+    assert.deepEqual(Object.keys(d!).sort(), ["attended", "course", "label", "lastAttended", "rows", "teacher"]);
+    assert.deepEqual(Object.keys(d!.rows[0]).sort(), ["date", "time", "weekday"]);
   });
 });

@@ -207,45 +207,42 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
 // Month detail (board 5)
 // ---------------------------------------------------------------------------
 
+/** One class the student actually attended. */
 export type MonthDetailRow = {
-  /** "2026-10-03" */
+  /** "2026-10-10" */
   date: string;
-  /** "Sat" */
+  /** "Sat" — read off the date itself. */
   weekday: string;
-  /** present · absent · today (class day, not yet attended) · upcoming (later this month) */
-  status: "present" | "absent" | "today" | "upcoming";
-  /** "10:15 AM" when present. */
-  time: string | null;
-  /** True for a one-off class, or an attended day that is not on the timetable. */
-  extra: boolean;
+  /** "10:15 AM", the Colombo time the attendance was marked. */
+  time: string;
 };
 
+/** Exactly what the month-detail pop-up displays, and nothing else. */
 export type MonthDetail = {
-  courseId: number;
   course: string;
   teacher: string;
-  year: number;
-  month: number;
+  /** "Oct 2026" */
   label: string;
+  /** The attended classes of that month, oldest first. */
   rows: MonthDetailRow[];
   attended: number;
-  /** Classes held so far: counted rows that are present or absent. */
-  held: number;
   /** "2026-10-10" — the last class attended IN THIS MONTH, or null. */
   lastAttended: string | null;
 };
 
-const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
  * The attendance behind one month of one course, for the month-detail pop-up.
  *
- * Expected class days come from the course's ACTIVE weekly schedule plus any
- * one-off additional class that month. The timetable has no history, so a past
- * month is read against TODAY's timetable — a limit worth knowing. Days before
- * the student enrolled are not expected; a class attended on an unscheduled day
- * is still listed (as an extra) rather than hidden.
+ * ONLY classes the student actually attended — the Attendance rows themselves.
+ * Nothing is derived from today's timetable: no "expected" class days, no absences
+ * inferred from a schedule that has no history. A month with no attendance is simply
+ * an empty list. The count agrees with the calendar's "N days" for the same month,
+ * because both count the same rows.
+ *
+ * Returns null unless the student is actively enrolled in the course (the same
+ * condition under which the screen offers the course at all).
  */
 export async function buildMonthDetail(input: {
   studentId: number;
@@ -258,69 +255,44 @@ export async function buildMonthDetail(input: {
   const enrolment = await db.enrollment.findFirst({
     where: { studentId, courseId, status: "ACTIVE" },
     select: {
-      createdAt: true,
-      course: { select: { name: true, grade: { select: { label: true } }, subject: { select: { label: true } }, classType: { select: { label: true } }, teacher: { select: { name: true } } } },
+      course: {
+        select: {
+          name: true,
+          grade: { select: { label: true } },
+          subject: { select: { label: true } },
+          classType: { select: { label: true } },
+          teacher: { select: { name: true } },
+        },
+      },
     },
   });
   if (!enrolment) return null;
 
-  const first = `${year}-${String(month).padStart(2, "0")}-01`;
+  const pad = (n: number) => String(n).padStart(2, "0");
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const last = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
-  const range = { gte: new Date(`${first}T00:00:00.000Z`), lte: new Date(`${last}T00:00:00.000Z`) };
+  const range = {
+    gte: new Date(`${year}-${pad(month)}-01T00:00:00.000Z`),
+    lte: new Date(`${year}-${pad(month)}-${pad(daysInMonth)}T00:00:00.000Z`),
+  };
 
-  const [schedules, additional, attendance] = await Promise.all([
-    db.schedule.findMany({ where: { courseId, active: true }, select: { dayOfWeek: true } }),
-    db.additionalClass.findMany({ where: { courseId, date: range }, select: { date: true } }),
-    db.attendance.findMany({
-      where: { studentId, courseId, date: range },
-      select: { date: true, markedAt: true },
-      orderBy: { date: "asc" },
-    }),
-  ]);
-
-  const today = colomboNow().date;
-  const enrolledOn = colomboNow(enrolment.createdAt).date;
-  const weekdays = new Set(schedules.map((s) => s.dayOfWeek as string));
-  const oneOff = new Set(additional.map((a) => a.date.toISOString().slice(0, 10)));
-  const attendedAt = new Map(attendance.map((a) => [a.date.toISOString().slice(0, 10), a.markedAt]));
-
-  const dates = new Set<string>();
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const dow = DOW[new Date(`${date}T00:00:00.000Z`).getUTCDay()];
-    const scheduled = weekdays.has(dow) || oneOff.has(date);
-    if (scheduled && date >= enrolledOn) dates.add(date);
-  }
-  for (const date of attendedAt.keys()) dates.add(date); // never hide a class that was attended
-
-  const rows: MonthDetailRow[] = [...dates].sort().map((date) => {
-    const marked = attendedAt.get(date);
-    const scheduledDay = weekdays.has(DOW[new Date(`${date}T00:00:00.000Z`).getUTCDay()]) || oneOff.has(date);
-    return {
-      date,
-      weekday: WEEKDAY[new Date(`${date}T00:00:00.000Z`).getUTCDay()],
-      status: marked ? "present" : date > today ? "upcoming" : date === today ? "today" : "absent",
-      time: marked ? to12Hour(colomboNow(marked).time) : null,
-      extra: oneOff.has(date) || !scheduledDay,
-    };
+  const attendance = await db.attendance.findMany({
+    where: { studentId, courseId, date: range },
+    select: { date: true, markedAt: true },
+    orderBy: [{ date: "asc" }, { markedAt: "asc" }],
   });
 
-  const attended = rows.filter((r) => r.status === "present").length;
-  const held = rows.filter((r) => r.status === "present" || r.status === "absent").length;
-  const lastRow = [...rows].reverse().find((r) => r.status === "present");
+  const rows: MonthDetailRow[] = attendance.map((a) => ({
+    date: a.date.toISOString().slice(0, 10),
+    weekday: WEEKDAY[a.date.getUTCDay()],
+    time: to12Hour(colomboNow(a.markedAt).time),
+  }));
 
-  const c = enrolment.course;
   return {
-    courseId,
-    course: courseDisplayName(c),
-    teacher: c.teacher.name,
-    year,
-    month,
+    course: courseDisplayName(enrolment.course),
+    teacher: enrolment.course.teacher.name,
     label: monthLabel(year, month),
     rows,
-    attended,
-    held,
-    lastAttended: lastRow?.date ?? null,
+    attended: rows.length,
+    lastAttended: rows.length ? rows[rows.length - 1].date : null,
   };
 }
