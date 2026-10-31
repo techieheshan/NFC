@@ -101,6 +101,71 @@ describe("a payment that cannot get the student's lock in time, against a real d
     assert.equal((await rows(student.id)).length, 3); // admission + smart card + the month
   });
 
+  test("two DIFFERENT students never wait for each other: while A's real payment holds A's lock, B's finishes promptly", async () => {
+    const a = await setup();
+    const b = await setup();
+
+    // Make the FIRST transaction (student A's) slow once it is holding its own lock: its first
+    // payment insert sleeps 3 s. That is a real checkout in progress, using the real lock key —
+    // so a lock shared by every student would make B wait for it.
+    const original = db.$transaction.bind(db) as unknown as (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) => Promise<unknown>;
+    let calls = 0;
+    let slowOnce = true;
+    let aIsInside!: () => void;
+    const inside = new Promise<void>((resolve) => (aIsInside = resolve));
+    Object.defineProperty(db, "$transaction", {
+      configurable: true,
+      value: (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) =>
+        original(async (tx) => {
+          if (++calls > 1) return fn(tx);
+          const bind = (target: object) =>
+            new Proxy(target, {
+              get(t, prop) {
+                const v = Reflect.get(t, prop);
+                return typeof v === "function" ? v.bind(t) : v;
+              },
+            });
+          const payment = bind(tx.payment) as typeof tx.payment;
+          const slow = new Proxy(tx, {
+            get(t, prop) {
+              if (prop === "payment") {
+                return new Proxy(payment, {
+                  get(pt, pprop) {
+                    if (pprop !== "create") return Reflect.get(pt, pprop);
+                    return async (...args: Parameters<typeof pt.create>) => {
+                      if (slowOnce) {
+                        slowOnce = false;
+                        aIsInside(); // A holds its lock now
+                        await tx.$executeRaw`SELECT pg_sleep(3)`;
+                      }
+                      return pt.create(...args);
+                    };
+                  },
+                });
+              }
+              const v = Reflect.get(t, prop);
+              return typeof v === "function" ? v.bind(t) : v;
+            },
+          });
+          return fn(slow as PrismaClient);
+        }, opts),
+    });
+
+    try {
+      const aDone = charge(a.student.id, a.course.id);
+      await inside; // A is inside its transaction, holding its lock
+      const started = performance.now();
+      const res = await charge(b.student.id, b.course.id);
+      const took = Math.round(performance.now() - started);
+      assert.equal(res.ok, true, JSON.stringify(res));
+      assert.ok(took < 2000, `student B's payment took ${took} ms while student A's payment was holding A's lock`);
+      assert.equal((await rows(a.student.id)).length, 0, "A has not committed yet — it really was still holding its lock");
+      assert.equal((await aDone).ok, true);
+    } finally {
+      delete (db as unknown as Record<string, unknown>).$transaction;
+    }
+  });
+
   test("the transaction itself runs past its limit (P2028): the same plain answer, and nothing is written", async () => {
     const { course, student } = await setup();
 

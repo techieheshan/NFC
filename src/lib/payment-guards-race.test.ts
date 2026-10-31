@@ -84,7 +84,7 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
     assert.equal((await cards(s.id)).length, 1);
   });
 
-  test("the message names the day of the FIRST charge, in Colombo time", async () => {
+  test("the message names the day the card was charged, in Colombo time (00:30 on 1 Nov in Colombo is still 31 Oct in UTC)", async () => {
     const s = await student();
     try {
       freezeClock("2026-10-31T19:00:00Z"); // 00:30 on 1 Nov in Colombo
@@ -93,6 +93,15 @@ describe("payment guards and races against a real database", { skip: dbSkip }, (
       freezeClock(NOW);
     }
     assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("2026-11-01") });
+  });
+
+  test("with repeat charges on record for one UID (old data), the message names the LATEST one", async () => {
+    const s = await student();
+    const u = (await db.student.findUniqueOrThrow({ where: { id: s.id } })).cardUid!;
+    for (const paidAt of ["2026-08-02T06:00:00Z", "2026-09-20T06:00:00Z", "2026-07-01T06:00:00Z"]) {
+      await db.payment.create({ data: { kind: "SMART_CARD", studentId: s.id, amount: "500.00", cardUidIssued: u, takenById: w.admin.id, paidAt: new Date(paidAt) } });
+    }
+    assert.deepEqual(await charge(s.id, null, [], { smartCard: true }), { ok: false, error: CARD_MESSAGE("2026-09-20") });
   });
 
   test("a REPLACEMENT card (a new UID, changed in Registration) is chargeable again", async () => {

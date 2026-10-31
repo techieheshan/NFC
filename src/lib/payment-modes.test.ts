@@ -202,7 +202,7 @@ describe("Half month and No charge against a real database", { skip: dbSkip }, (
     assert.equal(receipt.reference, `XN-${row.id}`);
   });
 
-  test("noCharge is NOT set when anything else is taken with it: admission, a smart card, or a paying month", async () => {
+  test("noCharge is NOT set when anything else is taken with it: admission or a smart card", async () => {
     const withAdmission = await setup();
     assert.equal("noCharge" in ok(await charge(withAdmission.student.id, [{ courseId: withAdmission.course.id, ...NOV, mode: "NO_CHARGE" }], { admission: true })), false);
     const withCard = await setup();
