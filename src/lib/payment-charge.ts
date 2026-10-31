@@ -114,3 +114,11 @@ export function toggleMonth(selected: ReadonlySet<string>, key: string): Set<str
   else next.add(key);
   return next;
 }
+
+/**
+ * A price as the boards draw it on a card: "2500", not "2500.00". Only the display
+ * changes — a price with real cents ("666.66", "1250.50") keeps them, and the Total,
+ * Admission and Smart card rows keep two decimals.
+ */
+export const shortMoney = (amount: string | null) =>
+  amount === null ? "—" : amount.replace(/\.00$/, "");

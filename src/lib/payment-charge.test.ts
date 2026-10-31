@@ -6,6 +6,7 @@ import {
   chargeTotal,
   monthKey,
   selectedClassMonths,
+  shortMoney,
   toggleCard,
   toggleMonth,
   touchedComboIds,
@@ -131,4 +132,14 @@ test("calendar toggling is symmetric and does not mutate its input", () => {
   assert.equal(start.size, 1);
   assert.equal(added.size, 2);
   assert.equal(toggleMonth(added, monthKey(1, 2026, 11)).size, 1);
+});
+
+test("shortMoney drops only a whole-rupee .00 — real cents are never hidden", () => {
+  assert.equal(shortMoney("2500.00"), "2500");
+  assert.equal(shortMoney("1300.00"), "1300");
+  assert.equal(shortMoney("666.66"), "666.66");
+  assert.equal(shortMoney("1250.50"), "1250.50");
+  assert.equal(shortMoney("100.05"), "100.05");
+  assert.equal(shortMoney("0.00"), "0");
+  assert.equal(shortMoney(null), "—");
 });
