@@ -94,7 +94,7 @@ export function MonthSheet({
 }: {
   course: CourseCardData;
   today: { year: number; month: number };
-  selectedKeys: ReadonlySet<string>;
+  selectedKeys: { has: (key: string) => boolean };
   onToggle: (month: ViewMonth) => void;
   /** Open the month-detail pop-up for this month. */
   onInfo: (month: ViewMonth) => void;

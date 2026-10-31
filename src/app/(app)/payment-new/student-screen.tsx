@@ -12,6 +12,7 @@ import {
   chargeInput,
   chargeTotal,
   monthKey,
+  type Selection,
   toggleCard,
   toggleMonth,
   touchedComboIds,
@@ -70,7 +71,7 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
   const [admission, setAdmission] = useState(false);
   const [smartCard, setSmartCard] = useState(false);
   // NOTHING is pre-selected: a ticked card is a charge nobody chose.
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selected, setSelected] = useState<Selection>(new Map());
   const [pendingCombos, setPendingCombos] = useState<PaymentView["combos"]>([]);
   const [decisions, setDecisions] = useState<ComboDecision[]>([]);
   const [calendarFor, setCalendarFor] = useState<number | null>(null);
