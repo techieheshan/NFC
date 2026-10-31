@@ -44,6 +44,19 @@ describe("a payment that cannot get the student's lock in time, against a real d
 
   const rows = (studentId: number) => db.payment.findMany({ where: { studentId } });
 
+  type Tx = (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) => Promise<unknown>;
+  /**
+   * Wraps `db.$transaction` for one test and returns how to put it back. It is restored by
+   * REDEFINING the saved function: Prisma's client proxy has no delete trap, so a `delete` only
+   * happens to work for `$transaction` (it lives on the prototype) and would break a model.
+   */
+  function stubTransaction(wrap: (original: Tx) => Tx) {
+    const saved = db.$transaction;
+    const original = saved.bind(db) as unknown as Tx;
+    Object.defineProperty(db, "$transaction", { configurable: true, writable: true, value: wrap(original) });
+    return () => Object.defineProperty(db, "$transaction", { configurable: true, writable: true, value: saved });
+  }
+
   /**
    * Holds student `id`'s payment lock — a checkout open on another terminal — and lets go by
    * itself after `ms`, so a request that is wrongly left waiting fails the test instead of
@@ -108,14 +121,11 @@ describe("a payment that cannot get the student's lock in time, against a real d
     // Make the FIRST transaction (student A's) slow once it is holding its own lock: its first
     // payment insert sleeps 3 s. That is a real checkout in progress, using the real lock key —
     // so a lock shared by every student would make B wait for it.
-    const original = db.$transaction.bind(db) as unknown as (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) => Promise<unknown>;
     let calls = 0;
     let slowOnce = true;
     let aIsInside!: () => void;
     const inside = new Promise<void>((resolve) => (aIsInside = resolve));
-    Object.defineProperty(db, "$transaction", {
-      configurable: true,
-      value: (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) =>
+    const restore = stubTransaction((original) => (fn, opts) =>
         original(async (tx) => {
           if (++calls > 1) return fn(tx);
           const bind = (target: object) =>
@@ -149,7 +159,7 @@ describe("a payment that cannot get the student's lock in time, against a real d
           });
           return fn(slow as PrismaClient);
         }, opts),
-    });
+    );
 
     try {
       const aDone = charge(a.student.id, a.course.id);
@@ -162,7 +172,7 @@ describe("a payment that cannot get the student's lock in time, against a real d
       assert.equal((await rows(a.student.id)).length, 0, "A has not committed yet — it really was still holding its lock");
       assert.equal((await aDone).ok, true);
     } finally {
-      delete (db as unknown as Record<string, unknown>).$transaction;
+      restore();
     }
   });
 
@@ -171,21 +181,18 @@ describe("a payment that cannot get the student's lock in time, against a real d
 
     // Make the transaction slow for this request only: it sleeps longer than the 6 s limit before
     // doing any work, so Prisma expires it (no lock involved).
-    const original = db.$transaction.bind(db) as unknown as (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) => Promise<unknown>;
-    Object.defineProperty(db, "$transaction", {
-      configurable: true,
-      value: (fn: (tx: PrismaClient) => Promise<unknown>, opts?: unknown) =>
-        original(async (tx) => {
-          await tx.$executeRaw`SELECT pg_sleep(7)`;
-          return fn(tx);
-        }, opts),
-    });
+    const restore = stubTransaction((original) => (fn, opts) =>
+      original(async (tx) => {
+        await tx.$executeRaw`SELECT pg_sleep(7)`;
+        return fn(tx);
+      }, opts),
+    );
     let res: Awaited<ReturnType<typeof charge>>;
     const started = performance.now();
     try {
       res = await charge(student.id, course.id);
     } finally {
-      delete (db as unknown as Record<string, unknown>).$transaction;
+      restore();
     }
     assert.deepEqual(res, { ok: false, error: BUSY });
     assert.ok(performance.now() - started >= 6000, "it really did run past the 6 s limit");

@@ -102,8 +102,11 @@ describe("one clock per takePayment request, against a real database", { skip: d
     try {
       res = await charge(student.id, [ca, cb]);
     } finally {
-      delete (db as unknown as Record<string, unknown>).enrollment;
+      // Put the real delegate back by REDEFINING it: Prisma's client proxy has no delete trap,
+      // so deleting the property would leave `db.enrollment` undefined for the rest of the file.
+      Object.defineProperty(db, "enrollment", { configurable: true, value: delegate });
     }
+    assert.equal(typeof (await db.enrollment.count()), "number", "the real enrollment delegate is back");
     assert.equal(ticked, true, "the clock really did cross midnight during the request");
     assert.equal(res.ok, true, JSON.stringify(res));
 
