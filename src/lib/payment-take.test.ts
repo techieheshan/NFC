@@ -390,6 +390,25 @@ describe("takePayment / loadPanel against a real database", { skip: dbSkip }, ()
     await refused(charge(student.id, [{ courseId: course.id, ...OCT }, { courseId: course.id, year: 2027, month: 6 }]), student.id, "Cannot charge more than 3 months ahead.");
   });
 
+  // ---- atomicity ------------------------------------------------------------------------
+
+  test("a failure part-way through a checkout rolls back EVERYTHING it had already written", async () => {
+    // A 2.0x tier on a huge fee overflows Decimal(10,2) on the LAST line, after the
+    // admission row, the smart-card row and a good class row have all been written.
+    const double = await db.feeTier.create({ data: { code: "DOUBLE", label: "Double", multiplier: "2.000" } });
+    const t = await makeTeacher(db);
+    const good = await makeCourse(db, w, { teacherId: t.id, fee: "2500" });
+    const huge = await makeCourse(db, w, { teacherId: t.id, fee: "99999999.00" });
+    const student = await makeStudent(db);
+    await enrol(db, { studentId: student.id, courseId: good.id, tierId: w.tiers.FULL.id, since: SINCE });
+    await enrol(db, { studentId: student.id, courseId: huge.id, tierId: double.id, since: SINCE });
+
+    await assert.rejects(() => charge(student.id, [{ courseId: good.id, ...OCT }, { courseId: huge.id, ...OCT }], { admission: true, smartCard: true }));
+
+    assert.equal((await rows(student.id)).length, 0, "no payment row may survive");
+    assert.equal((await db.student.findUniqueOrThrow({ where: { id: student.id } })).admissionPaid, false, "the admission flag must roll back too");
+  });
+
   // ---- paying the same month twice -----------------------------------------------------
 
   test("paying a settled month again is refused, naming the course and month", async () => {
