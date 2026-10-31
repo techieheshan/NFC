@@ -14,10 +14,16 @@ import type { UserRole } from "@prisma/client";
  */
 
 let currentRole: UserRole | null = null;
+let currentUserId = "test-user";
 
-/** Who the stubbed `auth()` reports: a role, or `null` for "not signed in". */
-export function setSession(role: UserRole | null) {
+/**
+ * Who the stubbed `auth()` reports: a role, or `null` for "not signed in".
+ * Database tests pass the id of a real User row — payments are written with it
+ * as a foreign key.
+ */
+export function setSession(role: UserRole | null, userId = "test-user") {
   currentRole = role;
+  currentUserId = userId;
 }
 
 type Loader = (request: string, ...rest: unknown[]) => unknown;
@@ -31,7 +37,7 @@ internals._load = function (this: unknown, request: string, ...rest: unknown[]) 
     case "@/auth":
       return {
         auth: async () =>
-          currentRole ? { user: { id: "test-user", username: "test", role: currentRole } } : null,
+          currentRole ? { user: { id: currentUserId, username: "test", role: currentRole } } : null,
       };
     case "next/cache":
       return { revalidatePath() {}, revalidateTag() {}, unstable_cache: (fn: unknown) => fn };
