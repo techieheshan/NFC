@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { requireOperationalAccess } from "@/lib/authz";
@@ -30,6 +31,34 @@ export type { StudentBrief };
  * only keeps this lock from ever colliding with another feature's.
  */
 const PAYMENT_LOCK_NAMESPACE = 7301;
+
+/**
+ * Limits for the charge transaction. No `maxDuration` is set anywhere in this repo, so the
+ * platform's own function limit applies (10 s on a plan without Fluid compute, 300 s with it);
+ * every number here keeps the whole request well inside the smaller of those.
+ *   - maxWait   how long to wait for a pooled connection to start the transaction
+ *   - timeout   how long the transaction may run once started
+ *   - lock wait how long to wait for ANOTHER checkout of the same student to finish. It is
+ *               shorter than `timeout` on purpose: Prisma cannot roll a transaction back while
+ *               its connection is still blocked inside the lock statement, so without this the
+ *               waiter would only be answered when the other checkout finally ended.
+ */
+const TX_MAX_WAIT_MS = 2000;
+const TX_TIMEOUT_MS = 6000;
+const LOCK_WAIT_MS = 4000;
+
+const BUSY_MESSAGE = "Another payment for this student is in progress — check Receipts, then try again.";
+
+/**
+ * True when the charge transaction could not run in time: it expired or could not start
+ * (P2028), or the per-student lock was not free within LOCK_WAIT_MS (Postgres lock_not_available,
+ * SQLSTATE 55P03). Nothing was written either way — the transaction rolled back.
+ */
+function isBusyError(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (e.code === "P2028") return true;
+  return /55P03|lock timeout/i.test(`${e.message} ${JSON.stringify(e.meta ?? {})}`);
+}
 
 /** How many months back the catch-up selector will ever offer. */
 const MONTH_WINDOW = 6;
@@ -532,6 +561,7 @@ export async function takePayment(input: {
      * COMMIT or ROLLBACK, so it is safe through a transaction-pooling endpoint; different
      * students never wait for each other.
      */
+    await tx.$executeRaw`SELECT set_config('lock_timeout', ${`${LOCK_WAIT_MS}ms`}, true)`; // this transaction only
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PAYMENT_LOCK_NAMESPACE}::int, ${studentId}::int)`;
 
     // Authoritative state, read under the lock. (The earlier admission check only keeps the
@@ -681,7 +711,13 @@ export async function takePayment(input: {
     }
 
     return { ids };
+  }, { maxWait: TX_MAX_WAIT_MS, timeout: TX_TIMEOUT_MS }).catch((e: unknown) => {
+    // Waiting on another checkout of this student for too long: a plain answer, never a throw
+    // (the old screen has no catch, and the cashier would see the browser's crash page).
+    if (isBusyError(e)) return { busy: true as const };
+    throw e;
   });
+  if ("busy" in result) return { ok: false, error: BUSY_MESSAGE };
   if ("refused" in result) return { ok: false, error: result.refused };
   const created = result.ids;
 
