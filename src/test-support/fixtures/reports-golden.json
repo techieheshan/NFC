@@ -1,0 +1,4696 @@
+{
+  "Daily Summary: one day (a busy one)": {
+    "from": "2026-10-10",
+    "to": "2026-10-10",
+    "courses": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 5,
+        "paidFull": 1,
+        "paidHalf": 1,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 1,
+        "amount": "3250.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "2600.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "1500.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "2200.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 5,
+        "course": "English",
+        "teacher": "Mr. S. Rathnayake",
+        "registered": 1,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 1,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      }
+    ],
+    "admission": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "smartCard": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "classTotal": "9550.00",
+    "totalCollected": "9550.00",
+    "deductionLines": [],
+    "deductions": {
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "total": "0.00"
+    },
+    "net": "9550.00"
+  },
+  "Daily Summary: a week": {
+    "from": "2026-11-01",
+    "to": "2026-11-07",
+    "courses": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 5,
+        "paidFull": 2,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 1,
+        "amount": "9500.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "2600.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "1500.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 0,
+        "paidHalf": 1,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "1100.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 5,
+        "course": "English",
+        "teacher": "Mr. S. Rathnayake",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "2100.00",
+        "reconciles": true
+      }
+    ],
+    "admission": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "smartCard": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "classTotal": "16800.00",
+    "totalCollected": "16800.00",
+    "deductionLines": [
+      {
+        "date": "2026-11-05",
+        "kind": "XENON",
+        "person": null,
+        "reason": "electricity",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "200.00"
+      }
+    ],
+    "deductions": {
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "200.00",
+      "total": "200.00"
+    },
+    "net": "16600.00"
+  },
+  "Daily Summary: the Colombo midnight day": {
+    "from": "2026-11-01",
+    "to": "2026-11-01",
+    "courses": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 5,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 4,
+        "free": 1,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 1,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 1,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 3,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 0,
+        "paidHalf": 1,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "1100.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 5,
+        "course": "English",
+        "teacher": "Mr. S. Rathnayake",
+        "registered": 1,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 1,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      }
+    ],
+    "admission": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "smartCard": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "classTotal": "1100.00",
+    "totalCollected": "1100.00",
+    "deductionLines": [],
+    "deductions": {
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "total": "0.00"
+    },
+    "net": "1100.00"
+  },
+  "Daily Summary: October": {
+    "from": "2026-10-01",
+    "to": "2026-10-31",
+    "courses": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 5,
+        "paidFull": 1,
+        "paidHalf": 1,
+        "paidQuarter": 1,
+        "notPaid": 1,
+        "free": 1,
+        "amount": "3875.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "2600.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "1500.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "2200.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 5,
+        "course": "English",
+        "teacher": "Mr. S. Rathnayake",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "2100.00",
+        "reconciles": true
+      }
+    ],
+    "admission": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "smartCard": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "classTotal": "12275.00",
+    "totalCollected": "12275.00",
+    "deductionLines": [
+      {
+        "date": "2026-10-12",
+        "kind": "TEACHER_ADVANCE",
+        "person": "Mr. A. Gunawardena",
+        "reason": "advance",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "1000.00"
+      },
+      {
+        "date": "2026-10-13",
+        "kind": "XENON",
+        "person": null,
+        "reason": "printer paper",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "300.00"
+      },
+      {
+        "date": "2026-10-20",
+        "kind": "TEACHER_ADVANCE",
+        "person": "Ms. R. Wickramasinghe",
+        "reason": "advance",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "500.00"
+      }
+    ],
+    "deductions": {
+      "teacherAdvances": "1500.00",
+      "xenonExpenses": "300.00",
+      "total": "1800.00"
+    },
+    "net": "10475.00"
+  },
+  "Daily Summary: September to November": {
+    "from": "2026-09-01",
+    "to": "2026-11-30",
+    "courses": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 5,
+        "paidFull": 2,
+        "paidHalf": 1,
+        "paidQuarter": 1,
+        "notPaid": 0,
+        "free": 1,
+        "amount": "16625.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "7800.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 2,
+        "free": 0,
+        "amount": "4500.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 2,
+        "paidHalf": 1,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "8800.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 5,
+        "course": "English",
+        "teacher": "Mr. S. Rathnayake",
+        "registered": 1,
+        "paidFull": 1,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 0,
+        "free": 0,
+        "amount": "4200.00",
+        "reconciles": true
+      }
+    ],
+    "admission": {
+      "count": 2,
+      "total": "2600.00"
+    },
+    "smartCard": {
+      "count": 1,
+      "total": "500.00"
+    },
+    "classTotal": "41925.00",
+    "totalCollected": "45025.00",
+    "deductionLines": [
+      {
+        "date": "2026-09-14",
+        "kind": "XENON",
+        "person": "Sadun Staff",
+        "reason": "salary advance",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": true,
+        "amount": "800.00"
+      },
+      {
+        "date": "2026-10-12",
+        "kind": "TEACHER_ADVANCE",
+        "person": "Mr. A. Gunawardena",
+        "reason": "advance",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "1000.00"
+      },
+      {
+        "date": "2026-10-13",
+        "kind": "XENON",
+        "person": null,
+        "reason": "printer paper",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "300.00"
+      },
+      {
+        "date": "2026-10-20",
+        "kind": "TEACHER_ADVANCE",
+        "person": "Ms. R. Wickramasinghe",
+        "reason": "advance",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "500.00"
+      },
+      {
+        "date": "2026-11-05",
+        "kind": "XENON",
+        "person": null,
+        "reason": "electricity",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "amount": "200.00"
+      }
+    ],
+    "deductions": {
+      "teacherAdvances": "1500.00",
+      "xenonExpenses": "1300.00",
+      "total": "2800.00"
+    },
+    "net": "42225.00"
+  },
+  "Daily Summary: a day with nothing": {
+    "from": "2026-12-24",
+    "to": "2026-12-24",
+    "courses": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 5,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 4,
+        "free": 1,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "registered": 1,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 1,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 3,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "registered": 3,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 3,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      },
+      {
+        "courseId": 5,
+        "course": "English",
+        "teacher": "Mr. S. Rathnayake",
+        "registered": 1,
+        "paidFull": 0,
+        "paidHalf": 0,
+        "paidQuarter": 0,
+        "notPaid": 1,
+        "free": 0,
+        "amount": "0.00",
+        "reconciles": true
+      }
+    ],
+    "admission": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "smartCard": {
+      "count": 0,
+      "total": "0.00"
+    },
+    "classTotal": "0.00",
+    "totalCollected": "0.00",
+    "deductionLines": [],
+    "deductions": {
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "total": "0.00"
+    },
+    "net": "0.00"
+  },
+  "payslips 2026-8: every teacher, with the institute roll-up": {
+    "year": 2026,
+    "month": 8,
+    "label": "Aug 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Aug 2026",
+            "billingOrder": 24320,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          }
+        ],
+        "lineCards": 1,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "1500.00",
+        "totalInstituteShare": "450.00",
+        "totalTeacherShare": "1050.00",
+        "advances": "0.00",
+        "finalSalary": "1050.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "1500.00",
+      "totalInstituteShare": "450.00",
+      "totalTeacherShare": "1050.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "instituteProfit": "450.00"
+    }
+  },
+  "payslips 2026-8: first teacher only, no institute block": {
+    "year": 2026,
+    "month": 8,
+    "label": "Aug 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ]
+  },
+  "payslips 2026-8: second teacher only, no institute block": {
+    "year": 2026,
+    "month": 8,
+    "label": "Aug 2026",
+    "slips": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Aug 2026",
+            "billingOrder": 24320,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          }
+        ],
+        "lineCards": 1,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "1500.00",
+        "totalInstituteShare": "450.00",
+        "totalTeacherShare": "1050.00",
+        "advances": "0.00",
+        "finalSalary": "1050.00"
+      }
+    ]
+  },
+  "payslips 2026-8: third teacher only, no institute block": {
+    "year": 2026,
+    "month": 8,
+    "label": "Aug 2026",
+    "slips": [
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ]
+  },
+  "month-end roll-up 2026-8": {
+    "year": 2026,
+    "month": 8,
+    "label": "Aug 2026",
+    "byTeacher": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "students": 1,
+        "collected": "1500.00",
+        "instituteShare": "450.00",
+        "teacherShare": "1050.00",
+        "advances": "0.00",
+        "finalSalary": "1050.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "1500.00",
+      "totalInstituteShare": "450.00",
+      "totalTeacherShare": "1050.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "instituteProfit": "450.00"
+    },
+    "advances": [],
+    "advancesTotal": "0.00",
+    "expenses": [],
+    "expensesTotal": "0.00",
+    "reconciles": {
+      "shares": true,
+      "profit": true
+    },
+    "roundingDelta": "0.00"
+  },
+  "payslips 2026-9: every teacher, with the institute roll-up": {
+    "year": 2026,
+    "month": 9,
+    "label": "Sep 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "sharePercent": "20.00",
+            "payingStudents": 2,
+            "collected": "3250.00",
+            "instituteShare": "650.00",
+            "teacherShare": "2600.00"
+          },
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "sharePercent": "25.00",
+            "payingStudents": 1,
+            "collected": "2600.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          }
+        ],
+        "payingStudents": 2,
+        "lines": [
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "2600.00",
+            "gross": "2600.00",
+            "sharePercent": "25.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "2000.00",
+            "gross": "2000.00",
+            "sharePercent": "20.00",
+            "instituteShare": "400.00",
+            "teacherShare": "1600.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "1250.00",
+            "gross": "1250.00",
+            "sharePercent": "20.00",
+            "instituteShare": "250.00",
+            "teacherShare": "1000.00"
+          }
+        ],
+        "lineCards": 3,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "5850.00",
+        "totalInstituteShare": "1300.00",
+        "totalTeacherShare": "4550.00",
+        "advances": "0.00",
+        "finalSalary": "4550.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "sharePercent": "20.00",
+            "payingStudents": 3,
+            "collected": "5500.00",
+            "instituteShare": "1100.00",
+            "teacherShare": "4400.00"
+          }
+        ],
+        "payingStudents": 3,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 2,
+            "rate": "2200.00",
+            "gross": "4400.00",
+            "sharePercent": "20.00",
+            "instituteShare": "880.00",
+            "teacherShare": "3520.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "1100.00",
+            "gross": "1100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "220.00",
+            "teacherShare": "880.00"
+          }
+        ],
+        "lineCards": 4,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 2
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "7000.00",
+        "totalInstituteShare": "1550.00",
+        "totalTeacherShare": "5450.00",
+        "advances": "0.00",
+        "finalSalary": "5450.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "12850.00",
+      "totalInstituteShare": "2850.00",
+      "totalTeacherShare": "10000.00",
+      "admissionIncome": "2600.00",
+      "smartCardIncome": "500.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "800.00",
+      "instituteProfit": "5150.00"
+    }
+  },
+  "payslips 2026-9: first teacher only, no institute block": {
+    "year": 2026,
+    "month": 9,
+    "label": "Sep 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "sharePercent": "20.00",
+            "payingStudents": 2,
+            "collected": "3250.00",
+            "instituteShare": "650.00",
+            "teacherShare": "2600.00"
+          },
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "sharePercent": "25.00",
+            "payingStudents": 1,
+            "collected": "2600.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          }
+        ],
+        "payingStudents": 2,
+        "lines": [
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "2600.00",
+            "gross": "2600.00",
+            "sharePercent": "25.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "2000.00",
+            "gross": "2000.00",
+            "sharePercent": "20.00",
+            "instituteShare": "400.00",
+            "teacherShare": "1600.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "1250.00",
+            "gross": "1250.00",
+            "sharePercent": "20.00",
+            "instituteShare": "250.00",
+            "teacherShare": "1000.00"
+          }
+        ],
+        "lineCards": 3,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "5850.00",
+        "totalInstituteShare": "1300.00",
+        "totalTeacherShare": "4550.00",
+        "advances": "0.00",
+        "finalSalary": "4550.00"
+      }
+    ]
+  },
+  "payslips 2026-9: second teacher only, no institute block": {
+    "year": 2026,
+    "month": 9,
+    "label": "Sep 2026",
+    "slips": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "sharePercent": "20.00",
+            "payingStudents": 3,
+            "collected": "5500.00",
+            "instituteShare": "1100.00",
+            "teacherShare": "4400.00"
+          }
+        ],
+        "payingStudents": 3,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 2,
+            "rate": "2200.00",
+            "gross": "4400.00",
+            "sharePercent": "20.00",
+            "instituteShare": "880.00",
+            "teacherShare": "3520.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "1100.00",
+            "gross": "1100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "220.00",
+            "teacherShare": "880.00"
+          }
+        ],
+        "lineCards": 4,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 2
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "7000.00",
+        "totalInstituteShare": "1550.00",
+        "totalTeacherShare": "5450.00",
+        "advances": "0.00",
+        "finalSalary": "5450.00"
+      }
+    ]
+  },
+  "payslips 2026-9: third teacher only, no institute block": {
+    "year": 2026,
+    "month": 9,
+    "label": "Sep 2026",
+    "slips": [
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ]
+  },
+  "month-end roll-up 2026-9": {
+    "year": 2026,
+    "month": 9,
+    "label": "Sep 2026",
+    "byTeacher": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "students": 3,
+        "collected": "7000.00",
+        "instituteShare": "1550.00",
+        "teacherShare": "5450.00",
+        "advances": "0.00",
+        "finalSalary": "5450.00"
+      },
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "students": 2,
+        "collected": "5850.00",
+        "instituteShare": "1300.00",
+        "teacherShare": "4550.00",
+        "advances": "0.00",
+        "finalSalary": "4550.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "12850.00",
+      "totalInstituteShare": "2850.00",
+      "totalTeacherShare": "10000.00",
+      "admissionIncome": "2600.00",
+      "smartCardIncome": "500.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "800.00",
+      "instituteProfit": "5150.00"
+    },
+    "advances": [],
+    "advancesTotal": "0.00",
+    "expenses": [
+      {
+        "date": "2026-09-14",
+        "reason": "salary advance",
+        "amount": "800.00",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": true,
+        "staff": "Sadun Staff"
+      }
+    ],
+    "expensesTotal": "800.00",
+    "reconciles": {
+      "shares": true,
+      "profit": true
+    },
+    "roundingDelta": "0.00"
+  },
+  "payslips 2026-10: every teacher, with the institute roll-up": {
+    "year": 2026,
+    "month": 10,
+    "label": "Oct 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "sharePercent": "20.00",
+            "payingStudents": 3,
+            "collected": "3875.00",
+            "instituteShare": "775.00",
+            "teacherShare": "3100.00"
+          },
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "sharePercent": "25.00",
+            "payingStudents": 1,
+            "collected": "2600.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          }
+        ],
+        "payingStudents": 3,
+        "lines": [
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2600.00",
+            "gross": "2600.00",
+            "sharePercent": "25.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2000.00",
+            "gross": "2000.00",
+            "sharePercent": "20.00",
+            "instituteShare": "400.00",
+            "teacherShare": "1600.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "1250.00",
+            "gross": "1250.00",
+            "sharePercent": "20.00",
+            "instituteShare": "250.00",
+            "teacherShare": "1000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "625.00",
+            "gross": "625.00",
+            "sharePercent": "20.00",
+            "instituteShare": "125.00",
+            "teacherShare": "500.00"
+          }
+        ],
+        "lineCards": 4,
+        "advanceLines": [
+          {
+            "date": "2026-10-12",
+            "reason": "advance",
+            "amount": "1000.00",
+            "authorizedBy": "admin-1"
+          }
+        ],
+        "tierCounts": [
+          {
+            "code": "QUARTER",
+            "label": "25%",
+            "students": 1
+          },
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "6475.00",
+        "totalInstituteShare": "1425.00",
+        "totalTeacherShare": "5050.00",
+        "advances": "1000.00",
+        "finalSalary": "4050.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "2100.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2100.00",
+            "gross": "2100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "lineCards": 1,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "2100.00",
+        "totalInstituteShare": "420.00",
+        "totalTeacherShare": "1680.00",
+        "advances": "0.00",
+        "finalSalary": "1680.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "2200.00",
+            "instituteShare": "440.00",
+            "teacherShare": "1760.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2200.00",
+            "gross": "2200.00",
+            "sharePercent": "20.00",
+            "instituteShare": "440.00",
+            "teacherShare": "1760.00"
+          }
+        ],
+        "lineCards": 2,
+        "advanceLines": [
+          {
+            "date": "2026-10-20",
+            "reason": "advance",
+            "amount": "500.00",
+            "authorizedBy": "admin-1"
+          }
+        ],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "3700.00",
+        "totalInstituteShare": "890.00",
+        "totalTeacherShare": "2810.00",
+        "advances": "500.00",
+        "finalSalary": "2310.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "12275.00",
+      "totalInstituteShare": "2735.00",
+      "totalTeacherShare": "9540.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "1500.00",
+      "xenonExpenses": "300.00",
+      "instituteProfit": "2435.00"
+    }
+  },
+  "payslips 2026-10: first teacher only, no institute block": {
+    "year": 2026,
+    "month": 10,
+    "label": "Oct 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "sharePercent": "20.00",
+            "payingStudents": 3,
+            "collected": "3875.00",
+            "instituteShare": "775.00",
+            "teacherShare": "3100.00"
+          },
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "sharePercent": "25.00",
+            "payingStudents": 1,
+            "collected": "2600.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          }
+        ],
+        "payingStudents": 3,
+        "lines": [
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2600.00",
+            "gross": "2600.00",
+            "sharePercent": "25.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2000.00",
+            "gross": "2000.00",
+            "sharePercent": "20.00",
+            "instituteShare": "400.00",
+            "teacherShare": "1600.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "1250.00",
+            "gross": "1250.00",
+            "sharePercent": "20.00",
+            "instituteShare": "250.00",
+            "teacherShare": "1000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "625.00",
+            "gross": "625.00",
+            "sharePercent": "20.00",
+            "instituteShare": "125.00",
+            "teacherShare": "500.00"
+          }
+        ],
+        "lineCards": 4,
+        "advanceLines": [
+          {
+            "date": "2026-10-12",
+            "reason": "advance",
+            "amount": "1000.00",
+            "authorizedBy": "admin-1"
+          }
+        ],
+        "tierCounts": [
+          {
+            "code": "QUARTER",
+            "label": "25%",
+            "students": 1
+          },
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "6475.00",
+        "totalInstituteShare": "1425.00",
+        "totalTeacherShare": "5050.00",
+        "advances": "1000.00",
+        "finalSalary": "4050.00"
+      }
+    ]
+  },
+  "payslips 2026-10: second teacher only, no institute block": {
+    "year": 2026,
+    "month": 10,
+    "label": "Oct 2026",
+    "slips": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "2200.00",
+            "instituteShare": "440.00",
+            "teacherShare": "1760.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2200.00",
+            "gross": "2200.00",
+            "sharePercent": "20.00",
+            "instituteShare": "440.00",
+            "teacherShare": "1760.00"
+          }
+        ],
+        "lineCards": 2,
+        "advanceLines": [
+          {
+            "date": "2026-10-20",
+            "reason": "advance",
+            "amount": "500.00",
+            "authorizedBy": "admin-1"
+          }
+        ],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "3700.00",
+        "totalInstituteShare": "890.00",
+        "totalTeacherShare": "2810.00",
+        "advances": "500.00",
+        "finalSalary": "2310.00"
+      }
+    ]
+  },
+  "payslips 2026-10: third teacher only, no institute block": {
+    "year": 2026,
+    "month": 10,
+    "label": "Oct 2026",
+    "slips": [
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "2100.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2100.00",
+            "gross": "2100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "lineCards": 1,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "2100.00",
+        "totalInstituteShare": "420.00",
+        "totalTeacherShare": "1680.00",
+        "advances": "0.00",
+        "finalSalary": "1680.00"
+      }
+    ]
+  },
+  "month-end roll-up 2026-10": {
+    "year": 2026,
+    "month": 10,
+    "label": "Oct 2026",
+    "byTeacher": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "students": 3,
+        "collected": "6475.00",
+        "instituteShare": "1425.00",
+        "teacherShare": "5050.00",
+        "advances": "1000.00",
+        "finalSalary": "4050.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "students": 1,
+        "collected": "3700.00",
+        "instituteShare": "890.00",
+        "teacherShare": "2810.00",
+        "advances": "500.00",
+        "finalSalary": "2310.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "students": 1,
+        "collected": "2100.00",
+        "instituteShare": "420.00",
+        "teacherShare": "1680.00",
+        "advances": "0.00",
+        "finalSalary": "1680.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "12275.00",
+      "totalInstituteShare": "2735.00",
+      "totalTeacherShare": "9540.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "1500.00",
+      "xenonExpenses": "300.00",
+      "instituteProfit": "2435.00"
+    },
+    "advances": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "date": "2026-10-12",
+        "reason": "advance",
+        "amount": "1000.00",
+        "authorizedBy": "admin-1"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "date": "2026-10-20",
+        "reason": "advance",
+        "amount": "500.00",
+        "authorizedBy": "admin-1"
+      }
+    ],
+    "advancesTotal": "1500.00",
+    "expenses": [
+      {
+        "date": "2026-10-13",
+        "reason": "printer paper",
+        "amount": "300.00",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "staff": null
+      }
+    ],
+    "expensesTotal": "300.00",
+    "reconciles": {
+      "shares": true,
+      "profit": true
+    },
+    "roundingDelta": "0.00"
+  },
+  "payslips 2026-11: every teacher, with the institute roll-up": {
+    "year": 2026,
+    "month": 11,
+    "label": "Nov 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "sharePercent": "20.00",
+            "payingStudents": 2,
+            "collected": "9500.00",
+            "instituteShare": "1900.00",
+            "teacherShare": "7600.00"
+          },
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "sharePercent": "25.00",
+            "payingStudents": 1,
+            "collected": "2600.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          }
+        ],
+        "payingStudents": 2,
+        "lines": [
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2600.00",
+            "gross": "2600.00",
+            "sharePercent": "25.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "2500.00",
+            "gross": "2500.00",
+            "sharePercent": "20.00",
+            "instituteShare": "500.00",
+            "teacherShare": "2000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2500.00",
+            "gross": "2500.00",
+            "sharePercent": "20.00",
+            "instituteShare": "500.00",
+            "teacherShare": "2000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2500.00",
+            "gross": "2500.00",
+            "sharePercent": "20.00",
+            "instituteShare": "500.00",
+            "teacherShare": "2000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2000.00",
+            "gross": "2000.00",
+            "sharePercent": "20.00",
+            "instituteShare": "400.00",
+            "teacherShare": "1600.00"
+          }
+        ],
+        "lineCards": 5,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 2
+          }
+        ],
+        "totalCollected": "12100.00",
+        "totalInstituteShare": "2550.00",
+        "totalTeacherShare": "9550.00",
+        "advances": "0.00",
+        "finalSalary": "9550.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "2100.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2100.00",
+            "gross": "2100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "lineCards": 1,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "2100.00",
+        "totalInstituteShare": "420.00",
+        "totalTeacherShare": "1680.00",
+        "advances": "0.00",
+        "finalSalary": "1680.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "1100.00",
+            "instituteShare": "220.00",
+            "teacherShare": "880.00"
+          }
+        ],
+        "payingStudents": 2,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "1100.00",
+            "gross": "1100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "220.00",
+            "teacherShare": "880.00"
+          }
+        ],
+        "lineCards": 2,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "2600.00",
+        "totalInstituteShare": "670.00",
+        "totalTeacherShare": "1930.00",
+        "advances": "0.00",
+        "finalSalary": "1930.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "16800.00",
+      "totalInstituteShare": "3640.00",
+      "totalTeacherShare": "13160.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "200.00",
+      "instituteProfit": "3440.00"
+    }
+  },
+  "payslips 2026-11: first teacher only, no institute block": {
+    "year": 2026,
+    "month": 11,
+    "label": "Nov 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "sharePercent": "20.00",
+            "payingStudents": 2,
+            "collected": "9500.00",
+            "instituteShare": "1900.00",
+            "teacherShare": "7600.00"
+          },
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "sharePercent": "25.00",
+            "payingStudents": 1,
+            "collected": "2600.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          }
+        ],
+        "payingStudents": 2,
+        "lines": [
+          {
+            "courseId": 2,
+            "course": "Chemistry",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2600.00",
+            "gross": "2600.00",
+            "sharePercent": "25.00",
+            "instituteShare": "650.00",
+            "teacherShare": "1950.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Sep 2026",
+            "billingOrder": 24321,
+            "cards": 1,
+            "rate": "2500.00",
+            "gross": "2500.00",
+            "sharePercent": "20.00",
+            "instituteShare": "500.00",
+            "teacherShare": "2000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "2500.00",
+            "gross": "2500.00",
+            "sharePercent": "20.00",
+            "instituteShare": "500.00",
+            "teacherShare": "2000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2500.00",
+            "gross": "2500.00",
+            "sharePercent": "20.00",
+            "instituteShare": "500.00",
+            "teacherShare": "2000.00"
+          },
+          {
+            "courseId": 1,
+            "course": "ICT",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2000.00",
+            "gross": "2000.00",
+            "sharePercent": "20.00",
+            "instituteShare": "400.00",
+            "teacherShare": "1600.00"
+          }
+        ],
+        "lineCards": 5,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 2
+          }
+        ],
+        "totalCollected": "12100.00",
+        "totalInstituteShare": "2550.00",
+        "totalTeacherShare": "9550.00",
+        "advances": "0.00",
+        "finalSalary": "9550.00"
+      }
+    ]
+  },
+  "payslips 2026-11: second teacher only, no institute block": {
+    "year": 2026,
+    "month": 11,
+    "label": "Nov 2026",
+    "slips": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "sharePercent": "30.00",
+            "payingStudents": 1,
+            "collected": "1500.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "1100.00",
+            "instituteShare": "220.00",
+            "teacherShare": "880.00"
+          }
+        ],
+        "payingStudents": 2,
+        "lines": [
+          {
+            "courseId": 3,
+            "course": "Maths",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "1500.00",
+            "gross": "1500.00",
+            "sharePercent": "30.00",
+            "instituteShare": "450.00",
+            "teacherShare": "1050.00"
+          },
+          {
+            "courseId": 4,
+            "course": "Physics",
+            "billingLabel": "Oct 2026",
+            "billingOrder": 24322,
+            "cards": 1,
+            "rate": "1100.00",
+            "gross": "1100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "220.00",
+            "teacherShare": "880.00"
+          }
+        ],
+        "lineCards": 2,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          },
+          {
+            "code": "HALF",
+            "label": "Half",
+            "students": 1
+          }
+        ],
+        "totalCollected": "2600.00",
+        "totalInstituteShare": "670.00",
+        "totalTeacherShare": "1930.00",
+        "advances": "0.00",
+        "finalSalary": "1930.00"
+      }
+    ]
+  },
+  "payslips 2026-11: third teacher only, no institute block": {
+    "year": 2026,
+    "month": 11,
+    "label": "Nov 2026",
+    "slips": [
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "sharePercent": "20.00",
+            "payingStudents": 1,
+            "collected": "2100.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "payingStudents": 1,
+        "lines": [
+          {
+            "courseId": 5,
+            "course": "English",
+            "billingLabel": "Nov 2026",
+            "billingOrder": 24323,
+            "cards": 1,
+            "rate": "2100.00",
+            "gross": "2100.00",
+            "sharePercent": "20.00",
+            "instituteShare": "420.00",
+            "teacherShare": "1680.00"
+          }
+        ],
+        "lineCards": 1,
+        "advanceLines": [],
+        "tierCounts": [
+          {
+            "code": "FULL",
+            "label": "Full",
+            "students": 1
+          }
+        ],
+        "totalCollected": "2100.00",
+        "totalInstituteShare": "420.00",
+        "totalTeacherShare": "1680.00",
+        "advances": "0.00",
+        "finalSalary": "1680.00"
+      }
+    ]
+  },
+  "month-end roll-up 2026-11": {
+    "year": 2026,
+    "month": 11,
+    "label": "Nov 2026",
+    "byTeacher": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "students": 2,
+        "collected": "12100.00",
+        "instituteShare": "2550.00",
+        "teacherShare": "9550.00",
+        "advances": "0.00",
+        "finalSalary": "9550.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "students": 2,
+        "collected": "2600.00",
+        "instituteShare": "670.00",
+        "teacherShare": "1930.00",
+        "advances": "0.00",
+        "finalSalary": "1930.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "students": 1,
+        "collected": "2100.00",
+        "instituteShare": "420.00",
+        "teacherShare": "1680.00",
+        "advances": "0.00",
+        "finalSalary": "1680.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "16800.00",
+      "totalInstituteShare": "3640.00",
+      "totalTeacherShare": "13160.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "200.00",
+      "instituteProfit": "3440.00"
+    },
+    "advances": [],
+    "advancesTotal": "0.00",
+    "expenses": [
+      {
+        "date": "2026-11-05",
+        "reason": "electricity",
+        "amount": "200.00",
+        "authorizedBy": "admin-1",
+        "isStaffAdvance": false,
+        "staff": null
+      }
+    ],
+    "expensesTotal": "200.00",
+    "reconciles": {
+      "shares": true,
+      "profit": true
+    },
+    "roundingDelta": "0.00"
+  },
+  "payslips 2026-12: every teacher, with the institute roll-up": {
+    "year": 2026,
+    "month": 12,
+    "label": "Dec 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      },
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      },
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ],
+    "institute": {
+      "totalCollected": "0.00",
+      "totalInstituteShare": "0.00",
+      "totalTeacherShare": "0.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "instituteProfit": "0.00"
+    }
+  },
+  "payslips 2026-12: first teacher only, no institute block": {
+    "year": 2026,
+    "month": 12,
+    "label": "Dec 2026",
+    "slips": [
+      {
+        "teacherId": 1,
+        "teacher": "Mr. A. Gunawardena",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ]
+  },
+  "payslips 2026-12: second teacher only, no institute block": {
+    "year": 2026,
+    "month": 12,
+    "label": "Dec 2026",
+    "slips": [
+      {
+        "teacherId": 2,
+        "teacher": "Ms. R. Wickramasinghe",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ]
+  },
+  "payslips 2026-12: third teacher only, no institute block": {
+    "year": 2026,
+    "month": 12,
+    "label": "Dec 2026",
+    "slips": [
+      {
+        "teacherId": 3,
+        "teacher": "Mr. S. Rathnayake",
+        "courses": [],
+        "payingStudents": 0,
+        "lines": [],
+        "lineCards": 0,
+        "advanceLines": [],
+        "tierCounts": [],
+        "totalCollected": "0.00",
+        "totalInstituteShare": "0.00",
+        "totalTeacherShare": "0.00",
+        "advances": "0.00",
+        "finalSalary": "0.00"
+      }
+    ]
+  },
+  "month-end roll-up 2026-12": {
+    "year": 2026,
+    "month": 12,
+    "label": "Dec 2026",
+    "byTeacher": [],
+    "institute": {
+      "totalCollected": "0.00",
+      "totalInstituteShare": "0.00",
+      "totalTeacherShare": "0.00",
+      "admissionIncome": "0.00",
+      "smartCardIncome": "0.00",
+      "teacherAdvances": "0.00",
+      "xenonExpenses": "0.00",
+      "instituteProfit": "0.00"
+    },
+    "advances": [],
+    "advancesTotal": "0.00",
+    "expenses": [],
+    "expensesTotal": "0.00",
+    "reconciles": {
+      "shares": true,
+      "profit": true
+    },
+    "roundingDelta": "0.00"
+  },
+  "Search payments: by student name": [
+    {
+      "id": 23,
+      "date": "2026-11-03",
+      "at": "12:00",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#0"
+    },
+    {
+      "id": 24,
+      "date": "2026-11-03",
+      "at": "12:00",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#0"
+    },
+    {
+      "id": 12,
+      "date": "2026-10-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#1"
+    },
+    {
+      "id": 13,
+      "date": "2026-10-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#1"
+    },
+    {
+      "id": 1,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 2,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": null,
+      "kind": "SMART_CARD",
+      "amount": "500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 3,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 4,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    }
+  ],
+  "Search payments: by card number": [
+    {
+      "id": 26,
+      "date": "2026-11-03",
+      "at": "13:00",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#3"
+    },
+    {
+      "id": 15,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 16,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 7,
+      "date": "2026-09-15",
+      "at": "11:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#5"
+    },
+    {
+      "id": 8,
+      "date": "2026-09-15",
+      "at": "11:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#5"
+    }
+  ],
+  "Search payments: by date range": [
+    {
+      "id": 16,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 15,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 14,
+      "date": "2026-10-10",
+      "at": "12:00",
+      "student": "Heshan Silva",
+      "studentId": 2,
+      "cardNumber": "R-0002",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "1250.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#6"
+    },
+    {
+      "id": 13,
+      "date": "2026-10-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#1"
+    },
+    {
+      "id": 12,
+      "date": "2026-10-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#1"
+    },
+    {
+      "id": 11,
+      "date": "2026-10-02",
+      "at": "12:30",
+      "student": "Ruwan Rajapaksa",
+      "studentId": 7,
+      "cardNumber": "R-0007",
+      "course": "English",
+      "kind": "CLASS",
+      "amount": "2100.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#7"
+    },
+    {
+      "id": 10,
+      "date": "2026-10-02",
+      "at": "11:30",
+      "student": "Qasim Ali",
+      "studentId": 3,
+      "cardNumber": "R-0003",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "625.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#8"
+    }
+  ],
+  "Search payments: admissions only": [
+    {
+      "id": 5,
+      "date": "2026-09-12",
+      "at": "11:30",
+      "student": "Heshan Silva",
+      "studentId": 2,
+      "cardNumber": "R-0002",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#9"
+    },
+    {
+      "id": 1,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    }
+  ],
+  "Search payments: smart cards only": [
+    {
+      "id": 2,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": null,
+      "kind": "SMART_CARD",
+      "amount": "500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    }
+  ],
+  "Search payments: one course": [
+    {
+      "id": 26,
+      "date": "2026-11-03",
+      "at": "13:00",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#3"
+    },
+    {
+      "id": 15,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 7,
+      "date": "2026-09-15",
+      "at": "11:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#5"
+    },
+    {
+      "id": 27,
+      "date": "2026-08-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:27"
+    }
+  ],
+  "Search payments: one student with cancelled shown": [
+    {
+      "id": 17,
+      "date": "2026-10-10",
+      "at": "13:30",
+      "student": "Cancel Kid",
+      "studentId": 9,
+      "cardNumber": "R-0009",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": true,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#10"
+    },
+    {
+      "id": 18,
+      "date": "2026-10-10",
+      "at": "13:30",
+      "student": "Cancel Kid",
+      "studentId": 9,
+      "cardNumber": "R-0009",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": true,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#10"
+    }
+  ],
+  "Search payments: one student with cancelled hidden": [],
+  "Search payments: legacy rows": [
+    {
+      "id": 29,
+      "date": "2026-10-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": true,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:29"
+    },
+    {
+      "id": 28,
+      "date": "2026-09-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:28"
+    },
+    {
+      "id": 27,
+      "date": "2026-08-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:27"
+    }
+  ],
+  "Search payments: everything in a long range, cancelled shown": [
+    {
+      "id": 26,
+      "date": "2026-11-03",
+      "at": "13:00",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#3"
+    },
+    {
+      "id": 25,
+      "date": "2026-11-03",
+      "at": "12:30",
+      "student": "Ruwan Rajapaksa",
+      "studentId": 7,
+      "cardNumber": "R-0007",
+      "course": "English",
+      "kind": "CLASS",
+      "amount": "2100.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#11"
+    },
+    {
+      "id": 24,
+      "date": "2026-11-03",
+      "at": "12:00",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#0"
+    },
+    {
+      "id": 23,
+      "date": "2026-11-03",
+      "at": "12:00",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#0"
+    },
+    {
+      "id": 22,
+      "date": "2026-11-03",
+      "at": "11:30",
+      "student": "Late Payer",
+      "studentId": 8,
+      "cardNumber": "R-0008",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#12"
+    },
+    {
+      "id": 21,
+      "date": "2026-11-03",
+      "at": "11:30",
+      "student": "Late Payer",
+      "studentId": 8,
+      "cardNumber": "R-0008",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#12"
+    },
+    {
+      "id": 20,
+      "date": "2026-11-03",
+      "at": "11:30",
+      "student": "Late Payer",
+      "studentId": 8,
+      "cardNumber": "R-0008",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#12"
+    },
+    {
+      "id": 19,
+      "date": "2026-11-01",
+      "at": "00:30",
+      "student": "Dilan Dias",
+      "studentId": 6,
+      "cardNumber": "R-0006",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "1100.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#13"
+    },
+    {
+      "id": 29,
+      "date": "2026-10-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": true,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:29"
+    },
+    {
+      "id": 18,
+      "date": "2026-10-10",
+      "at": "13:30",
+      "student": "Cancel Kid",
+      "studentId": 9,
+      "cardNumber": "R-0009",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": true,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#10"
+    },
+    {
+      "id": 17,
+      "date": "2026-10-10",
+      "at": "13:30",
+      "student": "Cancel Kid",
+      "studentId": 9,
+      "cardNumber": "R-0009",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": true,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#10"
+    },
+    {
+      "id": 16,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 15,
+      "date": "2026-10-10",
+      "at": "12:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#4"
+    },
+    {
+      "id": 14,
+      "date": "2026-10-10",
+      "at": "12:00",
+      "student": "Heshan Silva",
+      "studentId": 2,
+      "cardNumber": "R-0002",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "1250.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#6"
+    },
+    {
+      "id": 13,
+      "date": "2026-10-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#1"
+    },
+    {
+      "id": 12,
+      "date": "2026-10-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#1"
+    },
+    {
+      "id": 11,
+      "date": "2026-10-02",
+      "at": "12:30",
+      "student": "Ruwan Rajapaksa",
+      "studentId": 7,
+      "cardNumber": "R-0007",
+      "course": "English",
+      "kind": "CLASS",
+      "amount": "2100.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#7"
+    },
+    {
+      "id": 10,
+      "date": "2026-10-02",
+      "at": "11:30",
+      "student": "Qasim Ali",
+      "studentId": 3,
+      "cardNumber": "R-0003",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "625.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#8"
+    },
+    {
+      "id": 28,
+      "date": "2026-09-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:28"
+    },
+    {
+      "id": 9,
+      "date": "2026-09-15",
+      "at": "12:30",
+      "student": "Dilan Dias",
+      "studentId": 6,
+      "cardNumber": "R-0006",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "1100.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#14"
+    },
+    {
+      "id": 8,
+      "date": "2026-09-15",
+      "at": "11:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Physics",
+      "kind": "CLASS",
+      "amount": "2200.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#5"
+    },
+    {
+      "id": 7,
+      "date": "2026-09-15",
+      "at": "11:30",
+      "student": "Mark Marks",
+      "studentId": 5,
+      "cardNumber": "R-0005",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#5"
+    },
+    {
+      "id": 6,
+      "date": "2026-09-12",
+      "at": "11:30",
+      "student": "Heshan Silva",
+      "studentId": 2,
+      "cardNumber": "R-0002",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "1250.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#9"
+    },
+    {
+      "id": 5,
+      "date": "2026-09-12",
+      "at": "11:30",
+      "student": "Heshan Silva",
+      "studentId": 2,
+      "cardNumber": "R-0002",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": false,
+      "takenBy": "staff-2",
+      "receiptKey": "ref:#9"
+    },
+    {
+      "id": 4,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "Chemistry",
+      "kind": "CLASS",
+      "amount": "2600.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 3,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": "ICT",
+      "kind": "CLASS",
+      "amount": "2000.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 2,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": null,
+      "kind": "SMART_CARD",
+      "amount": "500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 1,
+      "date": "2026-09-10",
+      "at": "11:30",
+      "student": "Nimal Perera",
+      "studentId": 1,
+      "cardNumber": "R-0001",
+      "course": null,
+      "kind": "ADMISSION",
+      "amount": "1300.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "ref:#2"
+    },
+    {
+      "id": 27,
+      "date": "2026-08-20",
+      "at": "11:30",
+      "student": "Legacy Lee",
+      "studentId": 10,
+      "cardNumber": "R-0010",
+      "course": "Maths",
+      "kind": "CLASS",
+      "amount": "1500.00",
+      "cancelled": false,
+      "takenBy": "admin-1",
+      "receiptKey": "pay:27"
+    }
+  ],
+  "student profile: with a combo, admission and smart card": {
+    "student": {
+      "id": 1,
+      "name": "Nimal Perera",
+      "photoUrl": null,
+      "cardNumber": "R-0001",
+      "cardUid": "UID-R-0001",
+      "school": null,
+      "phone": null,
+      "nic": null,
+      "address": null,
+      "admissionPaid": true,
+      "grade": "T-Grade"
+    },
+    "arrears": {
+      "studentId": 1,
+      "status": "darkred",
+      "owedMonths": [
+        {
+          "year": 2026,
+          "month": 7,
+          "label": "Jul 2026"
+        },
+        {
+          "year": 2026,
+          "month": 8,
+          "label": "Aug 2026"
+        }
+      ],
+      "label": "Jul, Aug",
+      "courses": [
+        {
+          "courseId": 1,
+          "course": "ICT",
+          "feeTier": "Full",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 8,
+              "label": "Aug 2026"
+            }
+          ]
+        },
+        {
+          "courseId": 2,
+          "course": "Chemistry",
+          "feeTier": "Full",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 8,
+              "label": "Aug 2026"
+            }
+          ]
+        }
+      ]
+    },
+    "enrolments": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "feeTier": "Full",
+        "free": false,
+        "status": "ACTIVE"
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "teacher": "Mr. A. Gunawardena",
+        "feeTier": "Full",
+        "free": false,
+        "status": "ACTIVE"
+      }
+    ],
+    "months": [
+      {
+        "year": 2025,
+        "month": 12,
+        "label": "Dec 25"
+      },
+      {
+        "year": 2026,
+        "month": 1,
+        "label": "Jan 26"
+      },
+      {
+        "year": 2026,
+        "month": 2,
+        "label": "Feb 26"
+      },
+      {
+        "year": 2026,
+        "month": 3,
+        "label": "Mar 26"
+      },
+      {
+        "year": 2026,
+        "month": 4,
+        "label": "Apr 26"
+      },
+      {
+        "year": 2026,
+        "month": 5,
+        "label": "May 26"
+      },
+      {
+        "year": 2026,
+        "month": 6,
+        "label": "Jun 26"
+      },
+      {
+        "year": 2026,
+        "month": 7,
+        "label": "Jul 26"
+      },
+      {
+        "year": 2026,
+        "month": 8,
+        "label": "Aug 26"
+      },
+      {
+        "year": 2026,
+        "month": 9,
+        "label": "Sep 26"
+      },
+      {
+        "year": 2026,
+        "month": 10,
+        "label": "Oct 26"
+      },
+      {
+        "year": 2026,
+        "month": 11,
+        "label": "Nov 26"
+      }
+    ],
+    "history": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "owed",
+          "paid",
+          "paid",
+          "paid"
+        ]
+      },
+      {
+        "courseId": 2,
+        "course": "Chemistry",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "owed",
+          "paid",
+          "paid",
+          "paid"
+        ]
+      }
+    ],
+    "payments": [
+      {
+        "id": 23,
+        "kind": "CLASS",
+        "date": "2026-11-03",
+        "amount": "2000.00",
+        "course": "ICT",
+        "billing": "Nov 2026",
+        "cancelled": false
+      },
+      {
+        "id": 24,
+        "kind": "CLASS",
+        "date": "2026-11-03",
+        "amount": "2600.00",
+        "course": "Chemistry",
+        "billing": "Nov 2026",
+        "cancelled": false
+      },
+      {
+        "id": 12,
+        "kind": "CLASS",
+        "date": "2026-10-10",
+        "amount": "2000.00",
+        "course": "ICT",
+        "billing": "Oct 2026",
+        "cancelled": false
+      },
+      {
+        "id": 13,
+        "kind": "CLASS",
+        "date": "2026-10-10",
+        "amount": "2600.00",
+        "course": "Chemistry",
+        "billing": "Oct 2026",
+        "cancelled": false
+      },
+      {
+        "id": 1,
+        "kind": "ADMISSION",
+        "date": "2026-09-10",
+        "amount": "1300.00",
+        "course": null,
+        "billing": null,
+        "cancelled": false
+      },
+      {
+        "id": 2,
+        "kind": "SMART_CARD",
+        "date": "2026-09-10",
+        "amount": "500.00",
+        "course": null,
+        "billing": null,
+        "cancelled": false
+      },
+      {
+        "id": 3,
+        "kind": "CLASS",
+        "date": "2026-09-10",
+        "amount": "2000.00",
+        "course": "ICT",
+        "billing": "Sep 2026",
+        "cancelled": false
+      },
+      {
+        "id": 4,
+        "kind": "CLASS",
+        "date": "2026-09-10",
+        "amount": "2600.00",
+        "course": "Chemistry",
+        "billing": "Sep 2026",
+        "cancelled": false
+      }
+    ],
+    "attendance": [
+      {
+        "id": 12,
+        "date": "2026-10-10",
+        "at": "11:30",
+        "course": "Chemistry",
+        "method": "SEARCH"
+      },
+      {
+        "id": 11,
+        "date": "2026-10-10",
+        "at": "11:30",
+        "course": "ICT",
+        "method": "SEARCH"
+      },
+      {
+        "id": 10,
+        "date": "2026-10-03",
+        "at": "11:30",
+        "course": "Chemistry",
+        "method": "SEARCH"
+      },
+      {
+        "id": 9,
+        "date": "2026-10-03",
+        "at": "11:30",
+        "course": "ICT",
+        "method": "SEARCH"
+      },
+      {
+        "id": 8,
+        "date": "2026-09-12",
+        "at": "11:30",
+        "course": "Chemistry",
+        "method": "SEARCH"
+      },
+      {
+        "id": 7,
+        "date": "2026-09-12",
+        "at": "11:30",
+        "course": "ICT",
+        "method": "SEARCH"
+      },
+      {
+        "id": 6,
+        "date": "2026-09-05",
+        "at": "11:30",
+        "course": "Chemistry",
+        "method": "SEARCH"
+      },
+      {
+        "id": 5,
+        "date": "2026-09-05",
+        "at": "11:30",
+        "course": "ICT",
+        "method": "SEARCH"
+      },
+      {
+        "id": 4,
+        "date": "2026-08-15",
+        "at": "11:30",
+        "course": "Chemistry",
+        "method": "SEARCH"
+      },
+      {
+        "id": 3,
+        "date": "2026-08-15",
+        "at": "11:30",
+        "course": "ICT",
+        "method": "SEARCH"
+      },
+      {
+        "id": 2,
+        "date": "2026-08-08",
+        "at": "11:30",
+        "course": "Chemistry",
+        "method": "SEARCH"
+      },
+      {
+        "id": 1,
+        "date": "2026-08-08",
+        "at": "11:30",
+        "course": "ICT",
+        "method": "SEARCH"
+      }
+    ]
+  },
+  "student profile: a catch-up payer": {
+    "student": {
+      "id": 8,
+      "name": "Late Payer",
+      "photoUrl": null,
+      "cardNumber": "R-0008",
+      "cardUid": "UID-R-0008",
+      "school": null,
+      "phone": null,
+      "nic": null,
+      "address": null,
+      "admissionPaid": false,
+      "grade": "T-Grade"
+    },
+    "arrears": {
+      "studentId": 8,
+      "status": "darkred",
+      "owedMonths": [
+        {
+          "year": 2026,
+          "month": 7,
+          "label": "Jul 2026"
+        },
+        {
+          "year": 2026,
+          "month": 8,
+          "label": "Aug 2026"
+        }
+      ],
+      "label": "Jul, Aug",
+      "courses": [
+        {
+          "courseId": 1,
+          "course": "ICT",
+          "feeTier": "Full",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 8,
+              "label": "Aug 2026"
+            }
+          ]
+        }
+      ]
+    },
+    "enrolments": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "feeTier": "Full",
+        "free": false,
+        "status": "ACTIVE"
+      }
+    ],
+    "months": [
+      {
+        "year": 2025,
+        "month": 12,
+        "label": "Dec 25"
+      },
+      {
+        "year": 2026,
+        "month": 1,
+        "label": "Jan 26"
+      },
+      {
+        "year": 2026,
+        "month": 2,
+        "label": "Feb 26"
+      },
+      {
+        "year": 2026,
+        "month": 3,
+        "label": "Mar 26"
+      },
+      {
+        "year": 2026,
+        "month": 4,
+        "label": "Apr 26"
+      },
+      {
+        "year": 2026,
+        "month": 5,
+        "label": "May 26"
+      },
+      {
+        "year": 2026,
+        "month": 6,
+        "label": "Jun 26"
+      },
+      {
+        "year": 2026,
+        "month": 7,
+        "label": "Jul 26"
+      },
+      {
+        "year": 2026,
+        "month": 8,
+        "label": "Aug 26"
+      },
+      {
+        "year": 2026,
+        "month": 9,
+        "label": "Sep 26"
+      },
+      {
+        "year": 2026,
+        "month": 10,
+        "label": "Oct 26"
+      },
+      {
+        "year": 2026,
+        "month": 11,
+        "label": "Nov 26"
+      }
+    ],
+    "history": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "owed",
+          "paid",
+          "paid",
+          "paid"
+        ]
+      }
+    ],
+    "payments": [
+      {
+        "id": 20,
+        "kind": "CLASS",
+        "date": "2026-11-03",
+        "amount": "2500.00",
+        "course": "ICT",
+        "billing": "Sep 2026",
+        "cancelled": false
+      },
+      {
+        "id": 21,
+        "kind": "CLASS",
+        "date": "2026-11-03",
+        "amount": "2500.00",
+        "course": "ICT",
+        "billing": "Oct 2026",
+        "cancelled": false
+      },
+      {
+        "id": 22,
+        "kind": "CLASS",
+        "date": "2026-11-03",
+        "amount": "2500.00",
+        "course": "ICT",
+        "billing": "Nov 2026",
+        "cancelled": false
+      }
+    ],
+    "attendance": []
+  },
+  "student profile: with a cancelled receipt": {
+    "student": {
+      "id": 9,
+      "name": "Cancel Kid",
+      "photoUrl": null,
+      "cardNumber": "R-0009",
+      "cardUid": "UID-R-0009",
+      "school": null,
+      "phone": null,
+      "nic": null,
+      "address": null,
+      "admissionPaid": false,
+      "grade": "T-Grade"
+    },
+    "arrears": {
+      "studentId": 9,
+      "status": "darkred",
+      "owedMonths": [
+        {
+          "year": 2026,
+          "month": 7,
+          "label": "Jul 2026"
+        },
+        {
+          "year": 2026,
+          "month": 8,
+          "label": "Aug 2026"
+        },
+        {
+          "year": 2026,
+          "month": 9,
+          "label": "Sep 2026"
+        },
+        {
+          "year": 2026,
+          "month": 10,
+          "label": "Oct 2026"
+        },
+        {
+          "year": 2026,
+          "month": 11,
+          "label": "Nov 2026"
+        }
+      ],
+      "label": "Jul, Aug, Sep, Oct, Nov",
+      "courses": [
+        {
+          "courseId": 3,
+          "course": "Maths",
+          "feeTier": "Full",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 8,
+              "label": "Aug 2026"
+            },
+            {
+              "year": 2026,
+              "month": 9,
+              "label": "Sep 2026"
+            },
+            {
+              "year": 2026,
+              "month": 10,
+              "label": "Oct 2026"
+            },
+            {
+              "year": 2026,
+              "month": 11,
+              "label": "Nov 2026"
+            }
+          ]
+        }
+      ]
+    },
+    "enrolments": [
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "feeTier": "Full",
+        "free": false,
+        "status": "ACTIVE"
+      }
+    ],
+    "months": [
+      {
+        "year": 2025,
+        "month": 12,
+        "label": "Dec 25"
+      },
+      {
+        "year": 2026,
+        "month": 1,
+        "label": "Jan 26"
+      },
+      {
+        "year": 2026,
+        "month": 2,
+        "label": "Feb 26"
+      },
+      {
+        "year": 2026,
+        "month": 3,
+        "label": "Mar 26"
+      },
+      {
+        "year": 2026,
+        "month": 4,
+        "label": "Apr 26"
+      },
+      {
+        "year": 2026,
+        "month": 5,
+        "label": "May 26"
+      },
+      {
+        "year": 2026,
+        "month": 6,
+        "label": "Jun 26"
+      },
+      {
+        "year": 2026,
+        "month": 7,
+        "label": "Jul 26"
+      },
+      {
+        "year": 2026,
+        "month": 8,
+        "label": "Aug 26"
+      },
+      {
+        "year": 2026,
+        "month": 9,
+        "label": "Sep 26"
+      },
+      {
+        "year": 2026,
+        "month": 10,
+        "label": "Oct 26"
+      },
+      {
+        "year": 2026,
+        "month": 11,
+        "label": "Nov 26"
+      }
+    ],
+    "history": [
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "owed",
+          "owed",
+          "owed",
+          "owed"
+        ]
+      }
+    ],
+    "payments": [
+      {
+        "id": 17,
+        "kind": "ADMISSION",
+        "date": "2026-10-10",
+        "amount": "1300.00",
+        "course": null,
+        "billing": null,
+        "cancelled": true
+      },
+      {
+        "id": 18,
+        "kind": "CLASS",
+        "date": "2026-10-10",
+        "amount": "1500.00",
+        "course": "Maths",
+        "billing": "Oct 2026",
+        "cancelled": true
+      }
+    ],
+    "attendance": []
+  },
+  "student profile: legacy rows": {
+    "student": {
+      "id": 10,
+      "name": "Legacy Lee",
+      "photoUrl": null,
+      "cardNumber": "R-0010",
+      "cardUid": "UID-R-0010",
+      "school": null,
+      "phone": null,
+      "nic": null,
+      "address": null,
+      "admissionPaid": false,
+      "grade": "T-Grade"
+    },
+    "arrears": {
+      "studentId": 10,
+      "status": "darkred",
+      "owedMonths": [
+        {
+          "year": 2026,
+          "month": 7,
+          "label": "Jul 2026"
+        },
+        {
+          "year": 2026,
+          "month": 8,
+          "label": "Aug 2026"
+        },
+        {
+          "year": 2026,
+          "month": 9,
+          "label": "Sep 2026"
+        },
+        {
+          "year": 2026,
+          "month": 10,
+          "label": "Oct 2026"
+        },
+        {
+          "year": 2026,
+          "month": 11,
+          "label": "Nov 2026"
+        }
+      ],
+      "label": "Jul, Aug, Sep, Oct, Nov",
+      "courses": [
+        {
+          "courseId": 3,
+          "course": "Maths",
+          "feeTier": "Full",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 9,
+              "label": "Sep 2026"
+            },
+            {
+              "year": 2026,
+              "month": 10,
+              "label": "Oct 2026"
+            },
+            {
+              "year": 2026,
+              "month": 11,
+              "label": "Nov 2026"
+            }
+          ]
+        },
+        {
+          "courseId": 4,
+          "course": "Physics",
+          "feeTier": "Full",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 8,
+              "label": "Aug 2026"
+            },
+            {
+              "year": 2026,
+              "month": 10,
+              "label": "Oct 2026"
+            },
+            {
+              "year": 2026,
+              "month": 11,
+              "label": "Nov 2026"
+            }
+          ]
+        }
+      ]
+    },
+    "enrolments": [
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "teacher": "Ms. R. Wickramasinghe",
+        "feeTier": "Full",
+        "free": false,
+        "status": "ACTIVE"
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "teacher": "Ms. R. Wickramasinghe",
+        "feeTier": "Full",
+        "free": false,
+        "status": "ACTIVE"
+      }
+    ],
+    "months": [
+      {
+        "year": 2025,
+        "month": 12,
+        "label": "Dec 25"
+      },
+      {
+        "year": 2026,
+        "month": 1,
+        "label": "Jan 26"
+      },
+      {
+        "year": 2026,
+        "month": 2,
+        "label": "Feb 26"
+      },
+      {
+        "year": 2026,
+        "month": 3,
+        "label": "Mar 26"
+      },
+      {
+        "year": 2026,
+        "month": 4,
+        "label": "Apr 26"
+      },
+      {
+        "year": 2026,
+        "month": 5,
+        "label": "May 26"
+      },
+      {
+        "year": 2026,
+        "month": 6,
+        "label": "Jun 26"
+      },
+      {
+        "year": 2026,
+        "month": 7,
+        "label": "Jul 26"
+      },
+      {
+        "year": 2026,
+        "month": 8,
+        "label": "Aug 26"
+      },
+      {
+        "year": 2026,
+        "month": 9,
+        "label": "Sep 26"
+      },
+      {
+        "year": 2026,
+        "month": 10,
+        "label": "Oct 26"
+      },
+      {
+        "year": 2026,
+        "month": 11,
+        "label": "Nov 26"
+      }
+    ],
+    "history": [
+      {
+        "courseId": 3,
+        "course": "Maths",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "paid",
+          "owed",
+          "owed",
+          "owed"
+        ]
+      },
+      {
+        "courseId": 4,
+        "course": "Physics",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "owed",
+          "paid",
+          "owed",
+          "owed"
+        ]
+      }
+    ],
+    "payments": [
+      {
+        "id": 29,
+        "kind": "CLASS",
+        "date": "2026-10-20",
+        "amount": "1500.00",
+        "course": "Maths",
+        "billing": "Oct 2026",
+        "cancelled": true
+      },
+      {
+        "id": 28,
+        "kind": "CLASS",
+        "date": "2026-09-20",
+        "amount": "2200.00",
+        "course": "Physics",
+        "billing": "Sep 2026",
+        "cancelled": false
+      },
+      {
+        "id": 27,
+        "kind": "CLASS",
+        "date": "2026-08-20",
+        "amount": "1500.00",
+        "course": "Maths",
+        "billing": "Aug 2026",
+        "cancelled": false
+      }
+    ],
+    "attendance": []
+  },
+  "student profile: a half-tier student": {
+    "student": {
+      "id": 2,
+      "name": "Heshan Silva",
+      "photoUrl": null,
+      "cardNumber": "R-0002",
+      "cardUid": "UID-R-0002",
+      "school": null,
+      "phone": null,
+      "nic": null,
+      "address": null,
+      "admissionPaid": true,
+      "grade": "T-Grade"
+    },
+    "arrears": {
+      "studentId": 2,
+      "status": "darkred",
+      "owedMonths": [
+        {
+          "year": 2026,
+          "month": 7,
+          "label": "Jul 2026"
+        },
+        {
+          "year": 2026,
+          "month": 8,
+          "label": "Aug 2026"
+        },
+        {
+          "year": 2026,
+          "month": 11,
+          "label": "Nov 2026"
+        }
+      ],
+      "label": "Jul, Aug, Nov",
+      "courses": [
+        {
+          "courseId": 1,
+          "course": "ICT",
+          "feeTier": "Half",
+          "free": false,
+          "owed": [
+            {
+              "year": 2026,
+              "month": 7,
+              "label": "Jul 2026"
+            },
+            {
+              "year": 2026,
+              "month": 8,
+              "label": "Aug 2026"
+            },
+            {
+              "year": 2026,
+              "month": 11,
+              "label": "Nov 2026"
+            }
+          ]
+        }
+      ]
+    },
+    "enrolments": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "feeTier": "Half",
+        "free": false,
+        "status": "ACTIVE"
+      }
+    ],
+    "months": [
+      {
+        "year": 2025,
+        "month": 12,
+        "label": "Dec 25"
+      },
+      {
+        "year": 2026,
+        "month": 1,
+        "label": "Jan 26"
+      },
+      {
+        "year": 2026,
+        "month": 2,
+        "label": "Feb 26"
+      },
+      {
+        "year": 2026,
+        "month": 3,
+        "label": "Mar 26"
+      },
+      {
+        "year": 2026,
+        "month": 4,
+        "label": "Apr 26"
+      },
+      {
+        "year": 2026,
+        "month": 5,
+        "label": "May 26"
+      },
+      {
+        "year": 2026,
+        "month": 6,
+        "label": "Jun 26"
+      },
+      {
+        "year": 2026,
+        "month": 7,
+        "label": "Jul 26"
+      },
+      {
+        "year": 2026,
+        "month": 8,
+        "label": "Aug 26"
+      },
+      {
+        "year": 2026,
+        "month": 9,
+        "label": "Sep 26"
+      },
+      {
+        "year": 2026,
+        "month": 10,
+        "label": "Oct 26"
+      },
+      {
+        "year": 2026,
+        "month": 11,
+        "label": "Nov 26"
+      }
+    ],
+    "history": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "free": false,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "owed",
+          "owed",
+          "paid",
+          "paid",
+          "owed"
+        ]
+      }
+    ],
+    "payments": [
+      {
+        "id": 14,
+        "kind": "CLASS",
+        "date": "2026-10-10",
+        "amount": "1250.00",
+        "course": "ICT",
+        "billing": "Oct 2026",
+        "cancelled": false
+      },
+      {
+        "id": 5,
+        "kind": "ADMISSION",
+        "date": "2026-09-12",
+        "amount": "1300.00",
+        "course": null,
+        "billing": null,
+        "cancelled": false
+      },
+      {
+        "id": 6,
+        "kind": "CLASS",
+        "date": "2026-09-12",
+        "amount": "1250.00",
+        "course": "ICT",
+        "billing": "Sep 2026",
+        "cancelled": false
+      }
+    ],
+    "attendance": []
+  },
+  "student profile: no payments": {
+    "student": {
+      "id": 4,
+      "name": "Freya Free",
+      "photoUrl": null,
+      "cardNumber": "R-0004",
+      "cardUid": "UID-R-0004",
+      "school": null,
+      "phone": null,
+      "nic": null,
+      "address": null,
+      "admissionPaid": false,
+      "grade": "T-Grade"
+    },
+    "arrears": {
+      "studentId": 4,
+      "status": "grey",
+      "owedMonths": [],
+      "label": "Free tier",
+      "courses": [
+        {
+          "courseId": 1,
+          "course": "ICT",
+          "feeTier": "Free",
+          "free": true,
+          "owed": []
+        }
+      ]
+    },
+    "enrolments": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "teacher": "Mr. A. Gunawardena",
+        "feeTier": "Free",
+        "free": true,
+        "status": "ACTIVE"
+      }
+    ],
+    "months": [
+      {
+        "year": 2025,
+        "month": 12,
+        "label": "Dec 25"
+      },
+      {
+        "year": 2026,
+        "month": 1,
+        "label": "Jan 26"
+      },
+      {
+        "year": 2026,
+        "month": 2,
+        "label": "Feb 26"
+      },
+      {
+        "year": 2026,
+        "month": 3,
+        "label": "Mar 26"
+      },
+      {
+        "year": 2026,
+        "month": 4,
+        "label": "Apr 26"
+      },
+      {
+        "year": 2026,
+        "month": 5,
+        "label": "May 26"
+      },
+      {
+        "year": 2026,
+        "month": 6,
+        "label": "Jun 26"
+      },
+      {
+        "year": 2026,
+        "month": 7,
+        "label": "Jul 26"
+      },
+      {
+        "year": 2026,
+        "month": 8,
+        "label": "Aug 26"
+      },
+      {
+        "year": 2026,
+        "month": 9,
+        "label": "Sep 26"
+      },
+      {
+        "year": 2026,
+        "month": 10,
+        "label": "Oct 26"
+      },
+      {
+        "year": 2026,
+        "month": 11,
+        "label": "Nov 26"
+      }
+    ],
+    "history": [
+      {
+        "courseId": 1,
+        "course": "ICT",
+        "free": true,
+        "cells": [
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "before",
+          "free",
+          "free",
+          "free",
+          "free",
+          "free"
+        ]
+      }
+    ],
+    "payments": [],
+    "attendance": []
+  }
+}
