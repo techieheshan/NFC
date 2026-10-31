@@ -434,6 +434,14 @@ beside the tier counts, and the lines and totals stay as they are.
   fail on any drift, and the server stays the authority. **A later cleanup job
   should merge each pair into ONE shared source** (the screen would then
   show what the server function itself returns).
+- **No role limit on the modes.** Full, Half and No charge are open to everyone who can
+  open the screen; `PAYMENT_NEW_ROLES` is the only role check under `payment-new`
+  (`payment-new-modes-open.test.ts` fails on any other). ADMIN-only before the switch
+  exists because the report counts are not fixed until job 5, not to limit the modes.
+- **A half MONTH never reads as a bare "Half".** "Half" alone is the fee TIER chip; a
+  half month says "Half month" (or "½ month" in the calendar tile). Dates the screen
+  prints are friendly ("8 Aug 2026", `friendly-date.ts`); the server's own message
+  text is unchanged.
 - The screen's Total is the receipt's total: every price is a server-built string,
   one pure function (`comboApplies` in `payment-charge.ts`) says when a combo
   applies, and `payment-screen-rules.test.ts` compares the displayed Total with the

@@ -9,10 +9,11 @@ import { requireRole } from "@/lib/authz";
 /**
  * Who may use the NEW payment screens: the one switch.
  *
- * ADMIN only, for now. The new screens can record a month as "No charge", and the
- * Daily Summary and payslip counts still count such a row as a payer until job 5
- * (see the gate in AGENTS.md). Until then anyone with STAFF access who typed the
- * address must not be able to create those rows.
+ * ADMIN only, for now. The new screens can record a month as "No charge" or "Half month",
+ * and the Daily Summary and payslip counts still read such a row as a payer until job 5
+ * (see the gate in AGENTS.md). Until then STAFF should not reach them by typing the address.
+ * This decides who may OPEN the screens; it is not a limit on the modes — once the screens
+ * are open, Full, Half and No charge carry no role limit (a decision, see AGENTS.md).
  *
  * AT THE MENU SWITCH, flip this single constant to `OPERATIONAL_ROLES` (ADMIN + STAFF,
  * what the old /payment allows) — nothing else changes: both pages and both read
