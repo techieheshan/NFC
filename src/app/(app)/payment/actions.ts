@@ -586,7 +586,7 @@ export async function takePayment(input: {
             billingMonth: c.month,
           })),
         },
-        select: { courseId: true, billingYear: true, billingMonth: true },
+        select: { courseId: true, billingYear: true, billingMonth: true, chargeMode: true },
       });
       if (clashes.length > 0) {
         const c = clashes[0];
@@ -600,6 +600,11 @@ export async function takePayment(input: {
           c.billingYear !== null && c.billingMonth !== null
             ? ` — ${monthLabel(c.billingYear, c.billingMonth)}`
             : "";
+        // A month recorded as No charge is settled, but nobody paid for it: say so, and who can
+        // undo it (only an administrator can cancel a payment record).
+        if (c.chargeMode === "NO_CHARGE" && when) {
+          return { refused: `${name}${when} was recorded as no charge. Ask an administrator to cancel that record if it should be charged.` };
+        }
         return { refused: `${name}${when} is already paid.` };
       }
     }

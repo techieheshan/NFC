@@ -247,6 +247,34 @@ describe("Half month and No charge against a real database", { skip: dbSkip }, (
     }
   });
 
+  test("a month recorded as NO CHARGE says so when charged again — never 'already paid' — and a HALF month still says 'already paid'", async () => {
+    const NO_CHARGE_MESSAGE = / — Nov 2026 was recorded as no charge\. Ask an administrator to cancel that record if it should be charged\.$/;
+    const { course, student } = await setup();
+    ok(await charge(student.id, [{ courseId: course.id, ...NOV, mode: "NO_CHARGE" }]));
+    for (const mode of [undefined, "FULL", "HALF", "NO_CHARGE"] as const) {
+      const again = await charge(student.id, [{ courseId: course.id, ...NOV, mode }]);
+      assert.equal(again.ok, false, String(mode));
+      assert.match((again as { error: string }).error, NO_CHARGE_MESSAGE, String(mode));
+    }
+    assert.equal((await rows(student.id)).length, 1, "nothing was written by the refusals");
+
+    const half = await setup();
+    ok(await charge(half.student.id, [{ courseId: half.course.id, ...NOV, mode: "HALF" }]));
+    const again = await charge(half.student.id, [{ courseId: half.course.id, ...NOV }]);
+    assert.match((again as { error: string }).error, / — Nov 2026 is already paid\.$/);
+  });
+
+  test("once an administrator cancels the no-charge record, the month can be charged", async () => {
+    const { course, student } = await setup();
+    ok(await charge(student.id, [{ courseId: course.id, ...NOV, mode: "NO_CHARGE" }]));
+    setSession("ADMIN", w.admin.id);
+    const f = new FormData();
+    f.set("key", `ref:${(await rows(student.id))[0].transactionRef}`);
+    f.set("reason", "ignored by mistake");
+    assert.deepEqual(await (await import("@/app/(app)/receipts/actions")).cancelTransaction({ ok: false }, f), { ok: true });
+    assert.equal(ok(await charge(student.id, [{ courseId: course.id, ...NOV }])).total, "2500.00");
+  });
+
   test("an unknown mode is a malformed request; 'FULL' is accepted and stored as NULL (the full fee)", async () => {
     const { course, student } = await setup();
     for (const bad of ["half", "QUARTER", "", "NONE"]) {
