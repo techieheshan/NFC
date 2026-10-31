@@ -76,6 +76,10 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
             <Button asChild variant="outline" size="sm"><Link href="/reports/monthly-income">Month-end</Link></Button>
           </>
         )}
+        {/* The review of what staff recorded as Half or No charge: the admin's, so only the admin sees the way in. */}
+        {user.role === "ADMIN" && (
+          <Button asChild variant="outline" size="sm"><Link href="/reports/half-no-charge">Half &amp; No charge</Link></Button>
+        )}
       </nav>
 
       <div>
