@@ -17,8 +17,9 @@ import type { PrismaClient } from "@prisma/client";
  *     the month shows on its own extra line;
  *   - cancelled rows are in nothing.
  *
- * Each test has its own calendar month (the clock is frozen inside it), its own teacher and its own
- * courses, so every figure — including the month-wide ones — belongs to that test alone.
+ * Each test has its own calendar month — a month of 2026 for the first eleven, of 2027 for the last three, so no
+ * two tests share one (the clock is frozen inside it) — its own teacher and its own courses, so every figure,
+ * including the month-wide ones, belongs to that test alone.
  */
 
 const SINCE = "2025-12-05T06:00:00Z";
@@ -58,25 +59,25 @@ describe("Half and No-charge months in the reports (hand-computed)", { skip: dbS
   // ---- helpers ----------------------------------------------------------------------------------
 
   const pad = (n: number) => String(n).padStart(2, "0");
-  /** Month `m` of 2026, the clock on the 10th at 11:30 Colombo. */
-  const monthDay = (m: number) => `2026-${pad(m)}-10`;
-  const clock = (m: number) => freezeClock(`${monthDay(m)}T06:00:00Z`);
+  /** Month `m` of year `y` (2026 unless given), the clock on the 10th at 11:30 Colombo. */
+  const monthDay = (m: number, y = 2026) => `${y}-${pad(m)}-10`;
+  const clock = (m: number, y = 2026) => freezeClock(`${monthDay(m, y)}T06:00:00Z`);
   const tierId = (t: Tier) => (t === "QUARTER" ? quarterTierId : w.tiers[t].id);
 
   let n = 0;
-  async function institute(m: number, fees: { ict: string; chem?: string } = { ict: "2500" }) {
-    clock(m);
-    const teacher = await makeTeacher(db, `T${m}-${++n}`);
-    const ict = await makeCourse(db, w, { teacherId: teacher.id, fee: fees.ict, share: "20.00", name: `ICT${m}-${n}` });
-    const chem = fees.chem ? await makeCourse(db, w, { teacherId: teacher.id, fee: fees.chem, share: "25.00", name: `CHEM${m}-${n}` }) : null;
-    return { teacher, ict, chem, month: m };
+  async function institute(m: number, fees: { ict: string; chem?: string } = { ict: "2500" }, year = 2026) {
+    clock(m, year);
+    const teacher = await makeTeacher(db, `T${year}-${m}-${++n}`);
+    const ict = await makeCourse(db, w, { teacherId: teacher.id, fee: fees.ict, share: "20.00", name: `ICT${year}-${m}-${n}` });
+    const chem = fees.chem ? await makeCourse(db, w, { teacherId: teacher.id, fee: fees.chem, share: "25.00", name: `CHEM${year}-${m}-${n}` }) : null;
+    return { teacher, ict, chem, month: m, year };
   }
   async function student(name: string, courses: { id: number }[], tier: Tier = "FULL") {
     const s = await db.student.create({ data: { name: `${name}-${++n}`, cardNumber: `HN-${n}` } });
     for (const c of courses) await enrol(db, { studentId: s.id, courseId: c.id, tierId: tierId(tier), since: SINCE });
     return s;
   }
-  const NOV = (m: number) => ({ year: 2026, month: m });
+  const NOV = (m: number, y = 2026) => ({ year: y, month: m });
   async function take(studentId: number, months: { courseId: number; year: number; month: number; mode?: Mode }[]) {
     setSession("ADMIN", w.admin.id);
     const res = await pay.takePayment({ studentId, admission: false, smartCard: false, comboDecisions: [], classMonths: months });
@@ -228,7 +229,7 @@ describe("Half and No-charge months in the reports (hand-computed)", { skip: dbS
 
   // ---- Payslips and the month-end roll-up ---------------------------------------------------------
 
-  const slipOf = async (teacherId: number, month: number) => (await payslips.buildPayslips({ year: 2026, month, teacherIds: [teacherId], includeInstitute: false })).slips[0];
+  const slipOf = async (teacherId: number, month: number, year = 2026) => (await payslips.buildPayslips({ year, month, teacherIds: [teacherId], includeInstitute: false })).slips[0];
   const lineShape = (l: { billingLabel: string; cards: number; rate: string; gross: string; halfMonth?: true }) => [l.billingLabel, l.cards, l.rate, l.gross, l.halfMonth === true];
 
   test("PAYSLIP, hand-computed: tiers, lines, cards, shares — No charge is no student, no card, no line; a Half month is its own labelled line", async () => {
@@ -311,40 +312,40 @@ describe("Half and No-charge months in the reports (hand-computed)", { skip: dbS
   });
 
   test("PAYSLIP: two Half months at the same price are ONE line of 2 cards, and the Half note counts CARDS, not lines", async () => {
-    const { teacher, ict, month } = await institute(1);
+    const { teacher, ict, month, year } = await institute(1, undefined, 2027);
     for (const name of ["p", "q"]) {
       const s = await student(name, [ict]);
-      await take(s.id, [{ courseId: ict.id, ...NOV(month), mode: "HALF" }]);
+      await take(s.id, [{ courseId: ict.id, ...NOV(month, year), mode: "HALF" }]);
     }
-    const slip = await slipOf(teacher.id, month);
-    assert.deepEqual(slip.lines.map(lineShape), [["Jan 2026", 2, "1250.00", "2500.00", true]]); // 2 cards x 1250 = 2500
+    const slip = await slipOf(teacher.id, month, year);
+    assert.deepEqual(slip.lines.map(lineShape), [["Jan 2027", 2, "1250.00", "2500.00", true]]); // 2 cards x 1250 = 2500
     assert.equal(slip.lineCards, 2);
     assert.deepEqual(slip.halfMonths, { cards: 2, gross: "2500.00" });
     assert.equal(slip.payingStudents, 2);
   });
 
   test("PAYSLIP and roll-up: cancelled Half and cancelled No-charge rows are in no count, no line, no Half note and no total", async () => {
-    const { teacher, ict, month } = await institute(1);
-    const keep = await student("keep", [ict]); await take(keep.id, [{ courseId: ict.id, ...NOV(month) }]);
-    const voidHalf = await student("voidHalf", [ict]); await take(voidHalf.id, [{ courseId: ict.id, ...NOV(month), mode: "HALF" }]);
-    const voidFree = await student("voidFree", [ict]); await take(voidFree.id, [{ courseId: ict.id, ...NOV(month), mode: "NO_CHARGE" }]);
+    const { teacher, ict, month, year } = await institute(2, undefined, 2027);
+    const keep = await student("keep", [ict]); await take(keep.id, [{ courseId: ict.id, ...NOV(month, year) }]);
+    const voidHalf = await student("voidHalf", [ict]); await take(voidHalf.id, [{ courseId: ict.id, ...NOV(month, year), mode: "HALF" }]);
+    const voidFree = await student("voidFree", [ict]); await take(voidFree.id, [{ courseId: ict.id, ...NOV(month, year), mode: "NO_CHARGE" }]);
     await cancel(voidHalf.id);
     await cancel(voidFree.id);
 
-    const slip = await slipOf(teacher.id, month);
+    const slip = await slipOf(teacher.id, month, year);
     assert.equal(slip.payingStudents, 1);
-    assert.deepEqual(slip.lines.map(lineShape), [["Jan 2026", 1, "2500.00", "2500.00", false]]);
+    assert.deepEqual(slip.lines.map(lineShape), [["Feb 2027", 1, "2500.00", "2500.00", false]]);
     assert.equal(slip.halfMonths, undefined);
     assert.deepEqual([slip.totalCollected, slip.totalInstituteShare, slip.totalTeacherShare], ["2500.00", "500.00", "2000.00"]);
-    const row = (await income.buildMonthlyIncome(2026, month)).byTeacher.find((t) => t.teacherId === teacher.id)!;
+    const row = (await income.buildMonthlyIncome(year, month)).byTeacher.find((t) => t.teacherId === teacher.id)!;
     assert.deepEqual([row.students, row.collected], [1, "2500.00"]);
   });
 
   test("PAYSLIP: with no Half and no No-charge month a slip and its lines have exactly the keys they always had", async () => {
-    const { teacher, ict, month } = await institute(1);
+    const { teacher, ict, month, year } = await institute(3, undefined, 2027);
     const a = await student("plain", [ict]);
-    await take(a.id, [{ courseId: ict.id, ...NOV(month) }]);
-    const slip = await slipOf(teacher.id, month);
+    await take(a.id, [{ courseId: ict.id, ...NOV(month, year) }]);
+    const slip = await slipOf(teacher.id, month, year);
     assert.equal("halfMonths" in slip, false);
     assert.deepEqual(Object.keys(slip), ["teacherId", "teacher", "courses", "payingStudents", "lines", "lineCards", "advanceLines", "tierCounts", "totalCollected", "totalInstituteShare", "totalTeacherShare", "advances", "finalSalary"]);
     assert.deepEqual(Object.keys(slip.lines[0]), ["courseId", "course", "billingLabel", "billingOrder", "cards", "rate", "gross", "sharePercent", "instituteShare", "teacherShare"]);

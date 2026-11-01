@@ -38,7 +38,7 @@ let income: typeof import("@/lib/report-monthly-income");
 
 type Mode = "FULL" | "HALF" | "NO_CHARGE";
 
-describe("how NO_CHARGE rows currently affect Daily Summary and payslips (documentation for job 5)", { skip: dbSkip }, () => {
+describe("how No-charge and Half rows are counted in Daily Summary, payslips and the month-end roll-up (the job 5 rules)", { skip: dbSkip }, () => {
   before(async () => {
     handle = await openTestDatabase();
     freezeClock(NOW);
@@ -126,18 +126,25 @@ describe("how NO_CHARGE rows currently affect Daily Summary and payslips (docume
   });
 
   test("job 5 (was CURRENT BEHAVIOUR): Daily Summary — a HALF MONTH on a FULL-tier student is a normal payer of their TIER (paidHalf stays the HALF tier), and the month has its own line", async () => {
+    // Its OWN day (11 Nov): the extra lines count every Half month in the range, so a shared day would also count the
+    // Half months other tests in this file took on the 10th. On its own day the figures are exact.
     const teacher = await makeTeacher(db);
     const course = await makeCourse(db, w, { teacherId: teacher.id, fee: "2000", share: "20.00", name: `HalfDaily${Math.random().toString(36).slice(2, 6)}` });
     const s = await makeStudent(db);
     await enrol(db, { studentId: s.id, courseId: course.id, tierId: w.tiers.FULL.id, since: SINCE });
     setSession("ADMIN", w.admin.id);
-    assert.equal((await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, ...NOV, mode: "HALF" }] })).ok, true);
-
-    const summary = await reports.dailySummary("2026-11-10", "2026-11-10");
-    const row = summary.courses.find((c) => c.courseId === course.id)!;
-    assert.equal(row.amount, "1000.00");
-    assert.deepEqual([row.paidFull, row.paidHalf, row.paidQuarter], [1, 0, 0]); // tier columns are unchanged: they are TIER columns
-    assert.ok(summary.halfMonths && summary.halfMonths.count >= 1, "the Half month is visible on the extra line (exact figures: reports-half-nocharge.test.ts)");
+    freezeClock("2026-11-11T06:00:00Z");
+    try {
+      assert.equal((await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, ...NOV, mode: "HALF" }] })).ok, true);
+      const summary = await reports.dailySummary("2026-11-11", "2026-11-11");
+      const row = summary.courses.find((c) => c.courseId === course.id)!;
+      assert.equal(row.amount, "1000.00");
+      assert.deepEqual([row.paidFull, row.paidHalf, row.paidQuarter], [1, 0, 0]); // tier columns are unchanged: they are TIER columns
+      assert.deepEqual(summary.halfMonths, { count: 1, total: "1000.00" }, "the Half month is on the extra line, exactly");
+      assert.equal(summary.noChargeMonths, undefined);
+    } finally {
+      freezeClock(NOW);
+    }
   });
 
   test("job 5 (was CURRENT BEHAVIOUR): payslip — a HALF MONTH on a FULL-tier student is a normal payer of their TIER, and the month is a labelled line", async () => {

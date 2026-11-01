@@ -40,7 +40,7 @@ test("the label adds no column, no row and no header to the sheet", () => {
   assert.deepEqual(shape(half), shape(plain));
 });
 
-test("a sheet with no Half line is byte for byte what it always was", () => {
+test("a sheet with no Half line carries no Half-month label and none of its markup", () => {
   const out = render(slip([line(), line({ course: "Maths", rate: "1500.00", gross: "1500.00" })]));
   assert.ok(!out.includes("Half month") && !out.includes("w-0 min-w-full"));
 });
