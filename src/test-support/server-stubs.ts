@@ -39,6 +39,9 @@ internals._load = function (this: unknown, request: string, ...rest: unknown[]) 
         auth: async () =>
           currentRole ? { user: { id: currentUserId, username: "test", role: currentRole } } : null,
       };
+    case "next/font/google":
+      // next/font is a build-time transform; under node every font function just returns its CSS variable name.
+      return new Proxy({}, { get: () => () => ({ variable: "stub-font-variable", className: "stub-font-class" }) });
     case "next/cache":
       return { revalidatePath() {}, revalidateTag() {}, unstable_cache: (fn: unknown) => fn };
     case "next/navigation":

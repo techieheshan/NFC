@@ -22,7 +22,6 @@ export const SLIP_MAX = 30;
 export const NOTE_MAX = 80;
 
 const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
-// eslint-disable-next-line no-control-regex
 const clean = (s: string, max: number) => s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
 const enc = (s: string) => encodeURIComponent(s).replace(/~/g, "%7E");
