@@ -96,3 +96,12 @@ test("deterministic: the same heights always give the same pages", () => {
   const blocks = [box("a", 120), table("t", Array.from({ length: 40 }, (_, i) => 18 + (i % 4) * 11), 60, 28, 50), box("z", 200)];
   assert.deepEqual(paginate(blocks, 650), paginate(blocks, 650));
 });
+
+test("a continuation slice costs the repeated header (contTop), not the full top: the sheet is filled to the pixel", () => {
+  // top 50 (title + header), contTop 30 (header + 'continued'), 10 rows of 100, bottom 40, sheet 450
+  const pages = paginate([table("t", Array.from({ length: 10 }, () => 100), 50, 30, 40)], 450);
+  // page 1: 50 + 4 x 100 = 450 (exactly full); page 2: 30 + 4 x 100 = 430; page 3: 30 + 2 x 100 + 40 = 270
+  assert.deepEqual(pages.map((p) => p.used), [450, 430, 270]);
+  assert.deepEqual(pages.map((p) => p.placements[0].rowEnd! - p.placements[0].rowStart!), [4, 4, 2]);
+  assert.ok(pages.every((p) => !p.overflow));
+});

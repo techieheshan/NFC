@@ -86,6 +86,34 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     }
   });
 
+  test("the loaders and the action refuse a TEACHER or nobody by themselves (rule 10: a read is its own endpoint)", async () => {
+    const bundle = await import("@/app/(app)/daily-summary/bundle");
+    const actions = await import("@/app/(app)/daily-summary/actions");
+    for (const who of ["TEACHER", null] as const) {
+      setSession(who, "t");
+      await assert.rejects(() => bundle.loadDayBundle("2026-10-14"), /Not authorised/);
+      await assert.rejects(() => bundle.loadRangeBundle("2026-10-12", "2026-10-14"), /Not authorised/);
+      await assert.rejects(() => actions.loadDailySummary("2026-10-14", "2026-10-14"), /Not authorised/);
+    }
+  });
+
+  test("loadDailySummary (the action): impossible and extreme dates give today, reversed is swapped, a long range is cut", async () => {
+    const actions = await import("@/app/(app)/daily-summary/actions");
+    asStaff();
+    const today = "2026-11-01";
+    for (const [a, b] of [["2026-13-45", "2026-13-45"], ["0001-01-01", "9999-12-31"], ["banana", "x"], ["", ""]]) {
+      const r = await actions.loadDailySummary(a, b);
+      assert.equal(r.from <= r.to, true);
+      assert.ok(r.from >= "2000-01-01" && r.to <= "2100-12-31", `${a}..${b} -> ${r.from}..${r.to}`);
+    }
+    assert.deepEqual([(await actions.loadDailySummary("2026-13-45", "2026-13-45")).from, (await actions.loadDailySummary("2026-13-45", "2026-13-45")).to], [today, today]);
+    const swapped = await actions.loadDailySummary("2026-10-14", "2026-10-12");
+    assert.deepEqual([swapped.from, swapped.to], ["2026-10-12", "2026-10-14"]);
+    const wide = await actions.loadDailySummary("2000-01-01", "2100-12-31");
+    assert.equal(wide.from, "2000-01-01");
+    assert.equal(wide.to, "2000-12-31"); // 366 days
+  });
+
   // ---- the document -----------------------------------------------------------------------------------------------
 
   test("the document for a signed day: cash book, signatures, names and figures; ADMIN and STAFF both reach it", async () => {

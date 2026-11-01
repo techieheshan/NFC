@@ -85,6 +85,16 @@ test("no bank lines: the 'Money taken to the bank' section is omitted entirely",
   assert.ok(makeBlocks(dayModel({}, { bank: [{ cents: 100, time: "09:00", slip: "", note: "" }] })).some((b) => b.id === "bank"));
 });
 
+test("deductions are shown as negatives next to the totals they come off, collected and net as they are", () => {
+  const m = dayModel();
+  assert.equal(m.teacherAdvances, "−5,000.00");
+  assert.equal(m.xenonExpenses, "−3,450.00");
+  assert.equal(m.totalCollected, "76,375.00");
+  assert.equal(m.net, "67,925.00");
+  const text = html(m);
+  assert.ok(text.includes("−5,000.00") && text.includes("−3,450.00"));
+});
+
 test("no minus sign on zero: a day with no deductions prints 0.00", () => {
   const m = dayModel({ deductions: { teacherAdvances: "0.00", xenonExpenses: "0.00", total: "0.00" }, deductionLines: [], net: "76375.00" });
   assert.equal(m.teacherAdvances, "0.00");
