@@ -1,63 +1,59 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { requireNavAccess } from "@/lib/authz";
+import { formatCents } from "@/lib/cents";
 import { colomboNow } from "@/lib/colombo-time";
+import { resolveRange } from "@/lib/daily-summary-dates";
 
-import { listSigners, loadDailySummary } from "./actions";
-import { SummaryScreen } from "./summary-screen";
+import { loadDayBundle } from "./bundle";
+import { DayScreen } from "./day-screen";
+import { parseTypedState } from "./typed-state";
 
 export const metadata = { title: "Daily Summary" };
 
-const FIELD = "border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs";
+const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-function toStr(v: string | string[] | undefined): string | undefined {
-  const raw = Array.isArray(v) ? v[0] : v;
-  return raw && raw !== "" ? raw : undefined;
-}
-
-export default async function DailySummaryPage({
-  searchParams,
-}: PageProps<"/daily-summary">) {
+/**
+ * The Daily Summary, one day at a time (Release 1).
+ *
+ *   /daily-summary?date=YYYY-MM-DD   the day screen (today when absent, invalid or in the future)
+ *   /daily-summary/range             "Several days", view only
+ *   /daily-summary/document          the A4 document: Print and Download PDF
+ *
+ * Old links (`?from=…&to=…`) still work: the same day opens the day screen, a real range opens the range screen.
+ * Bring-forward, bank lines and the two signers are typed values carried in the URL (never stored): they are
+ * parsed here as hostile input and handed to the screen as its starting state.
+ */
+export default async function DailySummaryPage({ searchParams }: PageProps<"/daily-summary">) {
   await requireNavAccess("/daily-summary");
 
-  const params = await searchParams;
-  const today = colomboNow().date;
-  const from = toStr(params.from) ?? today;
-  const to = toStr(params.to) ?? today;
+  const q = await searchParams;
+  const rawFrom = first(q.from);
+  const rawTo = first(q.to);
+  if (rawFrom !== undefined || rawTo !== undefined) {
+    const r = resolveRange(rawFrom, rawTo, colomboNow().date);
+    if (r.from !== r.to) redirect(`/daily-summary/range?from=${r.from}&to=${r.to}`);
+  }
 
-  const [report, signers] = await Promise.all([
-    loadDailySummary(from, to),
-    listSigners(),
-  ]);
+  const b = await loadDayBundle(first(q.date) ?? rawFrom);
+  const typed = parseTypedState(q, b.signers);
 
-  const filterUi = (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
-      <div className="space-y-1.5">
-        <label htmlFor="from" className="block text-sm font-medium">From</label>
-        <input id="from" name="from" type="date" className={FIELD} defaultValue={report.from} />
-      </div>
-      <div className="space-y-1.5">
-        <label htmlFor="to" className="block text-sm font-medium">To</label>
-        <input id="to" name="to" type="date" className={FIELD} defaultValue={report.to} />
-      </div>
-      <Button type="submit" variant="secondary">Apply</Button>
-      {(report.from !== today || report.to !== today) && (
-        <Button asChild variant="ghost">
-          <Link href="/daily-summary">Today</Link>
-        </Button>
-      )}
-    </form>
-  );
-
-  // Keyed on the range: a new range is a new cash-book, so the typed
-  // bring-forward and the two signatures must not survive it.
+  // Keyed on the day: another day is a new cash book, so what was typed for this one must not follow.
   return (
-    <SummaryScreen
-      key={`${report.from}_${report.to}`}
-      report={report}
-      signers={signers}
-      filterUi={filterUi}
+    <DayScreen
+      key={b.date}
+      date={b.date}
+      today={b.today}
+      report={b.report}
+      cancelled={b.cancelled}
+      staff={b.staff}
+      signers={b.signers}
+      initial={{
+        bf: typed.bringForwardCents > 0 ? formatCents(typed.bringForwardCents).replace(/,/g, "") : "",
+        bank: typed.bank,
+        preparedId: typed.prepared?.id ?? "",
+        checkedId: typed.checked?.id ?? "",
+      }}
     />
   );
 }
