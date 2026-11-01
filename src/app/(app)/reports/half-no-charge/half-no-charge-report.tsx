@@ -3,6 +3,7 @@ import { Ban, CheckCircle2 } from "lucide-react";
 
 import { to12Hour } from "@/lib/colombo-time";
 import { friendlyDate } from "@/lib/friendly-date";
+import { capNotes } from "@/lib/half-no-charge-notes";
 import { DETAIL_CAP, modeLabel, type DetailRow, type HalfNoChargeReport } from "@/lib/report-half-no-charge";
 
 /**
@@ -22,6 +23,13 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
     );
   }
 
+  const notes = capNotes({
+    rowCount: report.rowCount,
+    cancelledCount: report.cancelledCount,
+    shown: report.rows.length,
+    shownCancelled: report.rows.filter((r) => r.cancelled).length,
+    cap: DETAIL_CAP,
+  });
   const share = (s: { months: number; all: number; percent: number }) => `${s.months} of ${s.all} (${s.percent}%)`;
 
   return (
@@ -162,16 +170,9 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
           ))}
         </ul>
 
-        {report.cancelledCount > 0 && (
-          <p className="text-muted-foreground text-xs">
-            {report.cancelledCount} cancelled {report.cancelledCount === 1 ? "row is" : "rows are"} shown greyed and counted nowhere.
-          </p>
-        )}
-        {report.capped && (
-          <p className="rounded-xl border border-[#E8851C] bg-[#FFF4E5] px-4 py-3 text-sm text-[#4A2600]">
-            Showing the newest {DETAIL_CAP} of {report.rowCount} rows. The counts and totals above cover all{" "}
-            {report.rowCount}. Choose one person or one kind to narrow the list.
-          </p>
+        {notes.cancelled && <p className="text-muted-foreground text-xs">{notes.cancelled}</p>}
+        {notes.cap && (
+          <p className="rounded-xl border border-[#E8851C] bg-[#FFF4E5] px-4 py-3 text-sm text-[#4A2600]">{notes.cap}</p>
         )}
       </section>
     </div>

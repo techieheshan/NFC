@@ -140,9 +140,44 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
       })),
     });
     const out = await html({ month: "2027-01" });
-    assert.ok(out.includes("Showing the newest 300 of 310 rows. The counts and totals above cover all 310."));
+    assert.ok(out.includes("Showing the newest 300 of 310 rows. The counts and totals above cover all 310 non-cancelled rows."));
     assert.equal(count(out, /Cap Kid · CAP-1/g), 300, "300 phone cards (the table repeats the rows in cells)");
     assert.match(out, new RegExp(`${w.admin.username}</td><td[^>]*>0</td><td[^>]*>0\\.00</td><td[^>]*>310</td><td[^>]*>310 of 310 \\(100%\\)</td>`));
+  });
+
+  /** `n` rows in one month of 2027 for `takenById`, one minute apart from `from`, optionally cancelled. */
+  async function volume(year: number, month: number, n: number, o: { cancelled?: boolean; startMinute?: number } = {}) {
+    const kid = await db.student.create({ data: { name: `Vol Kid ${year}-${month}-${o.cancelled ? "c" : "l"}`, cardNumber: `VOL-${year}-${month}-${o.cancelled ? "c" : "l"}` } });
+    await db.payment.createMany({
+      data: Array.from({ length: n }, (_, i) => ({
+        kind: "CLASS" as const, studentId: kid.id, courseId: course.id, billingYear: 2000 + Math.floor(i / 12), billingMonth: (i % 12) + 1,
+        amount: "0.00", chargeMode: "NO_CHARGE" as const, takenById: w.admin.id,
+        paidAt: new Date(Date.UTC(year, month - 1, 3, 0, 0) + ((o.startMinute ?? 0) + i) * 60_000), transactionRef: randomUUID(),
+        ...(o.cancelled ? { cancelled: true, cancelledById: w.admin.id, cancelledAt: new Date(Date.UTC(year, month - 1, 20)), cancelReason: "x" } : {}),
+      })),
+    });
+  }
+
+  test("the notes' WORDING, 305 live + 1 cancelled: 'newest 300 of 306', the counts cover 305, and the cancelled row (among the newest) is shown", async () => {
+    setSession("ADMIN", w.admin.id);
+    await volume(2027, 2, 305, { startMinute: 0 });
+    await volume(2027, 2, 1, { cancelled: true, startMinute: 400 }); // the newest row of the month
+    const out = await html({ month: "2027-02" });
+    assert.ok(out.includes("Showing the newest 300 of 306 rows. The counts and totals above cover all 305 non-cancelled rows."));
+    assert.ok(!out.includes("cover all 306"));
+    assert.ok(out.includes("1 cancelled row is shown greyed and counted nowhere."));
+    assert.match(out, /305 of 305 \(100%\)/, "the share column reads from the live rows only");
+  });
+
+  test("the notes' WORDING, cancelled rows BEYOND the cap: they are not said to be shown", async () => {
+    setSession("ADMIN", w.admin.id);
+    await volume(2027, 3, 4, { cancelled: true, startMinute: 0 }); // four old cancelled rows
+    await volume(2027, 3, 300, { startMinute: 100 }); // 300 newer live rows fill the list
+    const out = await html({ month: "2027-03" });
+    assert.ok(out.includes("Showing the newest 300 of 304 rows. The counts and totals above cover all 300 non-cancelled rows."));
+    assert.ok(out.includes("4 cancelled rows in this filter are older than the newest 300 and not shown; counted nowhere."));
+    assert.ok(!/4 cancelled rows are shown greyed/.test(out));
+    assert.ok(!out.includes(">Cancelled<"), "no cancelled row is in the list, so no Cancelled chip");
   });
 
   test("the query is text: markup in a filter is not rendered", async () => {
