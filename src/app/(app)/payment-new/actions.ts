@@ -13,7 +13,7 @@ import { requirePaymentNewAction } from "./access";
  *
  * Each is its own HTTP endpoint, so each re-checks the role (AGENTS rule 10) —
  * the page guard does not cover them. Both use the same role constant as the pages
- * (`PAYMENT_NEW_ROLES`, ADMIN only until the menu switch).
+ * (`PAYMENT_NEW_ROLES`, ADMIN + STAFF since the menu switch).
  */
 
 /**

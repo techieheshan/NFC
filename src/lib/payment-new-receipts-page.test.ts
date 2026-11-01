@@ -11,8 +11,8 @@ import type { PrismaClient } from "@prisma/client";
 /*
  * Job 4: the /payment-new/receipts page, rendered for real against a real database. Refusals are
  * asserted by CONTENT (AGENTS rule 30): a refused role gets the not-found screen and none of the
- * receipts. The page is ADMIN only through the one PAYMENT_NEW_ROLES constant; the FLIP test shows
- * the page follows it.
+ * receipts. The page is open to ADMIN + STAFF (since the menu switch) through the one PAYMENT_NEW_ROLES
+ * constant; the last test of this group shows the page follows it.
  */
 
 const BASE = Date.parse("2026-11-10T04:00:00Z");
@@ -79,11 +79,11 @@ describe("the /payment-new/receipts page against a real database", { skip: dbSki
 
   // ---- who may open it ------------------------------------------------------------------------------
 
-  test("STAFF, TEACHER and a signed-out visitor get the not-found screen and NONE of the receipts (asserted by content)", async () => {
+  test("TEACHER and a signed-out visitor get the not-found screen and NONE of the receipts (asserted by content)", async () => {
     const s = await student("Secret Kid", "SEC-0001");
     await pays(s.id, 11);
-    for (const role of ["STAFF", "TEACHER", null] as const) { // FLIP: STAFF moves to the allowed list
-      setSession(role, role === "STAFF" ? w.staff.id : "x");
+    for (const role of ["TEACHER", null] as const) {
+      setSession(role, "x");
       let content = "";
       await assert.rejects(async () => { content = await html(); }, { message: "NEXT_NOT_FOUND" }, String(role));
       assert.equal(content, "");
@@ -91,29 +91,35 @@ describe("the /payment-new/receipts page against a real database", { skip: dbSki
     }
   });
 
-  test("ADMIN gets the page with the receipts", async () => {
+  test("ADMIN and STAFF get the page with the receipts", async () => {
     const s = await student("Open Kid", "OPN-0001");
     const r = await pays(s.id, 11);
-    const out = await html();
-    assert.ok(out.includes(r.reference));
-    assert.ok(out.includes("Open Kid · OPN-0001"));
+    for (const [role, id] of [["ADMIN", w.admin.id], ["STAFF", w.staff.id]] as const) {
+      setSession(role, id);
+      const out = await html();
+      assert.ok(out.includes(r.reference), role);
+      assert.ok(out.includes("Open Kid · OPN-0001"), role);
+    }
+    setSession("ADMIN", w.admin.id);
   });
 
-  test("the page follows the one constant: with STAFF added to PAYMENT_NEW_ROLES, STAFF opens it too (the menu switch)", async () => {
+  test("the page follows the one constant: with STAFF removed from PAYMENT_NEW_ROLES, STAFF gets the not-found screen again (the one-line revert of the menu switch)", async () => {
     const s = await student("Switch Kid", "SWI-0001");
     await pays(s.id, 11);
     const original = [...access.PAYMENT_NEW_ROLES];
     try {
-      access.PAYMENT_NEW_ROLES.push("STAFF");
+      access.PAYMENT_NEW_ROLES.splice(access.PAYMENT_NEW_ROLES.indexOf("STAFF"), 1);
       setSession("STAFF", w.staff.id);
+      let content = "";
+      await assert.rejects(async () => { content = await html(); }, { message: "NEXT_NOT_FOUND" });
+      assert.equal(content, "");
+      setSession("ADMIN", w.admin.id);
       assert.ok((await html()).includes("Switch Kid"));
-      setSession("TEACHER");
-      await assert.rejects(() => html(), { message: "NEXT_NOT_FOUND" });
     } finally {
       access.PAYMENT_NEW_ROLES.splice(0, access.PAYMENT_NEW_ROLES.length, ...original);
     }
     setSession("STAFF", w.staff.id);
-    await assert.rejects(() => html(), { message: "NEXT_NOT_FOUND" });
+    assert.ok((await html()).includes("Switch Kid")); // restored
   });
 
   // ---- what it shows -------------------------------------------------------------------------------

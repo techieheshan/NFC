@@ -367,8 +367,9 @@ test points at the sentence to update. Checklist:
   grey "Free tier".
 
 **Gate CLOSED (job 5): the reports are ready for Half and No-charge months.** The menu
-switch may now happen — after Kavin's real-device checks (Terminal 1, Chrome 102), and
-with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must stay:
+switch has been prepared on its own branch (`release/payment-menu-switch`, one commit:
+the Payment entry's address and `PAYMENT_NEW_ROLES`), to be deployed after Kavin's
+real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
 
 - **A No-charge month is settled, 0.00, not cash and not a payer.** It is in no paid
   count: not Daily Summary's Full / Half / 25%, not the payslip's paying students, tier
@@ -504,7 +505,7 @@ with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must
   NO_CHARGE (a crafted STAFF request can waive months too) — accepted. Job 5 gave
   admins a "Half and No-charge months" view (`/reports/half-no-charge`) so they can
   review who recorded what (`takenById` is on every row). `PAYMENT_NEW_ROLES` only decides who
-  sees the NEW screens before the menu switch; it is not a limit on the modes.
+  may open the NEW screens (ADMIN + STAFF since the menu switch); it is not a limit on the modes.
 - **A re-enrolled class is not "new".** "New" uses `Enrollment.createdAt`, and
   re-enrolling reactivates the old row without resetting it, so a student who
   dropped Chemistry in March and came back on 3 Nov with 0 days in October gets a
@@ -520,12 +521,16 @@ with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must
 
 **The new payment screens (`/payment-new`, job 3B):**
 
-- **ADMIN only until the menu switch**, through ONE constant, `PAYMENT_NEW_ROLES` in
-  `src/app/(app)/payment-new/access.ts`, read by both pages and both read actions.
-  At the menu switch flip it to `OPERATIONAL_ROLES` (ADMIN + STAFF). That is the
-  whole change; `payment-new-actions.test.ts` is tied to the constant and its
-  `FLIP` lines change with it. This blocks the screens, not a hand-crafted request
-  to `takePayment` — that action is shared with the old screen and stays ADMIN + STAFF.
+- **Open to ADMIN + STAFF since the menu switch**, through ONE constant, `PAYMENT_NEW_ROLES` in
+  `src/app/(app)/payment-new/access.ts` (a COPY of `OPERATIONAL_ROLES`, so a test that edits it
+  cannot change the shared array), read by both pages and both read actions. The Payment menu
+  entry in `src/config/nav.ts` now points at `/payment-new`; the old `/payment` address has no
+  menu entry any more, so `requireNavAccess("/payment")` answers not-found to everyone (the
+  old code stays in the repo; the attendance counter's embedded panel is the old UI and keeps
+  working). `payment-new-actions.test.ts` is tied to the constant. To revert the switch, put the
+  nav address back to `/payment` and the constant back to `["ADMIN"]` (one commit). This guards
+  the screens, not a hand-crafted request to `takePayment` — that action is shared with the old
+  screen and is ADMIN + STAFF.
 - **Two server rules are RESTATED on the read side, on purpose, for now:** the Half
   amount (`halfMonthly` / `halfComboMonthly` in `buildPaymentView`, the same
   `money(Number(full) * 0.5)` as `takePayment`) and the smart-card "already
@@ -537,8 +542,8 @@ with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must
   show what the server function itself returns).
 - **No role limit on the modes.** Full, Half and No charge are open to everyone who can
   open the screen; `PAYMENT_NEW_ROLES` is the only role check under `payment-new`
-  (`payment-new-modes-open.test.ts` fails on any other). ADMIN-only before the switch
-  is a staged-release step (the report gate is closed by job 5), not a limit on the modes.
+  (`payment-new-modes-open.test.ts` fails on any other). The earlier ADMIN-only
+  period was a staged-release step (the report gate was closed by job 5), not a limit on the modes.
 - **A half MONTH never reads as a bare "Half".** "Half" alone is the fee TIER chip; a
   half month says "Half month" (or "½ month" in the calendar tile).
 - **Full dates read "8 Aug 2026"** through the one shared `friendlyDate`
