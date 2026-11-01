@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { requireNavAccess } from "@/lib/authz";
-import { buildHalfNoChargeReport, parseModeFilter } from "@/lib/report-half-no-charge";
+import { buildHalfNoChargeReport, parseModeFilter, parseMonthParam } from "@/lib/report-half-no-charge";
 import { currentColomboMonth } from "@/lib/report-monthly-income";
 
 import { HalfNoChargeScreen } from "./half-no-charge-report";
@@ -32,9 +32,7 @@ export default async function HalfNoChargePage({
 
   const params = await searchParams;
   const now = currentColomboMonth();
-  const asked = first(params.month);
-  const parsed = asked && /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) ? asked.split("-").map(Number) : null;
-  const [year, month] = parsed ?? [now.year, now.month];
+  const { year, month } = parseMonthParam(first(params.month), now);
 
   const report = await buildHalfNoChargeReport({
     year,

@@ -220,6 +220,20 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     assert.equal(await formKey({ month: "2026-11", staff: "no-such-user", mode: "bogus" }), await formKey({ month: "2026-11" }));
   });
 
+  test("F5: a well-formed month outside 2000-2100 is junk — the page shows the CURRENT month, it does not crash", async () => {
+    setSession("ADMIN", w.admin.id);
+    const current = await html({}); // no month: the current Colombo month
+    for (const month of ["0999-05", "0000-01", "1999-12", "2101-01", "9999-12", "10000-01", "2026-13", "2026-00", "garbage", ""]) {
+      const out = await html({ month });
+      assert.ok(out.includes("Half and No-charge months"), month);
+      assert.match(out, /name="month"[^>]*value="\d{4}-\d{2}"/);
+      const shown = /name="month"[^>]*value="(\d{4}-\d{2})"/.exec(out)?.[1];
+      assert.equal(shown, /name="month"[^>]*value="(\d{4}-\d{2})"/.exec(current)?.[1], `${JSON.stringify(month)} falls back to the current month`);
+    }
+    // the edges of the range are valid
+    for (const month of ["2000-01", "2100-12"]) assert.match(await html({ month }), new RegExp(`value="${month}"`));
+  });
+
   test("the query is text: markup in a filter is not rendered", async () => {
     setSession("ADMIN", w.admin.id);
     const out = await html({ month: "2026-11", staff: "<script>alert(1)</script>", mode: "<b>" });

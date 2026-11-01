@@ -345,6 +345,15 @@ test points at the sentence to update. Checklist:
   `10.15×0.5 → 5.08`).
 - **Rounding (`report 9.3`):** a slip rounds each teacher's two halves separately,
   so slips and the month-end roll-up can differ by a cent.
+- **KNOWN ISSUE, month parameters on the older pages (not fixed: the byte-identical rule
+  forbids touching them in job 5; a later small job):** `reports/monthly-income/page.tsx`,
+  `payslips/page.tsx` and `payslips/voucher/page.tsx` accept any `YYYY-MM` and reach
+  `monthInstants`, which throws a RangeError ("Invalid time value") for a well-formed year such
+  as `0999` or `9999` (checked on `monthInstants`), so `?month=0999-05` shows the error page
+  instead of the current month; `reports/page.tsx` and `reports/not-paid/page.tsx` also accept
+  any `YYYY-MM` (month `00`, `13`…). The new `/reports/half-no-charge` bounds the year to
+  2000-2100 and takes a real month only (`parseMonthParam` in `report-half-no-charge.ts`,
+  junk means the current month); the later job can reuse it.
 - **KNOWN ISSUE, old Receipts page (decided: not fixed now; a later small job):**
   `findTransactions` groups only the newest 300 ROWS, so a receipt cut at that boundary
   shows fewer lines and a smaller total (and a number that is only right when its

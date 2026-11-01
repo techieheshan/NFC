@@ -33,6 +33,19 @@ export type ModeFilter = "HALF" | "NO_CHARGE" | null;
 export const parseModeFilter = (raw: string | undefined): ModeFilter =>
   raw === "half" ? "HALF" : raw === "nocharge" ? "NO_CHARGE" : null;
 
+/**
+ * What a `?month=` value means. Only YYYY-MM with a real month and a year in 2000-2100; anything else —
+ * including well-formed years like 0999 or 9999 that the date maths cannot build — is junk and means the
+ * fallback (the current month), never an error page. (Rule 23: junk in the URL is ignored, not rendered.)
+ */
+export function parseMonthParam(raw: string | undefined, fallback: { year: number; month: number }): { year: number; month: number } {
+  const m = raw ? /^(\d{4})-(0[1-9]|1[0-2])$/.exec(raw) : null;
+  if (!m) return fallback;
+  const year = Number(m[1]);
+  if (year < 2000 || year > 2100) return fallback;
+  return { year, month: Number(m[2]) };
+}
+
 export type StaffRow = {
   userId: string;
   name: string;
