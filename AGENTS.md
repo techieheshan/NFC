@@ -188,9 +188,14 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     `paidAt` month basis, per-course `instituteSharePercentApplied` frozen on
     each payment. Never add a second way to compute a share: if the roll-up and
     a payslip could disagree, the teacher holding the slip is right. Sheet lines
-    group payments by course × billing month × RATE so `cards × rate = gross`
-    is true on every line; a slip rounds its two halves separately, so a
-    multi-teacher total can be a cent out — show that rounding, never hide it.
+    group payments by course × billing month × RATE × (Half month or not) so
+    `cards × rate = gross` is true on every line; a slip rounds its two halves
+    separately, so a multi-teacher total can be a cent out — show that rounding,
+    never hide it. A Half-month line split from a same-priced line adds one more
+    rounding boundary: the line columns can differ from the Totals row by a cent
+    (a 312.50 normal payer and a 312.50 Half-month payer at 25% show 78.13 + 78.13
+    = 156.26 against a Totals row of 156.25). The TOTALS ROW is what counts;
+    `payslip-half-rounding.test.ts` pins the example.
     A teacher sheet never carries institute profit.
 27. **An expense names who authorised it.** `Expense.authorizedById` is required
     and re-checked server-side against active ADMIN/STAFF accounts; the type
