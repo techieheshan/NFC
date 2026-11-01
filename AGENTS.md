@@ -163,13 +163,27 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     only narrow. Validate an enum filter (a day, a month) ONCE and use that one
     value for both the query and the grouping — junk in the URL must be
     ignored, not silently render an empty report.
-24. **The Daily Summary cash-book is print-only.** Bring-forward, Prepared by
-    and Checked by are typed each day and flow straight into the PDF — no
-    table, no carry-over, no auto-fill from yesterday. Bring-forward + Collected
-    − Deductions = Drawer total answers "what should be in the drawer",
-    which is NOT Net (the institute's profit). Both signatures are mandatory
-    before the report can be printed, and both come from active accounts:
-    preparing is STAFF, checking is ADMIN or STAFF.
+24. **The Daily Summary cash flow is typed, never stored (Release 1), and signed.**
+    Bring-forward, the money taken to the bank (up to 10 lines: amount, time, optional
+    slip no. and note), Prepared by and Checked by are TYPED on the screen and are NOT
+    in the database — no table, no carry-over, no auto-fill from yesterday. They are
+    carried in the URL (`typed-state.ts`: first value wins, amounts re-parsed as integer
+    cents, ids only as lookup keys into the offered lists), which is what brings them to
+    the A4 document and back and through a reload. The flow is
+    Bring-forward + Collected − Deductions = **Should be in the drawer**; minus **Money
+    taken to the bank** = **Left in drawer**, the suggested bring-forward for tomorrow
+    (`lib/cash-flow.ts`, cents). It replaces the old "Drawer total" and is still NOT Net
+    (the institute's profit). All collected money is cash; the person preparing the
+    summary is the one who banks it, so a bank line has no "taken by". A bank line that
+    pushes Left in drawer below zero is refused, and a document with such lines is not
+    built; a day whose deductions exceed its cash with nothing banked is NOT over-banking
+    and prints with a negative Left. Both signatures are mandatory for a single day,
+    before it can be printed or downloaded: **Prepared by is any active ADMIN or STAFF
+    account; Checked by is an active ADMIN ONLY**, enforced in `listSigners` /
+    `splitSigners` and again when the document is built (`pickSigner` against the
+    ADMIN-only list). Nothing else in the Daily Summary is admin-only. A range ("Several
+    days", view only) has no cash book and no signatures. Release 2 (a separate job) is
+    where saved days, history and stored bank deposits go; do not add them here.
 25. **One hall resolver: `hallForClassOnDate` / `classesForDate` in
     `src/lib/halls.ts`.** Where a class meets on a date is "the override for
     that class on that date, else its own default (`Schedule.defaultHallId` /
@@ -400,10 +414,14 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   `!== "NO_CHARGE"` / `=== "HALF"`.
 - **A Half month is a real payment, and its student is a normal payer of THEIR tier.** In
   Daily Summary and payslips "Half" still means the HALF TIER: no column is renamed or
-  moved. The month is shown, not hidden: Daily Summary adds two lines to Other income
-  (screen and PDF): "Half months (N): <amount>, included in Class fees" with "-" in the Total
-  cell (the amount is already inside Class fees, so nobody adds it twice) and "No charge
-  months (N)" (0.00); the payslip's sheet line is its own line (it no longer merges into a
+  moved. The month is shown, not hidden. **Daily Summary (changed in Release 1):** under
+  Class fees, on the day screen, the range screen and the A4 document, from ONE helper
+  (`ofWhichLines` in `daily-summary/extra-lines.ts`), come indented lines: "of which Half
+  months (N)" with the amount (already inside Class fees, so it is an "of which", never a
+  figure to add) and "No-charge months (N): nothing charged" 0.00; the document's footnote
+  says both are included in the amounts. The earlier wording ("Half months (N): <amount>,
+  included in Class fees" with "-" in a Total cell) is gone with the old table. The
+  payslip's sheet line is its own line (it no longer merges into a
   Half-TIER student's line of the same price), the voucher says "(Half month)" as a second
   line INSIDE the course cell (a zero-width block, so the eight columns keep their widths),
   and the Payslips SCREEN (not the voucher, not any PDF) notes "incl. Half months: N cards,
@@ -460,6 +478,45 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   !important }`) hides the whole page under print media, while the voucher page relies on
   its own `visibility` rules; under print emulation the sheet measures 0 px wide. A later
   job on the print path should reconcile the two.
+
+**The Daily Summary, Release 1 (screens, A4 document, Print and Download PDF; no database change):**
+
+- **Routes.** `/daily-summary?date=` (the day screen; the old `?from=&to=` links still work: the same
+  day opens the day screen, a real range redirects to the range screen), `/daily-summary/range`
+  (view only), `/daily-summary/document` (the A4 document). All ADMIN + STAFF through the nav guard
+  (TEACHER: not-found); the data comes from the guarded loaders in `daily-summary/bundle.ts`.
+- **The data object is untouched.** `dailySummary()` and what it returns are pinned byte for byte by
+  `reports-golden.test.ts` (six "Daily Summary:" keys); every new figure comes from a NEW read-only
+  helper in `lib/daily-summary-extras.ts` (cancelled receipts, collected by staff, day by day — two
+  queries however long the range, proven equal to `dailySummary()` for every day by
+  `daily-summary-extras.test.ts`). "Not paid" is no longer shown (it is still in the data object).
+  Money here is integer cents (`lib/cents.ts`), displayed with thousands separators; zero never
+  shows a minus sign. Typed amounts: digits, optional commas, up to 2 decimals, 0 to 99,999,999.99.
+- **Dates.** A real calendar day in 2000..2100, else today; the future is today; a reversed range is
+  swapped; a range is cut to 366 days (`lib/daily-summary-dates.ts`). Impossible dates never reach a query.
+- **The document is a normal page, not a portal** (the receipt's old blank print preview came from a
+  portal unmounting before the preview composed). It uses the payslip voucher's print override
+  (`body > *:not(#xenon-print) { display: revert }`, `visibility` to show only the sheets). The sheets are
+  FIXED A4 (794 x 1123 px on screen, 210 x 297 mm in print — 1123 px is a hair over a page and would add
+  a blank page after each sheet), filled by `lib/paginate.ts` from block heights MEASURED in the browser
+  after `document.fonts.ready`: a table splits between rows with its header repeated, never inside a row,
+  and its totals never sit alone on a sheet. The same sheet DOM is printed and drawn into the PDF. The
+  stylesheet is a string in `document/document-css.ts` with hex colours only and nothing newer than
+  Chrome 102 (a test scans it; the build-time baseline script does not see inline CSS). Page numbers and
+  the footer are made by the paginator, not by CSS.
+- **Download PDF is a RASTER PDF.** jsPDF's built-in fonts have no Sinhala, so a text PDF would print
+  Sinhala as garbage (the other nine reports still do, through `downloadReportPdf`, which is untouched).
+  Each sheet is drawn with html2canvas 1.4.1 (MIT; already in the tree as jsPDF's optional dependency)
+  to a JPEG (scale 2, then 1.5 and 1 if the device cannot allocate it) in an A4 PDF; the text cannot be
+  selected. Two traps are handled and tested: html2canvas cannot parse the `oklch()` colours the rest of
+  the app uses (the sheet CSS gives every element hex border/outline colours and the clone a white page),
+  and Tailwind's `img { display: block }` makes html2canvas draw text about 6 px low (an inline-img rule
+  is held on the page while it draws). Sinhala for the document is a Noto Sans Sinhala webfont scoped to
+  this route (`document/fonts.ts`, `preload: false`). **Tested on Chrome 154 only: Chrome 102 / the
+  Terminal 1 are NOT proven** — see `~/xenon-release/DAILY-SUMMARY-R1-CHECKS.md`. If the capture
+  throws, the screen says to use Print and choose Save as PDF.
+- **Follow-ups, not in this release.** Release 2: saved days, history, stored bank deposits (a schema
+  change, its own job and migration). Other-income entry (income that is not a payment) is its own later job.
 
 **Rules for the money rules (job 3A) that later work must keep:**
 
