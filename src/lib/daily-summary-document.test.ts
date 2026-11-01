@@ -157,6 +157,7 @@ test("document CSS: nothing newer than Chrome 102, hex colours only, nothing und
     assert.ok(!css.includes(bad), bad);
   }
   for (const m of css.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(m[1]) >= 12, `font-size ${m[1]}px`);
+  assert.ok(!css.includes("tabular-nums"), "html2canvas draws default figures, so tabular figures would move right-aligned numbers in the PDF");
   assert.ok(css.includes("size: A4") && css.includes("margin: 0"), "@page A4, no margin");
   assert.ok(css.includes("width: 794px") && css.includes("height: 1123px"), "fixed A4 sheet");
   assert.ok(/body > \*:not\(#xenon-print\)\s*{\s*display: revert !important/.test(css), "gives the page back from the global 58 mm rule");

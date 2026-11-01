@@ -106,14 +106,14 @@ export const DOCUMENT_CSS = `/*
   overflow-wrap: anywhere;
 }
 .ds-table tfoot td { font-weight: 700; background: #faf8ff; border-top: 1px solid #cfc7e6; }
-.ds-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.ds-table .r { text-align: right; }
 .ds-table .m { color: #4a4166; }
 
 .ds-two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .ds-kv { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid #cfc7e6; font-size: 13px; line-height: 18px; }
 .ds-kv.sub { padding-left: 14px; color: #4a4166; }
 .ds-kv.strong { font-weight: 700; }
-.ds-kv span:last-child { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.ds-kv span:last-child { text-align: right; white-space: nowrap; }
 .ds-box { margin-top: 8px; border: 2px solid #7c3aed !important; background: #f1ebff; padding: 8px 10px; border-radius: 6px; }
 .ds-box .ds-kv { border-bottom: 0; padding: 0; font-size: 16px; line-height: 22px; font-weight: 700; }
 
