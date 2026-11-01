@@ -152,3 +152,13 @@ test("document CSS: nothing newer than Chrome 102, hex colours only, nothing und
   assert.ok(/body > \*:not\(#xenon-print\)\s*{\s*display: revert !important/.test(css), "gives the page back from the global 58 mm rule");
   assert.ok(css.includes("#xenon-print { display: none !important; }"));
 });
+
+test("the PDF step puts an inline-<img> rule on the page while it draws (html2canvas mis-places text under Tailwind's block images), and takes it off again", async () => {
+  const { readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "make-pdf.ts"), "utf8");
+  assert.ok(src.includes("img { display: inline !important;"));
+  assert.ok(src.includes("document.head.appendChild(fix)"));
+  assert.equal(src.split("fix.remove()").length - 1, 2, "removed on success and on failure");
+  assert.ok(src.includes("PDF_FAIL_MESSAGE") && src.includes("Couldn't make the PDF on this device. Use Print and choose Save as PDF."));
+});

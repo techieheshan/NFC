@@ -215,7 +215,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
     id: "deductions", table: true,
     render: (s) => (
       <DocTable id="deductions" title={day ? "4 Deductions: what and on whose authority" : "Deductions: what and on whose authority"} slice={s}
-        cols={[{ label: "Date", w: 78 }, { label: "Kind", w: 104 }, { label: "Person", w: 130 }, { label: "Reason", w: 156 }, { label: "Authorised by", w: 126 }, { label: "Amount", w: 120, right: true }]}
+        cols={[{ label: "Date", w: 92 }, { label: "Kind", w: 100 }, { label: "Person", w: 126 }, { label: "Reason", w: 150 }, { label: "Authorised by", w: 126 }, { label: "Amount", w: 120, right: true }]}
         rows={m.deductions.length === 0
           ? [NONE(6, "No deductions")]
           : m.deductions.map((d) => [d.date, d.kind, d.person, d.reason, d.authorizedBy, d.amount])} />

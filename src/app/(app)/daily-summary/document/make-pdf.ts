@@ -11,6 +11,11 @@
  * html2canvas cannot read the oklch() colours the rest of the app uses, so the clone it draws from gets a plain
  * white page and document.css gives every sheet element a hex border/outline colour.
  *
+ * html2canvas places text by measuring a 1px <img> beside a span, which only works when an <img> is INLINE.
+ * Tailwind's base styles make every <img> `display: block`, which put every line of text about 6 px too low (found
+ * by comparing the PDF with the print), so an inline-img rule is added to the page while the sheets are drawn and
+ * removed again afterwards.
+ *
  * Scale 2 keeps text crisp (about 350 KB a page as JPEG); a device that cannot allocate that canvas is
  * retried at 1.5 and then 1. If all fail the caller says so and offers Print.
  */
@@ -23,6 +28,10 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
   if (sheets.length === 0) throw new Error("no sheets");
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   await document.fonts.ready;
+
+  const fix = document.createElement("style");
+  fix.textContent = "img { display: inline !important; vertical-align: baseline !important; max-width: none !important; }";
+  document.head.appendChild(fix);
 
   let lastError: unknown = null;
   for (const scale of [2, 1.5, 1]) {
@@ -51,10 +60,12 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
         pdf.addImage(image, "JPEG", 0, 0, 210, 297, undefined, "FAST");
       }
       pdf.save(filename);
+      fix.remove();
       return;
     } catch (e) {
       lastError = e;
     }
   }
+  fix.remove();
   throw lastError instanceof Error ? lastError : new Error("pdf failed");
 }
