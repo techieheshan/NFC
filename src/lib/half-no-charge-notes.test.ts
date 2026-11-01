@@ -44,6 +44,22 @@ test("singular and plural: 'row' for one", () => {
   assert.equal(capNotes(f(301, 1, 300, 0)).cancelled, "1 cancelled row in this filter is older than the newest 300 and not shown; counted nowhere.");
 });
 
+test("singular and plural in the MIXED note (some shown, some past the cap): each half is inflected on its own number", () => {
+  // one shown, one hidden: both singular
+  assert.equal(capNotes(f(302, 2, 300, 1)).cancelled, "1 cancelled row is shown greyed and counted nowhere; 1 more cancelled row is older than the newest 300 and not shown.");
+  // two shown, one hidden: plural then singular
+  assert.equal(capNotes(f(303, 3, 300, 2)).cancelled, "2 cancelled rows are shown greyed and counted nowhere; 1 more cancelled row is older than the newest 300 and not shown.");
+  // one shown, three hidden: singular then plural
+  assert.equal(capNotes(f(304, 4, 300, 1)).cancelled, "1 cancelled row is shown greyed and counted nowhere; 3 more cancelled rows are older than the newest 300 and not shown.");
+});
+
+test("singular and plural in the other two cancelled notes, and in the cap note", () => {
+  assert.equal(capNotes(f(40, 1, 40, 1)).cancelled, "1 cancelled row is shown greyed and counted nowhere.");
+  assert.equal(capNotes(f(40, 3, 40, 3)).cancelled, "3 cancelled rows are shown greyed and counted nowhere.");
+  assert.equal(capNotes(f(303, 3, 300, 0)).cancelled, "3 cancelled rows in this filter are older than the newest 300 and not shown; counted nowhere.");
+  assert.match(capNotes(f(303, 1, 300, 0)).cap!, /cover all 302 non-cancelled rows\. /);
+});
+
 test("the cap note never repeats the raw row count as what the totals cover", () => {
   for (const [rows, cancelled] of [[306, 1], [304, 4], [400, 100]] as const) {
     const cap = capNotes(f(rows, cancelled, 300, 0)).cap!;
