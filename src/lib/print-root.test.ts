@@ -15,6 +15,7 @@ import path from "node:path";
 
 const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
 const receipt = read("src/app/(app)/payment/receipt.tsx");
+const voucher = read("src/app/(app)/payslips/voucher/page.tsx");
 const globals = read("src/app/globals.css");
 
 test("the receipt's print copy is plain markup in #xenon-print, not a React portal that dies with the screen", () => {
@@ -38,4 +39,9 @@ test("the copy is placed by a child effect, so it exists before AutoPrintReceipt
 test("the global rule that hides the app while printing is unchanged (it is what keeps the attendance screen off the paper)", () => {
   assert.match(globals, /body > \*:not\(#xenon-print\) \{\s*display: none !important;/);
   assert.match(globals, /#xenon-print \{\s*display: block !important;/);
+});
+
+test("the payslip voucher gives itself back from that global rule and keeps any receipt copy off its pages", () => {
+  assert.match(voucher, /body > \*:not\(#xenon-print\) \{ display: revert !important; \}/);
+  assert.match(voucher, /#xenon-print \{ display: none !important; \}/);
 });
