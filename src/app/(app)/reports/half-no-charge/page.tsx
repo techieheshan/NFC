@@ -57,7 +57,15 @@ export default async function HalfNoChargePage({
         </p>
       </div>
 
-      <form method="get" action={ROUTE} className="grid gap-3 rounded-xl border p-4 sm:grid-cols-4 sm:items-end">
+      {/* Keyed on the filter signature (AGENTS rule 17): "This month" is a soft navigation, and React applies a
+          select's defaultValue only when the select MOUNTS, so without a key the selects would keep showing
+          the old person and kind while the report below had already reset. A new signature remounts the form. */}
+      <form
+        key={`${monthValue}|${report.staffId ?? ""}|${report.mode ?? ""}`}
+        method="get"
+        action={ROUTE}
+        className="grid gap-3 rounded-xl border p-4 sm:grid-cols-4 sm:items-end"
+      >
         <div className="space-y-1.5">
           <label htmlFor="month" className="block text-sm font-medium">Month</label>
           <input id="month" name="month" type="month" className={FIELD} defaultValue={monthValue} />

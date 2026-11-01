@@ -180,6 +180,46 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     assert.ok(!out.includes(">Cancelled<"), "no cancelled row is in the list, so no Cancelled chip");
   });
 
+  /** The `<form>` element of the page tree, with its React key. */
+  type El = { type?: unknown; key?: string | null; props?: { children?: unknown } };
+  function findForm(node: unknown): El | null {
+    if (Array.isArray(node)) {
+      for (const n of node) {
+        const f = findForm(n);
+        if (f) return f;
+      }
+      return null;
+    }
+    if (node && typeof node === "object") {
+      const el = node as El;
+      if (el.type === "form") return el;
+      return findForm(el.props?.children);
+    }
+    return null;
+  }
+  const formKey = async (q: Record<string, string>) => findForm(await Page({ searchParams: Promise.resolve(q) }))?.key;
+
+  test("F4: the filter form is keyed on month|person|kind, so 'This month' remounts it and the selects reset", async () => {
+    setSession("ADMIN", w.admin.id);
+    const filtered = await formKey({ month: "2026-11", staff: w.staff.id, mode: "half" });
+    const reset = await formKey({}); // what the "This month" link (no query) renders
+    assert.equal(filtered, `2026-11|${w.staff.id}|HALF`);
+    assert.match(String(reset), /^\d{4}-\d{2}\|\|$/);
+    assert.notEqual(filtered, reset, "a different signature: React remounts the form and the selects take their new defaults");
+    // each part of the signature matters on its own
+    const keys = new Set([
+      await formKey({ month: "2026-11" }),
+      await formKey({ month: "2026-10" }),
+      await formKey({ month: "2026-11", mode: "half" }),
+      await formKey({ month: "2026-11", mode: "nocharge" }),
+      await formKey({ month: "2026-11", staff: w.staff.id }),
+      await formKey({ month: "2026-11", staff: w.admin.id }),
+    ]);
+    assert.equal(keys.size, 6);
+    // junk is ignored in the key too (it is built from the VALIDATED values)
+    assert.equal(await formKey({ month: "2026-11", staff: "no-such-user", mode: "bogus" }), await formKey({ month: "2026-11" }));
+  });
+
   test("the query is text: markup in a filter is not rendered", async () => {
     setSession("ADMIN", w.admin.id);
     const out = await html({ month: "2026-11", staff: "<script>alert(1)</script>", mode: "<b>" });
