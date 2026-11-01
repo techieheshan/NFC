@@ -1,0 +1,992 @@
+{
+  "01 one class, one month": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-3",
+          "cardNumber": "CARD-4"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "GA — Nov 2026",
+            "amount": "2500.00"
+          }
+        ],
+        "total": "2500.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "02 two classes in one checkout (FULL + HALF tier)": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-5",
+          "cardNumber": "CARD-6"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "GA — Nov 2026",
+            "amount": "2500.00"
+          },
+          {
+            "label": "GB — Nov 2026",
+            "amount": "900.00"
+          }
+        ],
+        "total": "3400.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "900.00",
+        "course": "GB",
+        "billing": "2026-11",
+        "tier": "HALF",
+        "share": "30.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "03 combo accepted": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-8",
+          "cardNumber": "CARD-9"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "CA — Nov 2026",
+            "amount": "2000.00"
+          },
+          {
+            "label": "CB — Nov 2026",
+            "amount": "1300.00"
+          }
+        ],
+        "total": "3300.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2000.00",
+        "course": "CA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": "COMBO",
+        "comboApplied": true,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "1300.00",
+        "course": "CB",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "25.00",
+        "combo": "COMBO",
+        "comboApplied": true,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "04 combo refused with a reason": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-10",
+          "cardNumber": "CARD-11"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "CA — Nov 2026",
+            "amount": "2500.00"
+          },
+          {
+            "label": "CB — Nov 2026",
+            "amount": "1700.00"
+          }
+        ],
+        "total": "4200.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "CA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": "COMBO",
+        "comboApplied": false,
+        "comboRefusedReason": "did not attend",
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "1700.00",
+        "course": "CB",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "25.00",
+        "combo": "COMBO",
+        "comboApplied": false,
+        "comboRefusedReason": "did not attend",
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "05 combo accepted, student attended both classes last month (old client still sends the answer)": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-12",
+          "cardNumber": "CARD-13"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "CA — Nov 2026",
+            "amount": "2000.00"
+          },
+          {
+            "label": "CB — Nov 2026",
+            "amount": "1300.00"
+          }
+        ],
+        "total": "3300.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2000.00",
+        "course": "CA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": "COMBO",
+        "comboApplied": true,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "1300.00",
+        "course": "CB",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "25.00",
+        "combo": "COMBO",
+        "comboApplied": true,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "06 combo refused with a reason, student attended both classes (the refusal is honoured)": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-16",
+          "cardNumber": "CARD-17"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "CA — Nov 2026",
+            "amount": "2500.00"
+          },
+          {
+            "label": "CB — Nov 2026",
+            "amount": "1700.00"
+          }
+        ],
+        "total": "4200.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "CA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": "COMBO",
+        "comboApplied": false,
+        "comboRefusedReason": "parent asked",
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "1700.00",
+        "course": "CB",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "25.00",
+        "combo": "COMBO",
+        "comboApplied": false,
+        "comboRefusedReason": "parent asked",
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "07 half-tier student, combo accepted": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-20",
+          "cardNumber": "CARD-21"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "CA — Nov 2026",
+            "amount": "1000.00"
+          },
+          {
+            "label": "CB — Nov 2026",
+            "amount": "650.00"
+          }
+        ],
+        "total": "1650.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "1000.00",
+        "course": "CA",
+        "billing": "2026-11",
+        "tier": "HALF",
+        "share": "20.00",
+        "combo": "COMBO",
+        "comboApplied": true,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "650.00",
+        "course": "CB",
+        "billing": "2026-11",
+        "tier": "HALF",
+        "share": "25.00",
+        "combo": "COMBO",
+        "comboApplied": true,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "08 admission alone": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-22",
+          "cardNumber": "CARD-23"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "Admission fee",
+            "amount": "1300.00"
+          }
+        ],
+        "total": "1300.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "ADMISSION",
+        "amount": "1300.00",
+        "course": null,
+        "billing": null,
+        "tier": null,
+        "share": null,
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "09 first smart-card charge": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-24",
+          "cardNumber": "CARD-25"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "Smart card",
+            "amount": "500.00"
+          }
+        ],
+        "total": "500.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "SMART_CARD",
+        "amount": "500.00",
+        "course": null,
+        "billing": null,
+        "tier": null,
+        "share": null,
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": "04AABB11",
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "10 admission + smart card + a class together": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-26",
+          "cardNumber": "CARD-27"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "Admission fee",
+            "amount": "1300.00"
+          },
+          {
+            "label": "Smart card",
+            "amount": "500.00"
+          },
+          {
+            "label": "GA — Nov 2026",
+            "amount": "2500.00"
+          }
+        ],
+        "total": "4300.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "ADMISSION",
+        "amount": "1300.00",
+        "course": null,
+        "billing": null,
+        "tier": null,
+        "share": null,
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "SMART_CARD",
+        "amount": "500.00",
+        "course": null,
+        "billing": null,
+        "tier": null,
+        "share": null,
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": "04AABB22",
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 3,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "11 advance month (three ahead, across the year end)": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-28",
+          "cardNumber": "CARD-29"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "GA — Feb 2027",
+            "amount": "2500.00"
+          }
+        ],
+        "total": "2500.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2027-2",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "12 old month (the enrolment's first month)": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-30",
+          "cardNumber": "CARD-31"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "GA — Aug 2026",
+            "amount": "2500.00"
+          }
+        ],
+        "total": "2500.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-8",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "13 catch-up: four months in one checkout": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-32",
+          "cardNumber": "CARD-33"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "GA — Aug 2026",
+            "amount": "2500.00"
+          },
+          {
+            "label": "GA — Sep 2026",
+            "amount": "2500.00"
+          },
+          {
+            "label": "GA — Oct 2026",
+            "amount": "2500.00"
+          },
+          {
+            "label": "GA — Nov 2026",
+            "amount": "2500.00"
+          }
+        ],
+        "total": "10000.00"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-8",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 2,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-9",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 3,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-10",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      },
+      {
+        "id": 4,
+        "kind": "CLASS",
+        "amount": "2500.00",
+        "course": "GA",
+        "billing": "2026-11",
+        "tier": "FULL",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "14 half-tier rounding example (1333.33 x 0.5)": {
+    "result": {
+      "ok": true,
+      "receiptKeys": [
+        "at",
+        "date",
+        "lines",
+        "reference",
+        "student",
+        "takenBy",
+        "total"
+      ],
+      "receipt": {
+        "reference": "XN-1",
+        "at": "11:30",
+        "date": "2026-11-10",
+        "student": {
+          "name": "Student-34",
+          "cardNumber": "CARD-35"
+        },
+        "takenBy": "test",
+        "lines": [
+          {
+            "label": "GODD — Nov 2026",
+            "amount": "666.66"
+          }
+        ],
+        "total": "666.66"
+      }
+    },
+    "rows": [
+      {
+        "id": 1,
+        "kind": "CLASS",
+        "amount": "666.66",
+        "course": "GODD",
+        "billing": "2026-11",
+        "tier": "HALF",
+        "share": "20.00",
+        "combo": null,
+        "comboApplied": false,
+        "comboRefusedReason": null,
+        "cardUidIssued": null,
+        "cancelled": false,
+        "paidAt": "2026-11-10T06:00:00.000Z",
+        "ref": 0
+      }
+    ]
+  },
+  "r01 free tier": {
+    "result": {
+      "ok": false,
+      "error": "Free-tier courses are not charged."
+    },
+    "rows": []
+  },
+  "r02 not enrolled": {
+    "result": {
+      "ok": false,
+      "error": "That course is no longer an active enrolment."
+    },
+    "rows": []
+  },
+  "r03 dropped enrolment": {
+    "result": {
+      "ok": false,
+      "error": "That course is no longer an active enrolment."
+    },
+    "rows": []
+  },
+  "r04 before the enrolment month": {
+    "result": {
+      "ok": false,
+      "error": "That month is before the student was enrolled."
+    },
+    "rows": []
+  },
+  "r05 four months ahead": {
+    "result": {
+      "ok": false,
+      "error": "Cannot charge more than 3 months ahead."
+    },
+    "rows": []
+  },
+  "r06 a month already paid": {
+    "result": {
+      "ok": false,
+      "error": "GA — Nov 2026 is already paid."
+    },
+    "rows": []
+  },
+  "r07 admission already paid": {
+    "result": {
+      "ok": false,
+      "error": "Admission has already been paid."
+    },
+    "rows": []
+  },
+  "r08 combined-rate decision missing": {
+    "result": {
+      "ok": false,
+      "error": "A combined-rate decision is missing."
+    },
+    "rows": []
+  },
+  "r09 combo refused without a reason": {
+    "result": {
+      "ok": false,
+      "error": "A reason is required when the combined rate is refused."
+    },
+    "rows": []
+  },
+  "r10 student not found": {
+    "result": {
+      "ok": false,
+      "error": "Student not found."
+    },
+    "rows": []
+  },
+  "r11 malformed request": {
+    "result": {
+      "ok": false,
+      "error": "Invalid payment request."
+    },
+    "rows": []
+  },
+  "r12 nothing selected": {
+    "result": {
+      "ok": false,
+      "error": "Nothing selected to charge."
+    },
+    "rows": []
+  }
+}

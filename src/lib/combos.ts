@@ -88,7 +88,7 @@ const courseSelect = {
  * first, then skip any combo overlapping one already taken. Ties break on the
  * lower combo id purely so the result is deterministic.
  */
-export async function applicableCombos(studentId: number): Promise<ApplicableCombo[]> {
+export async function applicableCombos(studentId: number, at: Date = new Date()): Promise<ApplicableCombo[]> {
   const enrolments = await db.enrollment.findMany({
     where: { studentId, status: "ACTIVE" },
     select: { courseId: true, course: { select: { teacherId: true } } },
@@ -125,7 +125,7 @@ export async function applicableCombos(studentId: number): Promise<ApplicableCom
 
   if (chosen.length === 0) return [];
 
-  const window = lastCompletedMonth();
+  const window = lastCompletedMonth(at);
   const range = monthRange(window.year, window.month);
 
   return Promise.all(
@@ -157,4 +157,94 @@ export async function applicableCombos(studentId: number): Promise<ApplicableCom
       };
     }),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Combo state — does this combo need a human, or does it simply apply?
+// ---------------------------------------------------------------------------
+
+/**
+ * A combo is a discount for a student who attends BOTH classes. The check exists only to
+ * catch a student who did NOT attend one of them, so it looks at the last completed month
+ * (the same window as above) and asks a person only when a class has 0 days.
+ *
+ *   off                 staff switched this combo off: normal rate, no reason needed
+ *   exempt-free         one class is a FREE enrolment: the combo applies, no check at all
+ *   needs-confirmation  a class that existed last month has 0 days: a person decides
+ *   exempt-new          a class began THIS month, so there is no completed month to check
+ *   auto                every class that can be checked was attended at least once
+ *
+ * Evaluated top to bottom, first match wins. "New" means the enrolment's Colombo start
+ * month is later than the last completed month — so the exemption ends at the Colombo
+ * midnight that starts the month AFTER the one the class began in.
+ *
+ * Which classes the student is paying for right now does not matter: the state belongs to
+ * the combo, and the combo rate goes to whichever of its classes is being charged.
+ */
+export type ComboState = "auto" | "needs-confirmation" | "exempt-new" | "exempt-free" | "off";
+
+export type ComboClassFacts = {
+  courseId: number;
+  /** A FREE-tier enrolment (multiplier 0). */
+  free: boolean;
+  /** The enrolment began in the current month (or later): there is no completed month for it. */
+  isNew: boolean;
+  /** Days attended in the last completed month. */
+  days: number;
+};
+
+/** The rule table. Pure: no clock, no database. */
+export function comboStateOf(classes: readonly ComboClassFacts[], switchedOff = false): ComboState {
+  if (switchedOff) return "off";
+  if (classes.some((c) => c.free)) return "exempt-free";
+  if (classes.some((c) => !c.isNew && c.days === 0)) return "needs-confirmation";
+  if (classes.some((c) => c.isNew)) return "exempt-new";
+  return "auto";
+}
+
+export type ComboWithState = ApplicableCombo & {
+  state: ComboState;
+  /** The facts the state was decided from, per class, in combo order. */
+  classes: ComboClassFacts[];
+};
+
+const monthOrdinal = (year: number, month: number) => year * 12 + (month - 1);
+
+/**
+ * Every combo this student qualifies for (same selection as `applicableCombos`: fullest set
+ * first, lowest id on a tie, no course priced twice), each with its state.
+ *
+ * `switchedOff` holds the ids of combos staff switched off for this payment. `at` is the
+ * one instant everything is judged at.
+ */
+export async function comboStates(
+  studentId: number,
+  opts: { switchedOff?: ReadonlySet<number>; at?: Date } = {},
+): Promise<ComboWithState[]> {
+  const at = opts.at ?? new Date();
+  const combos = await applicableCombos(studentId, at);
+  if (combos.length === 0) return [];
+
+  const last = lastCompletedMonth(at);
+  const lastOrdinal = monthOrdinal(last.year, last.month);
+
+  const enrolments = await db.enrollment.findMany({
+    where: { studentId, status: "ACTIVE", courseId: { in: combos.flatMap((c) => c.courseIds) } },
+    select: { courseId: true, createdAt: true, feeTier: { select: { multiplier: true } } },
+  });
+  const byCourse = new Map(enrolments.map((e) => [e.courseId, e]));
+
+  return combos.map((combo) => {
+    const classes: ComboClassFacts[] = combo.courseIds.map((courseId) => {
+      const e = byCourse.get(courseId);
+      const [y, m] = e ? colomboNow(e.createdAt).date.split("-").map(Number) : [0, 0];
+      return {
+        courseId,
+        free: e ? Number(String(e.feeTier.multiplier)) === 0 : false,
+        isNew: e ? monthOrdinal(y, m) > lastOrdinal : false,
+        days: combo.attendance.find((a) => a.courseId === courseId)?.days ?? 0,
+      };
+    });
+    return { ...combo, classes, state: comboStateOf(classes, opts.switchedOff?.has(combo.comboId)) };
+  });
 }

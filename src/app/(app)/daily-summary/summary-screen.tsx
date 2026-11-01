@@ -11,6 +11,7 @@ import {
 import type { DailySummary } from "@/lib/reports";
 
 import type { Signer } from "./actions";
+import { halfAndNoChargeLines } from "./extra-lines";
 
 const FIELD = "border-input bg-background h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs";
 
@@ -82,6 +83,8 @@ export function SummaryScreen({
                 ["Admission", report.admission.count, report.admission.total],
                 ["Smart card", report.smartCard.count, report.smartCard.total],
                 ["Class fees", "—", report.classTotal],
+                // Only when there is one: nothing is added to the PDF of today's data.
+                ...halfAndNoChargeLines(report).map((l) => [l.label, l.count, l.total]),
               ],
             },
             {
@@ -210,6 +213,11 @@ export function SummaryScreen({
               <Line label={`Admission (${report.admission.count})`} value={report.admission.total} />
               <Line label={`Smart card (${report.smartCard.count})`} value={report.smartCard.total} />
               <Line label="Class fees" value={report.classTotal} />
+              {/* Only when there is one. Counts of months, not extra money: a Half month is
+                  already inside Class fees, and a No-charge month is 0.00. */}
+              {halfAndNoChargeLines(report).map((l) => (
+                <Line key={l.label} label={l.screenLabel} value={l.total} muted />
+              ))}
             </div>
 
             <div className="space-y-2 rounded-xl border p-4">

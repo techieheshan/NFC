@@ -188,9 +188,14 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     `paidAt` month basis, per-course `instituteSharePercentApplied` frozen on
     each payment. Never add a second way to compute a share: if the roll-up and
     a payslip could disagree, the teacher holding the slip is right. Sheet lines
-    group payments by course × billing month × RATE so `cards × rate = gross`
-    is true on every line; a slip rounds its two halves separately, so a
-    multi-teacher total can be a cent out — show that rounding, never hide it.
+    group payments by course × billing month × RATE × (Half month or not) so
+    `cards × rate = gross` is true on every line; a slip rounds its two halves
+    separately, so a multi-teacher total can be a cent out — show that rounding,
+    never hide it. A Half-month line split from a same-priced line adds one more
+    rounding boundary: the line columns can differ from the Totals row by a cent
+    (a 312.50 normal payer and a 312.50 Half-month payer at 25% show 78.13 + 78.13
+    = 156.26 against a Totals row of 156.25). The TOTALS ROW is what counts;
+    `payslip-half-rounding.test.ts` pins the example.
     A teacher sheet never carries institute profit.
 27. **An expense names who authorised it.** `Expense.authorizedById` is required
     and re-checked server-side against active ADMIN/STAFF accounts; the type
@@ -287,3 +292,280 @@ and `npm run check:baseline` (the built CSS, after `npm run build`).
 
 When in doubt, stop and ask. A paused task costs nothing. A broken live system
 does.
+
+# Testing payments
+
+`npm test` runs without a database: the database tests are skipped and say why.
+`npm run test:db` runs everything and refuses to start unless
+`XENON_TEST_DATABASE_URL` is set.
+
+**Rule: database tests read `XENON_TEST_DATABASE_URL` only — never
+`DATABASE_URL`.** A production URL that is exported in the shell or loaded from
+`.env` can therefore never be used by a test. The host must be local Postgres,
+or be named in `XENON_TEST_DB_ALLOWED_HOSTS` (comma-separated Neon endpoint ids,
+set per run, never committed — this repo is public). Anything else makes the run
+fail before it connects (`src/test-support/db-guard.ts`).
+
+Start a throw-away Postgres, run, remove it:
+
+```
+podman run -d --name xenon-test-pg -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_PASSWORD=<anything local> -e POSTGRES_DB=xenon_test \
+  --tmpfs /var/lib/postgresql/data:rw docker.io/library/postgres:16-alpine
+XENON_TEST_DATABASE_URL=postgresql://postgres:<pw>@127.0.0.1:55432/xenon_test npm run test:db
+podman rm -f xenon-test-pg
+```
+
+How the tests work (`src/test-support/`): each test **file** creates its own
+database on that server, applies `prisma/migrations`, and drops it afterwards;
+data comes from factories, never from what happens to exist. The clock is
+frozen (`freezeClock`) so nothing is flaky on the 1st, the last day or at
+Colombo midnight. The real server actions are called with a stubbed session
+(`setSession`); production code is never modified for a test.
+
+A test that locks something we plan to change is named
+`CURRENT BEHAVIOUR (will change in job N): …`. When that job lands, the failing
+test points at the sentence to update. Checklist:
+
+- **Job 3B — any past month payable:** the server already accepts months older
+  than the panel's window; the panel offers 5 past + current + 3 ahead; arrears
+  are unlimited (`payment-take`, `arrears-db`, `payment-view`). Screens only.
+- **Job 3A — settled, now RULES (no longer CURRENT BEHAVIOUR):** a card is
+  charged once per UID; the same course+month twice in one request is refused;
+  one charge per student at a time (advisory lock, checks under it); combo state
+  (`auto` / `needs-confirmation` / `exempt-new` / `exempt-free` / `off`, in
+  `combos.ts`); Half month and No charge (`Payment.chargeMode`). See below.
+- **Job 5 — settled, now RULES (no longer CURRENT BEHAVIOUR):** the four tests in
+  `payment-reports-nocharge.test.ts` that documented how No-charge and Half rows inflated
+  Daily Summary, payslip and roll-up counts now state the new rule (see "Gate CLOSED").
+- **Job 3 — one `lastCompletedMonth`:** `combos.ts` and `payslips.ts` each have
+  their own copy (`last-completed-month`). Merge them, then keep the cases.
+- **Rounding (`report 9.2`):** money is a JS float then `toFixed(2)`, so half-cent
+  results go either way (`1333.33×0.5 → 666.66`, `1250.05×0.5 → 625.02`,
+  `10.15×0.5 → 5.08`).
+- **Rounding (`report 9.3`):** a slip rounds each teacher's two halves separately,
+  so slips and the month-end roll-up can differ by a cent.
+- **KNOWN ISSUE, month parameters on the older pages (not fixed: the byte-identical rule
+  forbids touching them in job 5; a later small job):** `reports/monthly-income/page.tsx`,
+  `payslips/page.tsx` and `payslips/voucher/page.tsx` accept any `YYYY-MM` and reach
+  `monthInstants`, which throws a RangeError ("Invalid time value") for a well-formed year such
+  as `0999` or `9999` (checked on `monthInstants`), so `?month=0999-05` shows the error page
+  instead of the current month; `reports/page.tsx` and `reports/not-paid/page.tsx` also accept
+  any `YYYY-MM` (month `00`, `13`…). The new `/reports/half-no-charge` bounds the year to
+  2000-2100 and takes a real month only (`parseMonthParam` in `report-half-no-charge.ts`,
+  junk means the current month); the later job can reuse it.
+- **KNOWN ISSUE, old Receipts page (decided: not fixed now; a later small job):**
+  `findTransactions` groups only the newest 300 ROWS, so a receipt cut at that boundary
+  shows fewer lines and a smaller total (and a number that is only right when its
+  lowest-id row survives). The new screen does not use it. The fix belongs in that later
+  job (read whole receipts by key, as `receipt-lookup.ts` does), and the test
+  `receipt-lookup.test.ts` — `CURRENT BEHAVIOUR (old Receipts page, NOT changed in job 4)`
+  — is the sentence to update when it lands.
+- **Silent zero fee:** a missing or empty `admission_fee` / `smart_card_fee`
+  setting charges `0.00` instead of failing.
+- **Quirk, not planned to change:** a student with no active enrolment reads as
+  grey "Free tier".
+
+**Gate CLOSED (job 5): the reports are ready for Half and No-charge months.** The menu
+switch may now happen — after Kavin's real-device checks (Terminal 1, Chrome 102), and
+with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must stay:
+
+- **A No-charge month is settled, 0.00, not cash and not a payer.** It is in no paid
+  count: not Daily Summary's Full / Half / 25%, not the payslip's paying students, tier
+  counts, sheet lines or cards, and so not the month-end roll-up's "students". Its student
+  reads as not paid for a Daily Summary range. Every money figure was already right and
+  did not move. The exclusion is a JAVASCRIPT comparison (`chargeMode !== "NO_CHARGE"`),
+  because a NULL (full-fee) row must stay a payer. `chargemode-null-safe.test.ts` is a
+  BEST-EFFORT text scan, not a proof: a green run does not mean no such filter exists. It reads
+  `src` (non-test `.ts`/`.tsx`, `src/test-support` included, comments stripped). It CATCHES:
+  Prisma `chargeMode: { not … }` and `chargeMode: { notIn … }` when `not` / `notIn` is the first
+  key; Prisma `NOT: { chargeMode … }`, `NOT: [{ chargeMode … }]` and
+  `NOT: { OR: [{ chargeMode … }] }` when `chargeMode` follows within 300 characters and no `;`;
+  `chargeMode !== "FULL"` / `!= "FULL"` (and `<> "FULL"` in SQL text), because a full-fee row is
+  NULL, never the string FULL; raw SQL `"chargeMode" <>`, `"chargeMode" !=`, `chargeMode <>`,
+  `"chargeMode" NOT IN` / `NOT LIKE`.
+  It does NOT catch (accepted gaps, so review these by eye): `not` / `notIn` that is not the
+  first key (`chargeMode: { in: x, not: "HALF" }`); a quoted key (`"chargeMode": { not: … }`);
+  a filter held in a variable (`chargeMode: modeWhere`, or `NOT: someWhereVar`, where the object
+  is built elsewhere); "not FULL" written with the operands reversed (`"FULL" !== p.chargeMode`),
+  in a backtick literal, or through an alias (`const m = p.chargeMode; m !== "FULL"`); a cast or
+  wrapper such as `"chargeMode"::text <> 'X'`; `NOT ("chargeMode" = 'HALF')` in raw SQL;
+  `NOT: { … }` with `chargeMode` more than 300 characters later; any file outside `src` or any
+  `*.test.ts` file; and code hidden by the approximate comment stripping (it removes `//` after
+  whitespace or at a line start and `/* … */`, so a `//` or `/*` inside a string literal can
+  hide code from the scan). It can also FAIL a safe query that puts `NOT: { cancelled: true }`
+  and `chargeMode: { in: […] }` close together; if that happens, restructure the query rather
+  than loosening the pattern. The safe shapes stay a positive `in` / equals, or a JavaScript
+  `!== "NO_CHARGE"` / `=== "HALF"`.
+- **A Half month is a real payment, and its student is a normal payer of THEIR tier.** In
+  Daily Summary and payslips "Half" still means the HALF TIER: no column is renamed or
+  moved. The month is shown, not hidden: Daily Summary adds two lines to Other income
+  (screen and PDF): "Half months (N): <amount>, included in Class fees" with "-" in the Total
+  cell (the amount is already inside Class fees, so nobody adds it twice) and "No charge
+  months (N)" (0.00); the payslip's sheet line is its own line (it no longer merges into a
+  Half-TIER student's line of the same price), the voucher says "(Half month)" as a second
+  line INSIDE the course cell (a zero-width block, so the eight columns keep their widths),
+  and the Payslips SCREEN (not the voucher, not any PDF) notes "incl. Half months: N cards,
+  amount". The month-end roll-up has no Half figure (decided). The column widths were
+  measured at a 703 px SCREEN width — the A4 content width (186 mm) the voucher's own print
+  rules give — NOT in real print media: printing the voucher can come out blank (see the
+  "Observed, NOT fixed" note below), so the layout has not been seen on real paper.
+- **Omit when none.** The new fields (`halfMonths`, `noChargeMonths` on the summary,
+  `halfMonth` on a line, `halfMonths` on a slip) are ABSENT when there is nothing to say, so
+  for data with no Half and no No-charge row every report, payslip, roll-up, search row and
+  profile is byte for byte what it was. `reports-golden.test.ts` proves it from a fixture
+  generated by the code BEFORE job 5; refresh it only for a change someone chose, in its
+  own commit. In addition, Claude ran a LOCAL browser comparison on 1 Nov 2026 — the build
+  from before job 5 against the build after the review fixes F1–F10 (tip `014d003`), on the
+  same local database: 18 outputs, of which 13 HTML pages are identical (the two voucher pages
+  after removing their "Generated <date> <time>" stamp, a clock reading, before comparing) and 4
+  PDFs are identical by text and pixel (17 identical), and 1 page differs: the Reports page, by
+  the new ADMIN-only button. The evidence file records no commit SHA: "tip `014d003`" comes from
+  my own note of when it was run (after F1-F10, before the later re-review commits, which touch
+  only the admin page and are not among the 18 outputs). That comparison is NOT reproducible from the repo (its harness
+  lived in a scratch folder); its evidence file, `payment-job5-fixes-normal-case-before-after.txt`,
+  was delivered to Kavin and sits in the working directory's gitignored `review-shots/`.
+  (`payment-job5-normal-case-before-after.txt` next to it is the EARLIER run, before the
+  review fixes.) What the repo itself proves is the golden master above.
+- **The readers that did not change are on purpose:** arrears, Not paid, the Student List,
+  attendance month states and `payment-view` read `SETTLED_PAYMENT_WHERE` (billing-month
+  clock, rule 23): a No-charge or Half month is settled, so it is not owed.
+- **Search and the student profile** show the mode on such a line, in the receipts' own
+  words; label text only. Search appends "(Half month)" / "(No charge)" to the course text
+  (`chargeModeSuffix`). The profile keeps the course text plain and carries `mode` as its own
+  field, present only on a month that was not the full fee, shown as its own small
+  non-truncated label after the course span (a long course name on a phone cannot cut it off).
+- **`/reports/half-no-charge` — the admin's review of what staff recorded.** ADMIN only,
+  guarded twice (`requireNavAccess("/reports")`, then `notFound()` unless ADMIN), reached by
+  one ADMIN-only button on the Reports page (no menu item). Month by `paidAt`, cut at the
+  payslips' Colombo midnight (`monthInstants`); filters: person and Half / No charge. The
+  per-person counts and the Half amount are a groupBy over EVERY row in the filter and are
+  never taken from the list, which is the newest 300 with a plain note; cancelled rows are
+  listed greyed with a Cancelled chip and counted nowhere; "share of their months" is out of
+  that person's non-cancelled class months in the same month and person filter (NULL counted
+  as normal). A No-charge month's waived value is not stored (0.00), so none is shown. No CSV.
+  Everyone who recorded a month is NAMED, whatever role they hold today: a taker who is no
+  longer ADMIN / STAFF shows their name with "(former role)", and a user that cannot be found
+  reads "Unknown user (#id)" — never a dash (`takerName`). The person filter accepts ONLY ids it
+  offers: the current ADMIN / STAFF logins, plus anyone who recorded a Half or No-charge month
+  in the chosen month (a former taker is offered, and can be filtered on, only for a month in
+  which they recorded one). Any other `staff` value — no such user, a teacher, a former taker
+  with nothing that month — is ignored like any junk in the URL (rule 23), so the select and
+  the report always agree. The cap and cancelled notes say what the figures cover (`capNotes`): the counts
+  cover the non-cancelled rows, and only cancelled rows actually listed are called shown. The
+  month parameter is a real month in 2000-2100 (`parseMonthParam`), else the current month.
+- **Observed, NOT fixed (out of scope for job 5):** printing the voucher can come out blank.
+  The global 58 mm rule in `globals.css` (`body > *:not(#xenon-print) { display: none
+  !important }`) hides the whole page under print media, while the voucher page relies on
+  its own `visibility` rules; under print emulation the sheet measures 0 px wide. A later
+  job on the print path should reconcile the two.
+
+**Rules for the money rules (job 3A) that later work must keep:**
+
+- `takePayment` inputs only ever GROW, and every new field is optional with
+  today's meaning when absent (`mode`, `off`). Old phones and terminals keep
+  sending the old shape for days. `payment-golden.test.ts` replays 26 old-style
+  requests and must stay byte-identical; its fixture came from the code before
+  the change and is refreshed only for a change someone chose, in its own commit.
+- `Payment.chargeMode` is NULL for a full-fee row (everything written before it
+  existed and by any old client). NEVER filter it with `{ not: … }`: in SQL that
+  drops the NULL rows. A NO_CHARGE row is an ordinary CLASS row with amount 0.00,
+  so `SETTLED_PAYMENT_WHERE` is the only paid-check it needs.
+- The combo rule lives in `comboStateOf` / `comboStates` and nowhere else; the
+  server decides whether a question is due, the client never asserts it.
+- The migration reaches a database BEFORE the code that selects its column
+  (Prisma selects every column): demo, then production, then merge and deploy.
+- **All guards run before the first write, and a refusal writes nothing.** In the
+  charge transaction every check (admission, clash, smart card) comes before the
+  first `create`/`update`; a refusal is returned from the callback, which COMMITS —
+  that is only safe while no write precedes a guard. A new guard goes above the
+  writes, never below. A new write goes below the guards, never above.
+- **One clock per request.** `takePayment` takes `paidAt` once and judges the month
+  limits, "before enrolment" and `comboStates` (`at: paidAt`) at that instant.
+- **A payment that cannot finish in time is answered, not thrown.** A request that
+  cannot get the per-student lock in 4 s (`lock_timeout`), or whose transaction
+  expires (P2028; `maxWait` 2 s, `timeout` 6 s), returns `{ ok: false, error: "The
+  payment didn't go through in time and nothing was charged. Check Receipts, then try
+  again." }` and writes nothing. The wording names no cause on purpose: another
+  checkout of the same student, an exhausted pool, a slow database or a long catch-up
+  all end here. The old screen has no catch; a throw is a browser crash page.
+- **Open release item: the platform time limit.** No `maxDuration` is set in the
+  repo (on purpose, until the Vercel plan is known). Without Fluid compute the limit
+  is 10 s, and the transaction's own limits already add up to 8 s before cold start
+  and database wake-up; with Fluid compute it is 300 s. Kavin confirms the plan
+  before release.
+- **Inside the transaction use `tx`, never `db`.** A read through `db` there takes a
+  second pooled connection while the lock is held and can starve the pool.
+
+**Decisions recorded from the 3A independent review (Kavin, accepted as built):**
+
+- **Half and No charge are free for staff.** Any month, any student, no note and no
+  role limit: staff run the counter and admins review. The server does not limit
+  NO_CHARGE (a crafted STAFF request can waive months too) — accepted. Job 5 gave
+  admins a "Half and No-charge months" view (`/reports/half-no-charge`) so they can
+  review who recorded what (`takenById` is on every row). `PAYMENT_NEW_ROLES` only decides who
+  sees the NEW screens before the menu switch; it is not a limit on the modes.
+- **A re-enrolled class is not "new".** "New" uses `Enrollment.createdAt`, and
+  re-enrolling reactivates the old row without resetting it, so a student who
+  dropped Chemistry in March and came back on 3 Nov with 0 days in October gets a
+  needs-confirmation question, not exempt-new. (Review finding 7.)
+- **One FREE class exempts the whole combo.** In a three-class combo, FREE +
+  Physics (5 days) + Chemistry (0 days) is `exempt-free`: no question, and
+  Chemistry is billed at the combo rate. FREE is checked before 0 days. (Finding 8.)
+- **No charge on one class does not stop the combo on the other.** Combo A+B, A
+  recorded as No charge and B as Full: B is charged the combo rate. A NO_CHARGE row
+  stores `comboId` null. (Finding 9.)
+- **A month recorded as No charge says so when charged again** (not "already
+  paid"); only an administrator can cancel that record. (Finding 10.)
+
+**The new payment screens (`/payment-new`, job 3B):**
+
+- **ADMIN only until the menu switch**, through ONE constant, `PAYMENT_NEW_ROLES` in
+  `src/app/(app)/payment-new/access.ts`, read by both pages and both read actions.
+  At the menu switch flip it to `OPERATIONAL_ROLES` (ADMIN + STAFF). That is the
+  whole change; `payment-new-actions.test.ts` is tied to the constant and its
+  `FLIP` lines change with it. This blocks the screens, not a hand-crafted request
+  to `takePayment` — that action is shared with the old screen and stays ADMIN + STAFF.
+- **Two server rules are RESTATED on the read side, on purpose, for now:** the Half
+  amount (`halfMonthly` / `halfComboMonthly` in `buildPaymentView`, the same
+  `money(Number(full) * 0.5)` as `takePayment`) and the smart-card "already
+  charged" check (`smartCard.chargedOn`, the same query as the server's guard).
+  `takePayment` lives in a `"use server"` file, so neither can be shared without
+  moving it. The parity tests (`payment-view.test.ts`, `payment-screen-rules.test.ts`)
+  fail on any drift, and the server stays the authority. **A later cleanup job
+  should merge each pair into ONE shared source** (the screen would then
+  show what the server function itself returns).
+- **No role limit on the modes.** Full, Half and No charge are open to everyone who can
+  open the screen; `PAYMENT_NEW_ROLES` is the only role check under `payment-new`
+  (`payment-new-modes-open.test.ts` fails on any other). ADMIN-only before the switch
+  is a staged-release step (the report gate is closed by job 5), not a limit on the modes.
+- **A half MONTH never reads as a bare "Half".** "Half" alone is the fee TIER chip; a
+  half month says "Half month" (or "½ month" in the calendar tile).
+- **Full dates read "8 Aug 2026"** through the one shared `friendlyDate`
+  (`src/lib/friendly-date.ts`): the smart-card row ("already charged on …" and "last
+  …") and the server's smart-card refusal. Attendance dates keep their short
+  "26 Sep" form. Never print a raw `YYYY-MM-DD` to staff.
+- **Last 10 receipts (`/payment-new/receipts`, job 4) is READ-ONLY.** Same
+  `PAYMENT_NEW_ROLES` guard as the other new pages; no server action of its own is
+  exposed (it reads on the server), and Reprint is the existing `reprintTransaction`
+  with `ReceiptView`. There is no Cancel there — that stays admin-only on `/receipts`.
+  The lookup (`src/lib/receipt-lookup.ts`) returns WHOLE receipts: it walks payments
+  newest first to collect distinct transaction keys (never filtering on
+  `transactionRef: null`), then loads each through `loadTransaction`, so the list, the
+  Receipts page and a reprint cannot disagree. `XN-n` names a receipt only when n is
+  the LOWEST payment id of its transaction; a middle row's id matches nothing. List
+  cap 10, search cap 20, names need 2 characters, cancelled receipts are included
+  with their chip. The search is a GET form (a searchParam, rule 17). Tests lock it
+  read-only twice: in the source and on a database that refuses every write.
+- **`public/sw.js` is proven not to cache any payment or receipt page**
+  (`service-worker-payment-pages.test.ts` runs the real worker in a sandbox, with
+  `/attendance` as the positive control). Keep that test when the worker changes.
+- The screen's Total is the receipt's total: every price is a server-built string,
+  one pure function (`comboApplies` in `payment-charge.ts`) says when a combo
+  applies, and `payment-screen-rules.test.ts` compares the displayed Total with the
+  real receipt for every state, switch, answer and mode.
+
+Not covered, on purpose: receipt printing (no automated way). The overlapping-request
+guards are tested in-process against a direct Postgres connection; the Neon pooler
+path is not reproducible locally, so run the race scenario against demo through the
+pooled URL before relying on it in production.

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef } from "react";
 import { Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -17,9 +16,9 @@ import type { Receipt } from "./actions";
  * exact document later. A voided transaction reprints with a CANCELLED band
  * across it — it must never come off the printer looking valid.
  *
- * Printing goes through the browser: `@page` is pinned to 58mm and everything
- * outside the receipt is hidden, so the same markup works on a thermal printer
- * driver today and a POS bridge later. Kept black-on-white — thermal paper has
+ * Printing goes through the browser: everything outside the receipt is hidden
+ * (globals.css), so the same markup works on a thermal printer driver today and
+ * a POS bridge later. Kept black-on-white — thermal paper has
  * no colour, and purple would render as mud.
  *
  * Thermal paper is the running cost here, so the layout is deliberately tight:
@@ -43,18 +42,17 @@ export function ReceiptView({
    */
   auto?: boolean;
 }) {
+  const paperRef = useRef<HTMLDivElement>(null);
   return (
     <div className="space-y-4">
       <div className="flex justify-center">
-        <Paper receipt={receipt} />
+        <Paper receipt={receipt} paperRef={paperRef} />
       </div>
 
-      {/* The same paper again, in the print root — a direct child of <body>,
-          outside this dialog. Only this copy goes on paper; globals.css hides
-          everything else while printing. */}
-      <PrintPortal>
-        <Paper receipt={receipt} />
-      </PrintPortal>
+      {/* The same paper again, as plain markup in the print root — a direct
+          child of <body>, outside this dialog. Only this copy goes on paper;
+          globals.css hides everything else while printing. */}
+      <PrintCopy paperRef={paperRef} receipt={receipt} />
 
       {!auto && (
       <div className="no-print mx-auto flex max-w-md gap-2">
@@ -77,10 +75,17 @@ export function ReceiptView({
  * Rendered twice — once on screen as the preview staff glance at, once inside
  * the print root — so that what prints cannot depend on what is on screen.
  */
-function Paper({ receipt }: { receipt: Receipt }) {
+function Paper({
+  receipt,
+  paperRef,
+}: {
+  receipt: Receipt;
+  paperRef?: React.Ref<HTMLDivElement>;
+}) {
   const voided = receipt.cancelled ?? null;
   return (
         <div
+          ref={paperRef}
           data-receipt
           className="receipt-paper w-[384px] max-w-full border bg-white px-3 py-2 font-mono text-[13px] leading-tight text-black"
         >
@@ -141,33 +146,48 @@ function Paper({ receipt }: { receipt: Receipt }) {
 }
 
 /**
- * A portal into #xenon-print, created on mount as a direct child of <body>.
- *
- * Being a child of <body> is the point: the payment dialog sits inside a
- * `position: fixed` positioner and is transformed while it animates, and both
- * make an ancestor the containing block for absolutely positioned descendants
- * — printing from inside it put the receipt somewhere other than the top of
- * the page.
+ * How long the print copy stays in the page after the receipt screen is gone.
+ * On Android `window.print()` returns at once and the preview is composed — and,
+ * when someone finally taps Print, composed AGAIN — long after the app has moved
+ * on to the next student (`afterprint` and the auto-advance unmount the receipt
+ * within ~2.5 s). A copy that died with the receipt left globals.css hiding the
+ * whole app and nothing to show: a blank page 1/1. So the copy is plain markup,
+ * not owned by React, and stays until the next receipt replaces it.
  */
-function PrintPortal({ children }: { children: React.ReactNode }) {
-  // Created once, during render, so there is no state to set from an effect —
-  // the effect only attaches and detaches it.
-  const [host] = useState(() => {
-    if (typeof document === "undefined") return null;
-    const el = document.createElement("div");
-    el.id = "xenon-print";
-    return el;
-  });
+const PRINT_COPY_KEEP_MS = 10 * 60 * 1000;
+let pruneTimer: number | undefined;
 
+/**
+ * Copies the paper that is on screen into #xenon-print, a direct child of <body>,
+ * outside the payment dialog (which sits in a fixed-position positioner and is
+ * transformed while it animates — either makes an ancestor the containing block
+ * for absolutely positioned descendants, which put the receipt off the page).
+ * Runs as a child effect, so it has run before AutoPrintReceipt's effect asks
+ * the browser to print. Nothing here is removed when the component unmounts.
+ */
+function PrintCopy({
+  paperRef,
+  receipt,
+}: {
+  paperRef: React.RefObject<HTMLDivElement | null>;
+  receipt: Receipt;
+}) {
   useEffect(() => {
-    if (!host) return;
-    document.body.appendChild(host);
-    return () => {
-      host.remove();
-    };
-  }, [host]);
+    const paper = paperRef.current;
+    if (!paper) return;
+    let host = document.getElementById("xenon-print");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "xenon-print";
+      document.body.appendChild(host);
+    }
+    host.dataset.reference = receipt.reference;
+    host.innerHTML = paper.outerHTML;
+    window.clearTimeout(pruneTimer);
+    pruneTimer = window.setTimeout(() => document.getElementById("xenon-print")?.remove(), PRINT_COPY_KEEP_MS);
+  }, [paperRef, receipt]);
 
-  return host ? createPortal(children, host) : null;
+  return null;
 }
 
 /**

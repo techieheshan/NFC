@@ -59,6 +59,14 @@ enum PaymentKind {
   CLASS // monthly per-course fee (tiers + combos apply here)
 }
 
+// How much of a month's fee one CLASS payment row charges. NULL means the full fee
+// (every row written before this existed, and every row the old screens write), so the
+// column is additive: nothing existing changes meaning.
+enum ChargeMode {
+  HALF // 50% of what would otherwise be charged for that month (after tier and combo)
+  NO_CHARGE // the month is recorded as settled with no money: a real row, amount 0.00
+}
+
 enum AttendanceMethod {
   NFC
   QR
@@ -502,8 +510,17 @@ model Payment {
   // past payslip. Null on ADMISSION/SMART_CARD (no split) and on legacy rows.
   instituteSharePercentApplied Decimal? @db.Decimal(5, 2)
 
+  // CLASS only. NULL = the full fee. HALF / NO_CHARGE: see the ChargeMode enum.
+  // A NO_CHARGE row is a normal CLASS row with amount 0.00, so SETTLED_PAYMENT_WHERE
+  // sees it and the month is settled. NEVER filter with `chargeMode: { not: ... }`:
+  // in SQL that drops the NULL rows, which are almost all of them.
+  chargeMode ChargeMode?
+
   // Combined-payment audit (CLASS only). If combo applied, comboId set +
-  // comboApplied true. If refused, comboApplied false + reason REQUIRED.
+  // comboApplied true. If refused by staff, comboApplied false + reason REQUIRED.
+  // comboId set + comboApplied false + reason NULL = the combo was SWITCHED OFF by
+  // staff for that payment (normal rate, no reason asked). comboId NULL on a
+  // NO_CHARGE row: that month is outside the combo whatever the student qualifies for.
   combo              Combo?  @relation(fields: [comboId], references: [id])
   comboId            Int?
   comboApplied       Boolean @default(false)

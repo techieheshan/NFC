@@ -93,6 +93,17 @@ export type DailySummary = {
   admission: { count: number; total: string };
   smartCard: { count: number; total: string };
   classTotal: string;
+  /**
+   * Months paid at HALF the fee (`Payment.chargeMode = HALF`), whatever tier the student is on.
+   * Already inside every amount above — this is a count of what they were, not extra money.
+   * ABSENT when there are none, so the report for today's data has exactly the keys it always had.
+   */
+  halfMonths?: { count: number; total: string };
+  /**
+   * Months recorded with NO CHARGE: settled, 0.00, and nobody paid, so they are in no paid count.
+   * ABSENT when there are none.
+   */
+  noChargeMonths?: { count: number };
   totalCollected: string;
   deductions: {
     teacherAdvances: string;
@@ -124,6 +135,9 @@ export async function dailySummary(from: string, to: string): Promise<DailySumma
         studentId: true,
         courseId: true,
         feeTierId: true,
+        // NULL = the full fee (every row written before HALF / NO_CHARGE existed). Compared in
+        // code, never filtered in SQL: `<> 'NO_CHARGE'` would drop the NULL rows.
+        chargeMode: true,
       },
     }),
     db.feeTier.findMany({ select: { id: true, code: true, multiplier: true } }),
@@ -177,6 +191,9 @@ export async function dailySummary(from: string, to: string): Promise<DailySumma
 
     for (const p of paidHere) {
       amount += num(p.amount);
+      // A month recorded with NO CHARGE is settled and 0.00 (added above), but nobody paid: it
+      // is not a payer in any count below, and the student is "not paid" for this range.
+      if (p.chargeMode === "NO_CHARGE") continue;
       if (p.feeTierId !== null && freeTierIds.has(p.feeTierId)) continue;
       anyNonFree.add(p.studentId);
       const code = p.feeTierId !== null ? tierCode.get(p.feeTierId) : undefined;
@@ -211,6 +228,9 @@ export async function dailySummary(from: string, to: string): Promise<DailySumma
   };
 
   const classTotal = classPayments.reduce((s, p) => s + num(p.amount), 0);
+  // Half and No-charge MONTHS, over every course in the range — for the extra lines only.
+  const halfMonths = classPayments.filter((p) => p.chargeMode === "HALF");
+  const noChargeMonths = classPayments.filter((p) => p.chargeMode === "NO_CHARGE");
   const admission = sumKind("ADMISSION");
   const smartCard = sumKind("SMART_CARD");
   const totalCollected = classTotal + Number(admission.total) + Number(smartCard.total);
@@ -230,6 +250,10 @@ export async function dailySummary(from: string, to: string): Promise<DailySumma
     admission,
     smartCard,
     classTotal: money(classTotal),
+    ...(halfMonths.length > 0
+      ? { halfMonths: { count: halfMonths.length, total: money(halfMonths.reduce((s, p) => s + num(p.amount), 0)) } }
+      : {}),
+    ...(noChargeMonths.length > 0 ? { noChargeMonths: { count: noChargeMonths.length } } : {}),
     totalCollected: money(totalCollected),
     deductionLines: expenses
       .map((e) => ({

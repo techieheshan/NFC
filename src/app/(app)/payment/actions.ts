@@ -2,14 +2,17 @@
 
 import { randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { requireOperationalAccess } from "@/lib/authz";
-import { applicableCombos, type ApplicableCombo } from "@/lib/combos";
+import { applicableCombos, comboStates, type ApplicableCombo } from "@/lib/combos";
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
+import { friendlyDate } from "@/lib/friendly-date";
 import {
+  chargeModeSuffix,
   monthLabel,
   receiptReference,
   type Receipt,
@@ -22,6 +25,53 @@ import {
 } from "@/lib/students";
 
 export type { StudentBrief };
+
+/**
+ * Namespace for the per-student advisory lock taken inside the charge transaction
+ * (`pg_advisory_xact_lock(namespace, studentId)`). Any fixed number nothing else uses; it
+ * only keeps this lock from ever colliding with another feature's.
+ */
+const PAYMENT_LOCK_NAMESPACE = 7301;
+
+/**
+ * Limits for the charge transaction. No `maxDuration` is set anywhere in this repo, so the
+ * platform's own function limit applies (10 s on a plan without Fluid compute, 300 s with it).
+ * The transaction's own limits add up to 8 s; with a cold start or a waking database the margin
+ * under 10 s is thin, so the plan is an open release item (see AGENTS.md).
+ *   - maxWait   how long to wait for a pooled connection to start the transaction
+ *   - timeout   how long the transaction may run once started
+ *   - lock wait how long to wait for ANOTHER checkout of the same student to finish. It is
+ *               shorter than `timeout` on purpose: Prisma cannot roll a transaction back while
+ *               its connection is still blocked inside the lock statement, so without this the
+ *               waiter would only be answered when the other checkout finally ended.
+ */
+const TX_MAX_WAIT_MS = 2000;
+const TX_TIMEOUT_MS = 6000;
+const LOCK_WAIT_MS = 4000;
+
+/**
+ * Deliberately says what happened (not in time, nothing charged), not WHY: the cause may be
+ * another checkout of the same student, an exhausted pool, a slow database or a long catch-up.
+ */
+const BUSY_MESSAGE = "The payment didn't go through in time and nothing was charged. Check Receipts, then try again.";
+
+/**
+ * True when the charge transaction could not run in time: it expired or could not start
+ * (P2028), or the per-student lock was not free within LOCK_WAIT_MS (Postgres lock_not_available,
+ * SQLSTATE 55P03). Nothing was written either way — the transaction rolled back.
+ */
+function isBusyError(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (e.code === "P2028") return true;
+  let detail = e.message;
+  try {
+    detail += ` ${JSON.stringify(e.meta ?? {})}`;
+  } catch {
+    // meta that cannot be serialised (a BigInt, a cycle) must not replace the real error — the
+    // message alone decides.
+  }
+  return /55P03|lock timeout/i.test(detail);
+}
 
 /** How many months back the catch-up selector will ever offer. */
 const MONTH_WINDOW = 6;
@@ -63,11 +113,25 @@ export type CourseLine = {
 
 export type { ApplicableCombo };
 
+/**
+ * How much of a month's fee one line charges. FULL (or absent) is today's behaviour;
+ * HALF is 50% of what would otherwise be charged; NO_CHARGE records the month as settled
+ * with no money. A client sends only the mode — the server computes every amount.
+ */
+export type PaymentMode = "FULL" | "HALF" | "NO_CHARGE";
+
 /** One staff decision per combo, for THIS transaction only — never remembered. */
 export type ComboDecision = {
   comboId: number;
   apply: boolean;
   reason?: string;
+  /**
+   * Optional. Staff switched this combo OFF: the normal rate is charged and no reason is
+   * needed (a teacher may simply say a student does not get it). Absent = today's rules:
+   * a refusal needs a reason. It wins over `apply`, and the row records "not applied"
+   * with no reason text.
+   */
+  off?: boolean;
 };
 
 export type PaymentPanel = {
@@ -117,8 +181,18 @@ function classFee(defaultFee: unknown, multiplier: unknown): number {
   return Number(String(defaultFee)) * Number(String(multiplier));
 }
 
-async function settingAmount(key: string, fallback: string): Promise<string> {
-  const row = await db.setting.findUnique({ where: { key } });
+/**
+ * `client` is `db` by default. Inside the charge transaction pass `tx`: the transaction already
+ * holds one pooled connection, and a read through `db` there would need a SECOND one while the
+ * per-student lock is held — with enough overlapping requests the pool runs dry and the lock
+ * holder waits for a connection that the waiters (blocked on its lock) never give back.
+ */
+async function settingAmount(
+  key: string,
+  fallback: string,
+  client: { setting: typeof db.setting } = db,
+): Promise<string> {
+  const row = await client.setting.findUnique({ where: { key } });
   return money(Number(row?.value ?? fallback));
 }
 
@@ -288,7 +362,16 @@ const chargeSchema = z.object({
   admission: z.boolean(),
   smartCard: z.boolean(),
   classMonths: z
-    .array(z.object({ courseId: id, year: id, month: z.coerce.number().int().min(1).max(12) }))
+    .array(
+      z.object({
+        courseId: id,
+        year: id,
+        month: z.coerce.number().int().min(1).max(12),
+        // Optional: absent means FULL, exactly as before. The client says WHICH mode,
+        // never an amount.
+        mode: z.enum(["FULL", "HALF", "NO_CHARGE"]).optional(),
+      }),
+    )
     .max(100),
   comboDecisions: z
     .array(
@@ -296,6 +379,7 @@ const chargeSchema = z.object({
         comboId: id,
         apply: z.boolean(),
         reason: z.string().trim().max(300).optional(),
+        off: z.boolean().optional(),
       }),
     )
     .max(20),
@@ -309,7 +393,7 @@ export async function takePayment(input: {
   studentId: number;
   admission: boolean;
   smartCard: boolean;
-  classMonths: { courseId: number; year: number; month: number }[];
+  classMonths: { courseId: number; year: number; month: number; mode?: PaymentMode }[];
   comboDecisions: ComboDecision[];
 }): Promise<ChargeResult> {
   const user = await requireOperationalAccess();
@@ -322,8 +406,11 @@ export async function takePayment(input: {
     return { ok: false, error: "Nothing selected to charge." };
   }
 
-  const now = colomboNow();
+  // ONE instant for the whole request: the month limits, the "before enrolment" check, the
+  // combo state and `paidAt` are all judged at it, so a request that straddles midnight (or
+  // the 1st) cannot be judged against two different months.
   const paidAt = new Date();
+  const now = colomboNow(paidAt);
   /**
    * One reference for everything this checkout writes. A combo across three
    * courses, or a three-month catch-up, is a single receipt — this is what lets
@@ -388,23 +475,43 @@ export async function takePayment(input: {
     }
   }
 
+  // The same course and month listed twice in one request would be charged twice (the stored
+  // rows are checked, the request itself was not), and two entries may even disagree on the
+  // mode. Nothing sensible can be assumed, so refuse and write nothing.
+  const listed = new Set<string>();
+  for (const row of classMonths) {
+    const key = `${row.courseId}:${row.year}:${row.month}`;
+    if (listed.has(key)) {
+      const enrolled = byCourse.get(row.courseId);
+      const name = enrolled ? courseDisplayName(enrolled.course) : "That course";
+      return { ok: false, error: `${name} — ${monthLabel(row.year, row.month)} is listed twice in this payment.` };
+    }
+    listed.add(key);
+  }
+
   /*
-   * Eligibility is recomputed here, never taken from the client — the combo
-   * rate is a discount, so the client may say WHICH combo was decided, but not
-   * whether the student qualifies or what the price is.
+   * Eligibility AND whether anyone must answer are recomputed here, never taken from the
+   * client — the combo rate is a discount, so the client may say WHICH combo was decided,
+   * but not whether the student qualifies, what the price is, or whether a question was due.
+   * `comboStates` is the one rule (see combos.ts).
    */
-  const combos = await applicableCombos(studentId);
+  const switchedOff = new Set(comboDecisions.filter((d) => d.off).map((d) => d.comboId));
+  const combos = await comboStates(studentId, { switchedOff, at: paidAt });
   const comboByCourse = new Map<number, { comboId: number; comboFee: string }>();
   for (const combo of combos) {
     for (const item of combo.items) {
       comboByCourse.set(item.courseId, { comboId: combo.comboId, comboFee: item.comboFee });
     }
   }
+  const stateByCombo = new Map(combos.map((c) => [c.comboId, c.state]));
 
-  // Which combos this transaction actually touches — a decision is required for
-  // each, and decisions for anything else are ignored rather than trusted.
+  // Which combos this transaction actually touches. Decisions for anything else are
+  // ignored rather than trusted.
   const involved = new Set(
     classMonths
+      // A month recorded with no charge is 0.00 with or without the combo, so it
+      // never needs a decision.
+      .filter((c) => c.mode !== "NO_CHARGE")
       .map((c) => comboByCourse.get(c.courseId)?.comboId)
       .filter((v): v is number => v !== undefined),
   );
@@ -414,56 +521,132 @@ export async function takePayment(input: {
     if (involved.has(d.comboId)) decisionByCombo.set(d.comboId, d);
   }
 
+  /**
+   * What happens to each touched combo, once the rules have been applied:
+   *   switched off          → normal rate, recorded as not applied, NO reason text
+   *   a refusal             → honoured in every state, and it needs a reason, as always
+   *   an acceptance         → applied
+   *   no answer             → applied on its own, UNLESS the state is needs-confirmation
+   *                           (a class with 0 days last month), which still needs a person
+   * So an old client that answers every combo keeps working: an answer for a combo that
+   * no longer needs one is honoured if it is a refusal and otherwise changes nothing.
+   */
+  const outcome = new Map<number, { apply: boolean; reason: string | null }>();
   for (const comboId of involved) {
+    const state = stateByCombo.get(comboId);
     const decision = decisionByCombo.get(comboId);
-    if (!decision) {
+
+    if (state === "off") {
+      outcome.set(comboId, { apply: false, reason: null });
+      continue;
+    }
+    if (decision && !decision.apply) {
+      if (!decision.reason?.trim()) {
+        return {
+          ok: false,
+          error: "A reason is required when the combined rate is refused.",
+        };
+      }
+      outcome.set(comboId, { apply: false, reason: decision.reason.trim() });
+      continue;
+    }
+    if (decision?.apply) {
+      outcome.set(comboId, { apply: true, reason: null });
+      continue;
+    }
+    if (state === "needs-confirmation") {
       return { ok: false, error: "A combined-rate decision is missing." };
     }
-    if (!decision.apply && !decision.reason?.trim()) {
-      return {
-        ok: false,
-        error: "A reason is required when the combined rate is refused.",
-      };
-    }
-  }
-
-  // Idempotency: a stale tab must not double-charge a month already settled.
-  const clashes = await db.payment.findMany({
-    where: {
-      studentId,
-      kind: "CLASS",
-      cancelled: false,
-      OR: classMonths.map((c) => ({
-        courseId: c.courseId,
-        billingYear: c.year,
-        billingMonth: c.month,
-      })),
-    },
-    select: { courseId: true, billingYear: true, billingMonth: true },
-  });
-  if (classMonths.length > 0 && clashes.length > 0) {
-    const c = clashes[0];
-    // courseId is nullable on Payment for the same reason as the billing
-    // columns — only CLASS rows carry one.
-    const enrolled = c.courseId !== null ? byCourse.get(c.courseId) : undefined;
-    const name = enrolled ? courseDisplayName(enrolled.course) : "That course";
-    // billingYear/Month are nullable on Payment (ADMISSION/SMART_CARD have
-    // none), but a CLASS row always carries them.
-    const when =
-      c.billingYear !== null && c.billingMonth !== null
-        ? ` — ${monthLabel(c.billingYear, c.billingMonth)}`
-        : "";
-    return { ok: false, error: `${name}${when} is already paid.` };
+    outcome.set(comboId, { apply: true, reason: null });
   }
 
   const lines: ReceiptLine[] = [];
+  const modes: PaymentMode[] = [];
   let total = 0;
 
-  const created = await db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx): Promise<{ refused: string } | { ids: number[] }> => {
+    /*
+     * One charge per student at a time. The checks below ("already paid?", "admission taken?",
+     * "card already charged?") read rows and then write, and nothing in the database stops two
+     * overlapping requests both reading "no" first. A transaction-scoped advisory lock makes the
+     * second request WAIT for the first to commit, so its checks see the first one's rows and
+     * it is refused with the normal message instead of creating a duplicate. It is released by
+     * COMMIT or ROLLBACK, so it is safe through a transaction-pooling endpoint; different
+     * students never wait for each other.
+     */
+    await tx.$executeRaw`SELECT set_config('lock_timeout', ${`${LOCK_WAIT_MS}ms`}, true)`; // this transaction only
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PAYMENT_LOCK_NAMESPACE}::int, ${studentId}::int)`;
+
+    // Authoritative state, read under the lock. (The earlier admission check only keeps the
+    // order in which refusals are reported; this one is the one that cannot race.)
+    const fresh = await tx.student.findUnique({
+      where: { id: studentId },
+      select: { admissionPaid: true, cardUid: true },
+    });
+    if (!fresh) return { refused: "Student not found." };
+    if (admission && fresh.admissionPaid) return { refused: "Admission has already been paid." };
+
+    // Idempotency: a stale tab, or a second request, must not double-charge a month already settled.
+    if (classMonths.length > 0) {
+      const clashes = await tx.payment.findMany({
+        where: {
+          studentId,
+          kind: "CLASS",
+          cancelled: false,
+          OR: classMonths.map((c) => ({
+            courseId: c.courseId,
+            billingYear: c.year,
+            billingMonth: c.month,
+          })),
+        },
+        select: { courseId: true, billingYear: true, billingMonth: true, chargeMode: true },
+        // Deterministic: the earliest clashing month is the one named.
+        orderBy: [{ billingYear: "asc" }, { billingMonth: "asc" }, { id: "asc" }],
+      });
+      if (clashes.length > 0) {
+        // "Recorded as no charge" only when EVERY clashing month is a no-charge record; if any
+        // month was actually paid, the earliest such month is named as "already paid".
+        const paid = clashes.find((x) => x.chargeMode !== "NO_CHARGE");
+        const c = paid ?? clashes[0];
+        // courseId is nullable on Payment for the same reason as the billing
+        // columns — only CLASS rows carry one.
+        const enrolled = c.courseId !== null ? byCourse.get(c.courseId) : undefined;
+        const name = enrolled ? courseDisplayName(enrolled.course) : "That course";
+        // billingYear/Month are nullable on Payment (ADMISSION/SMART_CARD have
+        // none), but a CLASS row always carries them.
+        const when =
+          c.billingYear !== null && c.billingMonth !== null
+            ? ` — ${monthLabel(c.billingYear, c.billingMonth)}`
+            : "";
+        // A month recorded as No charge is settled, but nobody paid for it: say so, and who can
+        // undo it (only an administrator can cancel a payment record).
+        if (!paid && when) {
+          return { refused: `${name}${when} was recorded as no charge. Ask an administrator to cancel that record if it should be charged.` };
+        }
+        return { refused: `${name}${when} is already paid.` };
+      }
+    }
+
+    // A card is charged once. A REPLACEMENT card has a new UID (it is changed by hand in
+    // Registration), so it is chargeable again. Rows with no `cardUidIssued` (old data) never
+    // match a UID, so they never block; a student with no UID at all cannot be guarded.
+    if (smartCard && fresh.cardUid) {
+      const prior = await tx.payment.findFirst({
+        where: { studentId, kind: "SMART_CARD", cancelled: false, cardUidIssued: fresh.cardUid },
+        orderBy: { paidAt: "desc" },
+        select: { paidAt: true },
+      });
+      if (prior) {
+        return {
+          refused: `This card was already charged on ${friendlyDate(colomboNow(prior.paidAt).date)}. If it is a replacement card, change the card number and UID in Registration first.`,
+        };
+      }
+    }
+
     const ids: number[] = [];
 
     if (admission) {
-      const amount = await settingAmount("admission_fee", "0");
+      const amount = await settingAmount("admission_fee", "0", tx);
       const row = await tx.payment.create({
         data: {
           kind: "ADMISSION",
@@ -483,7 +666,7 @@ export async function takePayment(input: {
     }
 
     if (smartCard) {
-      const amount = await settingAmount("smart_card_fee", "0");
+      const amount = await settingAmount("smart_card_fee", "0", tx);
       const row = await tx.payment.create({
         data: {
           kind: "SMART_CARD",
@@ -491,7 +674,7 @@ export async function takePayment(input: {
           transactionRef,
           amount,
           // Records which card this charge issued — matters for reissues.
-          cardUidIssued: student.cardUid,
+          cardUidIssued: fresh.cardUid,
           takenById: user.id,
           paidAt,
         },
@@ -504,13 +687,17 @@ export async function takePayment(input: {
 
     for (const row of classMonths) {
       const e = byCourse.get(row.courseId)!;
-      const inCombo = comboByCourse.get(row.courseId);
-      const decision = inCombo ? decisionByCombo.get(inCombo.comboId) : undefined;
-      const applyCombo = Boolean(inCombo && decision?.apply);
+      const mode: PaymentMode = row.mode ?? "FULL";
+      // A NO_CHARGE month is outside the combo entirely: nothing is charged either way.
+      const inCombo = mode === "NO_CHARGE" ? undefined : comboByCourse.get(row.courseId);
+      const decided = inCombo ? outcome.get(inCombo.comboId) : undefined;
+      const applyCombo = Boolean(inCombo && decided?.apply);
 
-      // Combo rate or normal rate — the tier multiplier applies either way.
+      // Combo rate or normal rate — the tier multiplier applies either way. HALF is half of
+      // exactly that amount (as the receipt would have shown it); NO_CHARGE is nothing.
       const base = applyCombo ? inCombo!.comboFee : e.course.defaultFee;
-      const amount = money(classFee(base, e.feeTier.multiplier));
+      const full = money(classFee(base, e.feeTier.multiplier));
+      const amount = mode === "HALF" ? money(Number(full) * 0.5) : mode === "NO_CHARGE" ? money(0) : full;
 
       const created = await tx.payment.create({
         data: {
@@ -522,6 +709,8 @@ export async function takePayment(input: {
           billingYear: row.year,
           billingMonth: row.month,
           amount,
+          // NULL = the full fee (what every existing row and every old client means).
+          chargeMode: mode === "FULL" ? null : mode,
           takenById: user.id,
           paidAt,
           // Freeze the institute's cut as it stands right now. Editing the
@@ -531,21 +720,29 @@ export async function takePayment(input: {
           // later justify why the discount was withheld.
           comboId: inCombo?.comboId ?? null,
           comboApplied: applyCombo,
-          comboRefusedReason:
-            inCombo && decision && !decision.apply ? decision.reason!.trim() : null,
+          comboRefusedReason: inCombo && decided && !decided.apply ? decided.reason : null,
         },
         select: { id: true },
       });
       ids.push(created.id);
+      modes.push(mode);
       lines.push({
-        label: `${courseDisplayName(e.course)} — ${monthLabel(row.year, row.month)}`,
+        label: `${courseDisplayName(e.course)} — ${monthLabel(row.year, row.month)}${chargeModeSuffix(mode === "FULL" ? null : mode)}`,
         amount,
       });
       total += Number(amount);
     }
 
-    return ids;
+    return { ids };
+  }, { maxWait: TX_MAX_WAIT_MS, timeout: TX_TIMEOUT_MS }).catch((e: unknown) => {
+    // Waiting on another checkout of this student for too long: a plain answer, never a throw
+    // (the old screen has no catch, and the cashier would see the browser's crash page).
+    if (isBusyError(e)) return { busy: true as const };
+    throw e;
   });
+  if ("busy" in result) return { ok: false, error: BUSY_MESSAGE };
+  if ("refused" in result) return { ok: false, error: result.refused };
+  const created = result.ids;
 
   return {
     ok: true,
@@ -560,6 +757,11 @@ export async function takePayment(input: {
       takenBy: user.username,
       lines,
       total: money(total),
+      // Only when EVERY line of this checkout is a month recorded with no charge (and
+      // nothing else was taken). Absent otherwise — the old shape.
+      ...(!admission && !smartCard && modes.length > 0 && modes.every((m) => m === "NO_CHARGE")
+        ? { noCharge: true as const }
+        : {}),
     },
   };
 }

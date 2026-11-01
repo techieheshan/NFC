@@ -560,7 +560,7 @@ export function PaymentScreen({
  * happens once. A browser that can neither print nor fire the event still
  * advances rather than stranding the counter on a receipt.
  */
-function AutoPrintReceipt({ receipt, onDone }: { receipt: Receipt; onDone: () => void }) {
+export function AutoPrintReceipt({ receipt, onDone }: { receipt: Receipt; onDone: () => void }) {
   const advanced = useRef(false);
   const printedFor = useRef<string | null>(null);
 

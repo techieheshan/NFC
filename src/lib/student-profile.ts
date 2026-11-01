@@ -39,6 +39,12 @@ export type ProfilePayment = {
   course: string | null;
   billing: string | null;
   cancelled: boolean;
+  /**
+   * How this month was charged, ONLY when it was not the full fee. ABSENT on every full-fee row, so a
+   * profile for today's data has exactly the keys it always had. The page shows it as its own small label
+   * (not appended to the course text, which is truncated on a phone).
+   */
+  mode?: "HALF" | "NO_CHARGE";
 };
 
 export type ProfileAttendance = {
@@ -114,6 +120,8 @@ export async function loadStudentProfile(studentId: number): Promise<StudentProf
       select: {
         id: true, kind: true, amount: true, paidAt: true, cancelled: true,
         billingYear: true, billingMonth: true,
+        // NULL = the full fee; only used for the label text below.
+        chargeMode: true,
         course: {
           select: {
             name: true,
@@ -220,6 +228,7 @@ export async function loadStudentProfile(studentId: number): Promise<StudentProf
           ? `${MONTHS[p.billingMonth - 1]} ${p.billingYear}`
           : null,
       cancelled: p.cancelled,
+      ...(p.chargeMode ? { mode: p.chargeMode } : {}),
     })),
     attendance: attendance.map((a) => ({
       id: a.id,

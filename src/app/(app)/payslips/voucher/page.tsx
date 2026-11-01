@@ -88,6 +88,10 @@ export default async function VoucherPage({ searchParams }: PageProps<"/payslips
       <style>{`
         @media print {
           @page { size: A4 portrait; margin: 12mm; }
+          /* globals.css hides everything but the receipt's #xenon-print while printing, which
+             would leave this page blank: give the voucher back, and keep any receipt copy out. */
+          body > *:not(#xenon-print) { display: revert !important; }
+          #xenon-print { display: none !important; }
           body * { visibility: hidden !important; }
           #sheets, #sheets * { visibility: visible !important; }
           #sheets { position: absolute; left: 0; top: 0; width: 100%; }

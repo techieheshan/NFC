@@ -163,6 +163,12 @@ export function PayslipsScreen({
 
               <div className="space-y-1 border-t px-4 py-3 text-sm">
                 <Row label="Collected" value={s.totalCollected} />
+                {/* Screen only (not the voucher, not the PDF): the Half months already inside Collected. */}
+                {s.halfMonths && (
+                  <p className="text-muted-foreground text-xs">
+                    incl. Half months: {s.halfMonths.cards} {s.halfMonths.cards === 1 ? "card" : "cards"}, {s.halfMonths.gross}
+                  </p>
+                )}
                 <Row label="Institute share" value={`-${s.totalInstituteShare}`} muted />
                 <Row label="Teacher share" value={s.totalTeacherShare} />
                 <Row label="Advances taken" value={`-${s.advances}`} muted />
