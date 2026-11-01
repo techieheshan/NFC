@@ -227,13 +227,13 @@ describe("the Half and No-charge review data against a real database", { skip: d
   });
 
   test("F10 follow-up: a person the filter does not OFFER is ignored, so the select and the report always agree (a real user, not offered)", async () => {
-    // fay is a real user who took a Half month in 2027-04 only; gus is a TEACHER login who never took a payment.
+    // fay is a real user who took a Half month in 2027-06 only (its own month: no other test writes here); gus is a TEACHER login who never took a payment.
     const fay = await db.user.create({ data: { username: "fay.absent", passwordHash: "x", role: "TEACHER" } });
     const gus = await db.user.create({ data: { username: "gus.never", passwordHash: "x", role: "TEACHER" } });
-    freezeClock("2027-04-10T06:00:00Z");
+    freezeClock("2027-06-10T06:00:00Z");
     setSession("STAFF", fay.id);
     const s = await student();
-    const res = await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, year: 2027, month: 4, mode: "HALF" }] });
+    const res = await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, year: 2027, month: 6, mode: "HALF" }] });
     assert.equal(res.ok, true, JSON.stringify(res));
     freezeClock("2026-11-10T06:00:00Z");
 
@@ -246,11 +246,11 @@ describe("the Half and No-charge review data against a real database", { skip: d
       assert.equal(r.rowCount, everyone.rowCount);
     }
     // in the month where she IS offered, the same id is honoured
-    const april = await report(2027, 4, { staffId: fay.id });
-    assert.equal(april.staffId, fay.id);
-    assert.ok(april.staffOptions.some((o) => o.id === fay.id));
-    // and the teacher is not offered in April either, so still ignored
-    assert.equal((await report(2027, 4, { staffId: gus.id })).staffId, null);
+    const june = await report(2027, 6, { staffId: fay.id });
+    assert.equal(june.staffId, fay.id);
+    assert.ok(june.staffOptions.some((o) => o.id === fay.id));
+    // and the teacher is not offered in June either, so still ignored
+    assert.equal((await report(2027, 6, { staffId: gus.id })).staffId, null);
     // a CURRENT login with nothing recorded this month is offered, so filtering on them is honoured (an empty report for them)
     const idle = await db.user.create({ data: { username: "idle.staff", passwordHash: "x", role: "STAFF" } });
     const idleReport = await report(2026, 11, { staffId: idle.id });
@@ -258,7 +258,7 @@ describe("the Half and No-charge review data against a real database", { skip: d
     assert.ok(idleReport.staffOptions.some((o) => o.id === idle.id));
     assert.deepEqual([idleReport.rowCount, idleReport.staff], [0, []]);
     // the invariant itself, over every case above: the chosen person is always one of the options
-    for (const r of [everyone, april, idleReport, await report(2026, 11, { staffId: w.staff.id }), await report(2026, 11, { staffId: w.admin.id })]) {
+    for (const r of [everyone, june, idleReport, await report(2026, 11, { staffId: w.staff.id }), await report(2026, 11, { staffId: w.admin.id })]) {
       assert.ok(r.staffId === null || r.staffOptions.some((o) => o.id === r.staffId), String(r.staffId));
     }
   });
