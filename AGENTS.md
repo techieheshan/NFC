@@ -375,8 +375,20 @@ with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must
   counts, sheet lines or cards, and so not the month-end roll-up's "students". Its student
   reads as not paid for a Daily Summary range. Every money figure was already right and
   did not move. The exclusion is a JAVASCRIPT comparison (`chargeMode !== "NO_CHARGE"`),
-  because a NULL (full-fee) row must stay a payer: `chargemode-null-safe.test.ts` fails on
-  any `chargeMode: { not` or "not FULL" in `src`.
+  because a NULL (full-fee) row must stay a payer. `chargemode-null-safe.test.ts` is a
+  best-effort text scan of `src` (non-test `.ts`/`.tsx`, `src/test-support` included, comments
+  stripped), not a proof. It CATCHES: Prisma `chargeMode: { not … }` and `{ notIn … }`; Prisma
+  `NOT: { chargeMode … }`, `NOT: [{ chargeMode … }]` and `NOT: { OR: [{ chargeMode … }] }` when
+  `chargeMode` follows within 300 characters and no `;`; JavaScript `chargeMode !== "FULL"` /
+  `!= "FULL"` / `<> "FULL"` (a full-fee row is NULL, never the string FULL); raw SQL
+  `"chargeMode" <>`, `"chargeMode" !=`, `chargeMode <>`, `"chargeMode" NOT IN` / `NOT LIKE`.
+  It does NOT catch (accepted gaps, so review these by eye): a cast or wrapper such as
+  `"chargeMode"::text <> 'X'`; `NOT ("chargeMode" = 'HALF')` in raw SQL; `NOT: someWhereVar`
+  where the object is built elsewhere; `NOT: { … }` with `chargeMode` more than 300 characters
+  later; any file outside `src` or any `*.test.ts` file. It can also FAIL a safe query that puts
+  `NOT: { cancelled: true }` and `chargeMode: { in: […] }` close together; if that happens,
+  restructure the query rather than loosening the pattern. The safe shapes stay a positive
+  `in` / equals, or a JavaScript `!== "NO_CHARGE"` / `=== "HALF"`.
 - **A Half month is a real payment, and its student is a normal payer of THEIR tier.** In
   Daily Summary and payslips "Half" still means the HALF TIER: no column is renamed or
   moved. The month is shown, not hidden: Daily Summary adds two lines to Other income
