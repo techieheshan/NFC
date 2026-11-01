@@ -121,18 +121,28 @@ export async function buildHalfNoChargeReport(options: {
   const mode = options.mode ?? null;
   const window = monthInstants(year, month);
 
-  // Everyone who can be NAMED: every current ADMIN / STAFF login, plus (below) anyone who took one of these months
-  // in this month but no longer holds such a login. An id that is no user at all is ignored, not an empty report.
+  // Everyone who can be NAMED: every current ADMIN / STAFF login, plus anyone who took one of these months in this
+  // month but no longer holds such a login. The person filter accepts exactly the people it OFFERS: any other id
+  // (no such user, a teacher, a former taker with nothing this month) is junk and is ignored (rule 23), so the
+  // select and the report can never disagree.
   const userSelect = { id: true, username: true, role: true, staff: { select: { name: true } } } as const;
-  const users = await db.user.findMany({
-    where: { role: { in: CURRENT_ROLES as ("ADMIN" | "STAFF")[] } },
-    select: userSelect,
-    orderBy: { username: "asc" },
-  });
+  const [users, monthTakers] = await Promise.all([
+    db.user.findMany({
+      where: { role: { in: CURRENT_ROLES as ("ADMIN" | "STAFF")[] } },
+      select: userSelect,
+      orderBy: { username: "asc" },
+    }),
+    // Everyone who recorded a Half or No-charge month in this month (any person, any kind): the names the
+    // report and its person filter may need, whatever role they hold today.
+    db.payment.groupBy({
+      by: ["takenById"],
+      where: { kind: "CLASS", paidAt: window, chargeMode: { in: ["HALF", "NO_CHARGE"] } },
+    }),
+  ]);
   const known = new Map<string, (typeof users)[number] | null>(users.map((u) => [u.id, u]));
   const asked = options.staffId ?? null;
-  if (asked && !known.has(asked)) known.set(asked, await db.user.findUnique({ where: { id: asked }, select: userSelect }));
-  const staffId = asked && known.get(asked) ? asked : null; // a former-role taker CAN be filtered on; an unknown id cannot
+  const offered = new Set([...users.map((u) => u.id), ...monthTakers.map((t) => t.takenById)]);
+  const staffId = asked && offered.has(asked) ? asked : null;
 
   const modes = mode ? [mode] : (["HALF", "NO_CHARGE"] as const);
   const base = {
@@ -142,7 +152,7 @@ export async function buildHalfNoChargeReport(options: {
   };
   const inMode = { ...base, chargeMode: { in: [...modes] } };
 
-  const [grouped, allMonths, listed, rowCount, cancelledCount, monthTakers] = await Promise.all([
+  const [grouped, allMonths, listed, rowCount, cancelledCount] = await Promise.all([
     // Counts and totals: EVERY non-cancelled row in the filter, grouped — not the capped list.
     db.payment.groupBy({
       by: ["takenById", "chargeMode"],
@@ -184,12 +194,6 @@ export async function buildHalfNoChargeReport(options: {
     }),
     db.payment.count({ where: inMode }),
     db.payment.count({ where: { ...inMode, cancelled: true } }),
-    // Everyone who recorded a Half or No-charge month in this month (any person, any kind): the names the
-    // report and its person filter may need, whatever role they hold today.
-    db.payment.groupBy({
-      by: ["takenById"],
-      where: { kind: "CLASS", paidAt: window, chargeMode: { in: ["HALF", "NO_CHARGE"] } },
-    }),
   ]);
 
   // Look up the takers who are not current ADMIN / STAFF (a changed role), once.

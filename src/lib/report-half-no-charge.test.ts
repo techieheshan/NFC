@@ -226,6 +226,43 @@ describe("the Half and No-charge review data against a real database", { skip: d
     assert.equal((await report(2027, 4, { staffId: "no-such-user" })).staffId, null);
   });
 
+  test("F10 follow-up: a person the filter does not OFFER is ignored, so the select and the report always agree (a real user, not offered)", async () => {
+    // fay is a real user who took a Half month in 2027-04 only; gus is a TEACHER login who never took a payment.
+    const fay = await db.user.create({ data: { username: "fay.absent", passwordHash: "x", role: "TEACHER" } });
+    const gus = await db.user.create({ data: { username: "gus.never", passwordHash: "x", role: "TEACHER" } });
+    freezeClock("2027-04-10T06:00:00Z");
+    setSession("STAFF", fay.id);
+    const s = await student();
+    const res = await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, year: 2027, month: 4, mode: "HALF" }] });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    freezeClock("2026-11-10T06:00:00Z");
+
+    const everyone = await report(2026, 11);
+    for (const asked of [fay.id, gus.id]) {
+      const r = await report(2026, 11, { staffId: asked });
+      assert.equal(r.staffId, null, "a real user who is not offered this month is 'everyone', not an empty report");
+      assert.ok(!r.staffOptions.some((o) => o.id === asked));
+      assert.deepEqual(r.totals, everyone.totals);
+      assert.equal(r.rowCount, everyone.rowCount);
+    }
+    // in the month where she IS offered, the same id is honoured
+    const april = await report(2027, 4, { staffId: fay.id });
+    assert.equal(april.staffId, fay.id);
+    assert.ok(april.staffOptions.some((o) => o.id === fay.id));
+    // and the teacher is not offered in April either, so still ignored
+    assert.equal((await report(2027, 4, { staffId: gus.id })).staffId, null);
+    // a CURRENT login with nothing recorded this month is offered, so filtering on them is honoured (an empty report for them)
+    const idle = await db.user.create({ data: { username: "idle.staff", passwordHash: "x", role: "STAFF" } });
+    const idleReport = await report(2026, 11, { staffId: idle.id });
+    assert.equal(idleReport.staffId, idle.id);
+    assert.ok(idleReport.staffOptions.some((o) => o.id === idle.id));
+    assert.deepEqual([idleReport.rowCount, idleReport.staff], [0, []]);
+    // the invariant itself, over every case above: the chosen person is always one of the options
+    for (const r of [everyone, april, idleReport, await report(2026, 11, { staffId: w.staff.id }), await report(2026, 11, { staffId: w.admin.id })]) {
+      assert.ok(r.staffId === null || r.staffOptions.some((o) => o.id === r.staffId), String(r.staffId));
+    }
+  });
+
   test("a month with nothing: empty, not capped, no people", async () => {
     const r = await report(2026, 3);
     assert.deepEqual([r.rows, r.staff, r.rowCount, r.capped, r.cancelledCount], [[], [], 0, false, 0]);
