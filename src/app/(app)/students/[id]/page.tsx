@@ -180,6 +180,11 @@ export default async function StudentProfilePage({ params }: PageProps<"/student
                     {p.cancelled && <Badge variant="destructive">Cancelled</Badge>}
                   </span>
                   <span className="text-muted-foreground block truncate">{p.course ?? "—"}</span>
+                  {/* Only for a month that was NOT the full fee. Its own element after the course span, never part of
+                      the truncated course text, so a long course name cannot cut the label off. */}
+                  {p.mode && (
+                    <span className="block text-xs font-medium text-[#4C1D95]">{p.mode === "HALF" ? "Half month" : "No charge"}</span>
+                  )}
                 </span>
                 <span className="shrink-0 text-right">
                   <span className={`block tabular-nums ${p.cancelled ? "line-through opacity-60" : "font-medium"}`}>

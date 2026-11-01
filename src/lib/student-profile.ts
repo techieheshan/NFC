@@ -2,7 +2,6 @@ import "server-only";
 
 import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
-import { chargeModeSuffix } from "@/lib/receipts";
 import { db } from "@/lib/db";
 import { studentArrears, type StudentArrears } from "@/lib/student-arrears";
 
@@ -40,6 +39,12 @@ export type ProfilePayment = {
   course: string | null;
   billing: string | null;
   cancelled: boolean;
+  /**
+   * How this month was charged, ONLY when it was not the full fee. ABSENT on every full-fee row, so a
+   * profile for today's data has exactly the keys it always had. The page shows it as its own small label
+   * (not appended to the course text, which is truncated on a phone).
+   */
+  mode?: "HALF" | "NO_CHARGE";
 };
 
 export type ProfileAttendance = {
@@ -217,13 +222,13 @@ export async function loadStudentProfile(studentId: number): Promise<StudentProf
       kind: p.kind,
       date: colomboNow(p.paidAt).date,
       amount: Number(String(p.amount)).toFixed(2),
-      // "(Half month)" / "(No charge)" — the same words the receipts use; nothing for a full-fee row.
-      course: p.course ? `${courseDisplayName(p.course)}${chargeModeSuffix(p.chargeMode)}` : null,
+      course: p.course ? courseDisplayName(p.course) : null,
       billing:
         p.billingYear && p.billingMonth
           ? `${MONTHS[p.billingMonth - 1]} ${p.billingYear}`
           : null,
       cancelled: p.cancelled,
+      ...(p.chargeMode ? { mode: p.chargeMode } : {}),
     })),
     attendance: attendance.map((a) => ({
       id: a.id,
