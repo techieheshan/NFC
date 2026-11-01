@@ -216,7 +216,7 @@ export function SummaryScreen({
               {/* Only when there is one. Counts of months, not extra money: a Half month is
                   already inside Class fees, and a No-charge month is 0.00. */}
               {halfAndNoChargeLines(report).map((l) => (
-                <Line key={l.label} label={`${l.label} (${l.count})`} value={l.total} muted />
+                <Line key={l.label} label={l.screenLabel} value={l.total} muted />
               ))}
             </div>
 
