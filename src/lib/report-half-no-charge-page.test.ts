@@ -234,6 +234,28 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     for (const month of ["2000-01", "2100-12"]) assert.match(await html({ month }), new RegExp(`value="${month}"`));
   });
 
+  test("F10: a former-role taker is named on the page (table, cards, person filter), never a dash, and can be filtered on", async () => {
+    setSession("ADMIN", w.admin.id);
+    const fay = await db.user.create({ data: { username: "fay.former", passwordHash: "x", role: "TEACHER" } });
+    const kid = await db.student.create({ data: { name: "Fay Kid", cardNumber: "FAY-1" } });
+    await db.payment.createMany({
+      data: [
+        { chargeMode: "HALF" as const, amount: "1250.00" },
+        { chargeMode: "NO_CHARGE" as const, amount: "0.00" },
+      ].map((x, i) => ({
+        kind: "CLASS" as const, studentId: kid.id, courseId: course.id, billingYear: 2027, billingMonth: 4 + i, ...x,
+        takenById: fay.id, paidAt: new Date(Date.UTC(2027, 3, 12, 4 + i)), transactionRef: randomUUID(),
+      })),
+    });
+    const out = await html({ month: "2027-04" });
+    assert.ok(out.includes("fay.former (former role)"));
+    assert.match(out, new RegExp(`<option value="${fay.id}">fay\\.former \\(former role\\)</option>`), "offered in the person filter");
+    assert.ok(!/<td[^>]*>—<\/td>/.test(out) && !out.includes("Unknown user"), "no dash for a taker");
+    const only = await html({ month: "2027-04", staff: fay.id });
+    assert.match(only, new RegExp(`<option value="${fay.id}" selected`), "the filter keeps the former taker selected");
+    assert.ok(only.includes("fay.former (former role)") && only.includes("1250.00"));
+  });
+
   test("the query is text: markup in a filter is not rendered", async () => {
     setSession("ADMIN", w.admin.id);
     const out = await html({ month: "2026-11", staff: "<script>alert(1)</script>", mode: "<b>" });

@@ -35,3 +35,36 @@ describe("parseMonthParam", () => {
     assert.deepEqual(lib.parseMonthParam("nope", { year: 2030, month: 2 }), { year: 2030, month: 2 });
   });
 });
+
+/*
+ * Job 5 review F10: how a person who recorded a month is NAMED. Pure.
+ */
+describe("takerName", () => {
+  before(async () => {
+    lib = await import("@/lib/report-half-no-charge");
+  });
+  const user = (role: string, staff: string | null = null) => ({ username: "sam", role, staff: staff ? { name: staff } : null });
+
+  test("a current ADMIN or STAFF login: their Staff record's name, else their username", () => {
+    assert.equal(lib.takerName("u1", user("STAFF", "Sadun Staff")), "Sadun Staff");
+    assert.equal(lib.takerName("u1", user("ADMIN")), "sam");
+    assert.equal(lib.takerName("u1", user("STAFF")), "sam");
+  });
+
+  test("anyone who no longer holds one of those logins is still named, with a small '(former role)' hint", () => {
+    assert.equal(lib.takerName("u2", user("TEACHER", "Gus Former")), "Gus Former (former role)");
+    assert.equal(lib.takerName("u2", user("TEACHER")), "sam (former role)");
+  });
+
+  test("a user that cannot be found at all reads 'Unknown user (#id)'", () => {
+    assert.equal(lib.takerName("cl123abc", null), "Unknown user (#cl123abc)");
+    assert.equal(lib.takerName("cl123abc", undefined), "Unknown user (#cl123abc)");
+  });
+
+  test("it is never a dash and never empty", () => {
+    for (const u of [user("STAFF"), user("TEACHER"), null, undefined]) {
+      const name = lib.takerName("id", u);
+      assert.ok(name.length > 0 && !name.includes("—") && name !== "-");
+    }
+  });
+});

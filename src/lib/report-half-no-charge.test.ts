@@ -183,6 +183,49 @@ describe("the Half and No-charge review data against a real database", { skip: d
 
   // ---- nothing in the month, a month with only cancelled rows ---------------------------------------------
 
+  test("F10: a taker who no longer holds an ADMIN / STAFF login is NAMED (with '(former role)'), listed in the person filter, and can be filtered on — never a dash", async () => {
+    const fay = await db.user.create({ data: { username: "fay.former", passwordHash: "x", role: "TEACHER" } });
+    const gusStaff = await db.staff.create({ data: { name: "Gus Former" } });
+    const gus = await db.user.create({ data: { username: "gus.old", passwordHash: "x", role: "TEACHER", staffId: gusStaff.id } });
+    // The session stub says STAFF (takePayment's own guard); the DATABASE role of these two is TEACHER — they "used to be staff".
+    const takeAs = async (userId: string, month: number, mode?: Mode) => {
+      freezeClock("2027-04-10T06:00:00Z");
+      setSession("STAFF", userId);
+      const s = await student();
+      const res = await pay.takePayment({ studentId: s.id, admission: false, smartCard: false, comboDecisions: [], classMonths: [{ courseId: course.id, year: 2027, month, mode }] });
+      assert.equal(res.ok, true, JSON.stringify(res));
+    };
+    await takeAs(fay.id, 4, "HALF");
+    await takeAs(fay.id, 4, "NO_CHARGE");
+    await takeAs(fay.id, 4); // a normal month: it is in the denominator
+    await takeAs(gus.id, 4, "HALF");
+    await take("2027-04-10T07:00:00Z", "ADMIN", [{ year: 2027, month: 4, mode: "HALF" }]);
+    freezeClock("2026-11-10T06:00:00Z");
+
+    const r = await report(2027, 4);
+    const names = new Map(r.staff.map((x) => [x.userId, x]));
+    assert.equal(names.get(fay.id)?.name, "fay.former (former role)");
+    assert.equal(names.get(gus.id)?.name, "Gus Former (former role)", "a former taker with a Staff record shows that name");
+    assert.equal(names.get(w.admin.id)?.name, w.admin.username, "a current admin has no hint");
+    assert.deepEqual([names.get(fay.id)?.half, names.get(fay.id)?.noCharge, names.get(fay.id)?.share], [1, 1, { months: 2, all: 3, percent: 67 }]);
+    for (const x of r.staff) assert.ok(!x.name.includes("—") && x.name !== "-", x.name);
+    // the detail rows name them too
+    assert.deepEqual(new Set(r.rows.map((x) => x.takenBy)), new Set(["fay.former (former role)", "Gus Former (former role)", w.admin.username]));
+    // the person filter lists them (after the current ADMIN / STAFF), by the same names
+    assert.deepEqual(r.staffOptions.slice(-2), [{ id: fay.id, name: "fay.former (former role)" }, { id: gus.id, name: "Gus Former (former role)" }]);
+    assert.ok(r.staffOptions.some((o) => o.id === w.admin.id) && r.staffOptions.some((o) => o.id === w.staff.id));
+    // and they can be filtered on
+    const only = await report(2027, 4, { staffId: fay.id });
+    assert.equal(only.staffId, fay.id);
+    assert.deepEqual(only.staff.map((x) => x.userId), [fay.id]);
+    assert.ok(only.rows.every((x) => x.takenBy === "fay.former (former role)"));
+    assert.deepEqual(only.totals, { half: 1, halfAmount: "1250.00", noCharge: 1, all: 3 });
+    // a person who is not in the month is not offered
+    assert.ok(!(await report(2026, 11)).staffOptions.some((o) => o.id === fay.id));
+    // an id that is no user at all is still ignored
+    assert.equal((await report(2027, 4, { staffId: "no-such-user" })).staffId, null);
+  });
+
   test("a month with nothing: empty, not capped, no people", async () => {
     const r = await report(2026, 3);
     assert.deepEqual([r.rows, r.staff, r.rowCount, r.capped, r.cancelledCount], [[], [], 0, false, 0]);

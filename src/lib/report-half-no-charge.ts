@@ -46,6 +46,23 @@ export function parseMonthParam(raw: string | undefined, fallback: { year: numbe
   return { year, month: Number(m[2]) };
 }
 
+/** The roles whose people are "current staff" here; anyone else who took a payment is a FORMER taker. */
+const CURRENT_ROLES = ["ADMIN", "STAFF"];
+
+/**
+ * How a person who took payments is named: their Staff record's name or their username; with "(former role)" when
+ * they no longer hold an ADMIN or STAFF login (their old rows still need a name); and "Unknown user (#id)" when the
+ * user cannot be found at all. NEVER a dash — a review screen must say who recorded what.
+ */
+export function takerName(
+  id: string,
+  user: { username: string; role: string; staff: { name: string } | null } | null | undefined,
+): string {
+  if (!user) return `Unknown user (#${id})`;
+  const name = user.staff?.name ?? user.username;
+  return CURRENT_ROLES.includes(user.role) ? name : `${name} (former role)`;
+}
+
 export type StaffRow = {
   userId: string;
   name: string;
@@ -104,14 +121,18 @@ export async function buildHalfNoChargeReport(options: {
   const mode = options.mode ?? null;
   const window = monthInstants(year, month);
 
-  // Staff the filter may name: every ADMIN / STAFF login. An unknown id is ignored, not an empty report.
+  // Everyone who can be NAMED: every current ADMIN / STAFF login, plus (below) anyone who took one of these months
+  // in this month but no longer holds such a login. An id that is no user at all is ignored, not an empty report.
+  const userSelect = { id: true, username: true, role: true, staff: { select: { name: true } } } as const;
   const users = await db.user.findMany({
-    where: { role: { in: ["ADMIN", "STAFF"] } },
-    select: { id: true, username: true, staff: { select: { name: true } } },
+    where: { role: { in: CURRENT_ROLES as ("ADMIN" | "STAFF")[] } },
+    select: userSelect,
     orderBy: { username: "asc" },
   });
-  const nameOf = new Map(users.map((u) => [u.id, u.staff?.name ?? u.username]));
-  const staffId = options.staffId && nameOf.has(options.staffId) ? options.staffId : null;
+  const known = new Map<string, (typeof users)[number] | null>(users.map((u) => [u.id, u]));
+  const asked = options.staffId ?? null;
+  if (asked && !known.has(asked)) known.set(asked, await db.user.findUnique({ where: { id: asked }, select: userSelect }));
+  const staffId = asked && known.get(asked) ? asked : null; // a former-role taker CAN be filtered on; an unknown id cannot
 
   const modes = mode ? [mode] : (["HALF", "NO_CHARGE"] as const);
   const base = {
@@ -121,7 +142,7 @@ export async function buildHalfNoChargeReport(options: {
   };
   const inMode = { ...base, chargeMode: { in: [...modes] } };
 
-  const [grouped, allMonths, listed, rowCount, cancelledCount] = await Promise.all([
+  const [grouped, allMonths, listed, rowCount, cancelledCount, monthTakers] = await Promise.all([
     // Counts and totals: EVERY non-cancelled row in the filter, grouped — not the capped list.
     db.payment.groupBy({
       by: ["takenById", "chargeMode"],
@@ -148,7 +169,7 @@ export async function buildHalfNoChargeReport(options: {
         chargeMode: true,
         cancelled: true,
         transactionRef: true,
-        takenBy: { select: { username: true, staff: { select: { name: true } } } },
+        takenById: true,
         student: { select: { id: true, name: true, cardNumber: true } },
         course: {
           select: {
@@ -163,7 +184,21 @@ export async function buildHalfNoChargeReport(options: {
     }),
     db.payment.count({ where: inMode }),
     db.payment.count({ where: { ...inMode, cancelled: true } }),
+    // Everyone who recorded a Half or No-charge month in this month (any person, any kind): the names the
+    // report and its person filter may need, whatever role they hold today.
+    db.payment.groupBy({
+      by: ["takenById"],
+      where: { kind: "CLASS", paidAt: window, chargeMode: { in: ["HALF", "NO_CHARGE"] } },
+    }),
   ]);
+
+  // Look up the takers who are not current ADMIN / STAFF (a changed role), once.
+  const missing = [...new Set([...monthTakers.map((t) => t.takenById), ...grouped.map((g) => g.takenById), ...listed.map((r) => r.takenById)])].filter((id) => !known.has(id));
+  if (missing.length > 0) {
+    for (const u of await db.user.findMany({ where: { id: { in: missing } }, select: userSelect })) known.set(u.id, u);
+    for (const id of missing) if (!known.has(id)) known.set(id, null);
+  }
+  const nameOf = (id: string) => takerName(id, known.get(id));
 
   // ---- per staff, over every row in the filter ----
   const perStaff = new Map<string, { half: number; halfAmount: number; noCharge: number }>();
@@ -184,7 +219,7 @@ export async function buildHalfNoChargeReport(options: {
       const all = allOf.get(userId) ?? months;
       return {
         userId,
-        name: nameOf.get(userId) ?? "—",
+        name: nameOf(userId),
         half: v.half,
         halfAmount: money(v.halfAmount),
         noCharge: v.noCharge,
@@ -224,7 +259,7 @@ export async function buildHalfNoChargeReport(options: {
       billing: r.billingYear !== null && r.billingMonth !== null ? monthLabel(r.billingYear, r.billingMonth) : null,
       mode: r.chargeMode as "HALF" | "NO_CHARGE",
       amount: money(num(r.amount)),
-      takenBy: r.takenBy.staff?.name ?? r.takenBy.username,
+      takenBy: nameOf(r.takenById),
       cancelled: r.cancelled,
     };
   });
@@ -235,7 +270,15 @@ export async function buildHalfNoChargeReport(options: {
     label: monthLabel(year, month),
     mode,
     staffId,
-    staffOptions: users.map((u) => ({ id: u.id, name: u.staff?.name ?? u.username })),
+    // current ADMIN / STAFF first (by username), then anyone who took one of these months but no longer qualifies
+    staffOptions: [
+      ...users.map((u) => ({ id: u.id, name: nameOf(u.id) })),
+      ...monthTakers
+        .map((t) => t.takenById)
+        .filter((id) => !users.some((u) => u.id === id))
+        .map((id) => ({ id, name: nameOf(id) }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ],
     staff,
     totals,
     rows,
