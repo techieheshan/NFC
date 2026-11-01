@@ -1,0 +1,88 @@
+import { MAX_CENTS, formatCents, parseTypedAmount } from "@/lib/cents";
+import { MAX_BANK_LINES, isClockTime, type BankLine } from "@/lib/cash-flow";
+
+import { pickSigner, type Signer } from "./signer-lists";
+
+/**
+ * The values a person TYPES on the Daily Summary — bring-forward, bank lines, Prepared by, Checked by —
+ * live in the URL, not in the database (Release 1 stores nothing). The URL is what lets them survive
+ * "open the document and come back" and a page reload, and what hands them to the document route.
+ *
+ * It is also hostile input: anyone can type any query string. So nothing here trusts it —
+ *   - a repeated parameter takes its FIRST value; a missing or malformed one means "not set";
+ *   - an amount is re-parsed as cents (never a negative, never above 99,999,999.99);
+ *   - a bank line needs a real HH:MM, a positive amount, and at most 10 lines are read;
+ *   - text is trimmed, stripped of control characters and cut to a length;
+ *   - a signer id is only a LOOKUP KEY into the offered list (`pickSigner`): an id that is not offered is nobody.
+ */
+
+type Query = Record<string, string | string[] | undefined>;
+
+export const SLIP_MAX = 30;
+export const NOTE_MAX = 80;
+
+const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
+// eslint-disable-next-line no-control-regex
+const clean = (s: string, max: number) => s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+
+const enc = (s: string) => encodeURIComponent(s).replace(/~/g, "%7E");
+
+/** One bank line ⇄ "HH:MM~cents~slip~note" (slip and note percent-encoded, "~" included). */
+export function serializeBankLine(l: BankLine): string {
+  return `${l.time}~${l.cents}~${enc(l.slip)}~${enc(l.note)}`;
+}
+
+export function parseBankLine(raw: string): BankLine | null {
+  if (raw.length > 1500) return null; // 110 Sinhala characters percent-encode to under 1000
+  const parts = raw.split("~");
+  if (parts.length !== 4) return null;
+  const [time, centsText, slipRaw, noteRaw] = parts;
+  if (!isClockTime(time)) return null;
+  if (!/^\d{1,10}$/.test(centsText)) return null;
+  const cents = Number(centsText);
+  if (!Number.isSafeInteger(cents) || cents < 1 || cents > MAX_CENTS) return null;
+  let slip: string;
+  let note: string;
+  try {
+    slip = decodeURIComponent(slipRaw);
+    note = decodeURIComponent(noteRaw);
+  } catch {
+    return null;
+  }
+  return { cents, time, slip: clean(slip, SLIP_MAX), note: clean(note, NOTE_MAX) };
+}
+
+export type TypedState = {
+  bringForwardCents: number;
+  bank: BankLine[];
+  prepared: Signer | null;
+  checked: Signer | null;
+};
+
+export function parseTypedState(
+  q: Query,
+  lists: { prepared: readonly Signer[]; checked: readonly Signer[] },
+): TypedState {
+  const bfRaw = first(q.bf);
+  const bf = bfRaw === undefined ? null : parseTypedAmount(bfRaw.slice(0, 20));
+  const lines = (Array.isArray(q.b) ? q.b : q.b === undefined ? [] : [q.b])
+    .slice(0, MAX_BANK_LINES)
+    .map((raw) => (typeof raw === "string" ? parseBankLine(raw) : null))
+    .filter((l): l is BankLine => l !== null);
+  return {
+    bringForwardCents: bf && bf.ok ? bf.cents : 0,
+    bank: lines,
+    prepared: pickSigner(lists.prepared, first(q.prep)),
+    checked: pickSigner(lists.checked, first(q.chk)),
+  };
+}
+
+/** The query string that carries a typed state (empty values are left out). */
+export function typedQuery(s: { bringForwardCents: number; bank: readonly BankLine[]; preparedId?: string; checkedId?: string }): URLSearchParams {
+  const p = new URLSearchParams();
+  if (s.bringForwardCents > 0) p.set("bf", formatCents(s.bringForwardCents).replace(/,/g, ""));
+  for (const l of s.bank.slice(0, MAX_BANK_LINES)) p.append("b", serializeBankLine(l));
+  if (s.preparedId) p.set("prep", s.preparedId);
+  if (s.checkedId) p.set("chk", s.checkedId);
+  return p;
+}
