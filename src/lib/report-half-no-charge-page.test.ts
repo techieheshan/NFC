@@ -140,7 +140,7 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
       })),
     });
     const out = await html({ month: "2027-01" });
-    assert.ok(out.includes("Showing the newest 300 of 310 rows. The counts and totals above cover all 310 non-cancelled rows."));
+    assert.ok(out.includes("Showing the newest 300 of 310 rows. The Half and No-charge counts and amounts above cover all 310 non-cancelled rows."));
     assert.equal(count(out, /Cap Kid · CAP-1/g), 300, "300 phone cards (the table repeats the rows in cells)");
     assert.match(out, new RegExp(`${w.admin.username}</td><td[^>]*>0</td><td[^>]*>0\\.00</td><td[^>]*>310</td><td[^>]*>310 of 310 \\(100%\\)</td>`));
   });
@@ -163,7 +163,7 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     await volume(2027, 2, 305, { startMinute: 0 });
     await volume(2027, 2, 1, { cancelled: true, startMinute: 400 }); // the newest row of the month
     const out = await html({ month: "2027-02" });
-    assert.ok(out.includes("Showing the newest 300 of 306 rows. The counts and totals above cover all 305 non-cancelled rows."));
+    assert.ok(out.includes("Showing the newest 300 of 306 rows. The Half and No-charge counts and amounts above cover all 305 non-cancelled rows."));
     assert.ok(!out.includes("cover all 306"));
     assert.ok(out.includes("1 cancelled row is shown greyed and counted nowhere."));
     assert.match(out, /305 of 305 \(100%\)/, "the share column reads from the live rows only");
@@ -174,7 +174,7 @@ describe("the /reports/half-no-charge page against a real database", { skip: dbS
     await volume(2027, 3, 4, { cancelled: true, startMinute: 0 }); // four old cancelled rows
     await volume(2027, 3, 300, { startMinute: 100 }); // 300 newer live rows fill the list
     const out = await html({ month: "2027-03" });
-    assert.ok(out.includes("Showing the newest 300 of 304 rows. The counts and totals above cover all 300 non-cancelled rows."));
+    assert.ok(out.includes("Showing the newest 300 of 304 rows. The Half and No-charge counts and amounts above cover all 300 non-cancelled rows."));
     assert.ok(out.includes("4 cancelled rows in this filter are older than the newest 300 and not shown; counted nowhere."));
     assert.ok(!/4 cancelled rows are shown greyed/.test(out));
     assert.ok(!out.includes(">Cancelled<"), "no cancelled row is in the list, so no Cancelled chip");

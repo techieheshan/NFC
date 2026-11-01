@@ -22,13 +22,13 @@ test("not capped, some cancelled: the original wording, unchanged", () => {
 
 test("capped, 305 live + 1 cancelled (the cancelled one is among the newest 300): 306 rows, the counts cover 305", () => {
   const n = capNotes(f(306, 1, 300, 1));
-  assert.equal(n.cap, "Showing the newest 300 of 306 rows. The counts and totals above cover all 305 non-cancelled rows. Choose one person or one kind to narrow the list.");
+  assert.equal(n.cap, "Showing the newest 300 of 306 rows. The Half and No-charge counts and amounts above cover all 305 non-cancelled rows. Choose one person or one kind to narrow the list.");
   assert.equal(n.cancelled, "1 cancelled row is shown greyed and counted nowhere.");
 });
 
 test("capped, 4 cancelled rows are OLDER than the newest 300: they are not claimed to be shown", () => {
   const n = capNotes(f(304, 4, 300, 0));
-  assert.equal(n.cap, "Showing the newest 300 of 304 rows. The counts and totals above cover all 300 non-cancelled rows. Choose one person or one kind to narrow the list.");
+  assert.equal(n.cap, "Showing the newest 300 of 304 rows. The Half and No-charge counts and amounts above cover all 300 non-cancelled rows. Choose one person or one kind to narrow the list.");
   assert.equal(n.cancelled, "4 cancelled rows in this filter are older than the newest 300 and not shown; counted nowhere.");
   assert.doesNotMatch(n.cancelled!, /shown greyed/);
 });
@@ -58,6 +58,12 @@ test("singular and plural in the other two cancelled notes, and in the cap note"
   assert.equal(capNotes(f(40, 3, 40, 3)).cancelled, "3 cancelled rows are shown greyed and counted nowhere.");
   assert.equal(capNotes(f(303, 3, 300, 0)).cancelled, "3 cancelled rows in this filter are older than the newest 300 and not shown; counted nowhere.");
   assert.match(capNotes(f(303, 1, 300, 0)).cap!, /cover all 302 non-cancelled rows\. /);
+});
+
+test("the cap note says it is the Half and No-charge counts and amounts that cover the non-cancelled rows, not 'the totals' (the share's 'all' also counts full-fee months)", () => {
+  const cap = capNotes(f(306, 1, 300, 1)).cap!;
+  assert.match(cap, /^Showing the newest 300 of 306 rows\. The Half and No-charge counts and amounts above cover all 305 non-cancelled rows\./);
+  assert.doesNotMatch(cap, /counts and totals/);
 });
 
 test("the cap note never repeats the raw row count as what the totals cover", () => {

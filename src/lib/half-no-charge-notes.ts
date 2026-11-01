@@ -23,7 +23,7 @@ export function capNotes(f: CapFacts): { cap: string | null; cancelled: string |
   const live = f.rowCount - f.cancelledCount;
   const cap =
     f.rowCount > f.shown
-      ? `Showing the newest ${f.cap} of ${f.rowCount} rows. The counts and totals above cover all ${live} non-cancelled ${rows(live)}. Choose one person or one kind to narrow the list.`
+      ? `Showing the newest ${f.cap} of ${f.rowCount} rows. The Half and No-charge counts and amounts above cover all ${live} non-cancelled ${rows(live)}. Choose one person or one kind to narrow the list.`
       : null;
 
   let cancelled: string | null = null;
