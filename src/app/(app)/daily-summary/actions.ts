@@ -6,6 +6,10 @@ import { resolveRange } from "@/lib/daily-summary-dates";
 import { db } from "@/lib/db";
 import { dailySummary, type DailySummary } from "@/lib/reports";
 
+import { splitSigners, type Signer } from "./signer-lists";
+
+export type { Signer };
+
 /**
  * ADMIN + STAFF only. This report exposes institute-wide deductions, net
  * profit and every teacher's collections, so TEACHER is refused outright —
@@ -25,19 +29,13 @@ export async function loadDailySummary(
   return dailySummary(range.from, range.to);
 }
 
-/** A person who can sign a cash-book: the account, named as staff know them. */
-export type Signer = { id: string; name: string; role: "ADMIN" | "STAFF" };
 
 /**
- * The accounts offered as "Prepared by" / "Checked by".
- *
- * These are the only two lists the cash-book needs, so they are fetched
- * together — and guarded, because a read is still its own HTTP endpoint.
- * Deactivated logins are excluded: a report must not be signed off by an
+ * The accounts offered as "Prepared by" / "Checked by" (rule 24):
+ * preparing is any active ADMIN or STAFF account, checking is an active ADMIN only. The split is
+ * `splitSigners` (pure, tested); this action only reads the active accounts and is guarded — a read is
+ * still its own HTTP endpoint. Deactivated logins are excluded: a report must not be signed off by an
  * account nobody can use any more.
- *
- * Note the two lists differ: preparing is a STAFF job (the person at the till
- * who made the report), checking may also be an ADMIN.
  */
 export async function listSigners(): Promise<{
   prepared: Signer[];
@@ -51,11 +49,5 @@ export async function listSigners(): Promise<{
     orderBy: [{ role: "asc" }, { username: "asc" }],
   });
 
-  const all: Signer[] = users.map((u) => ({
-    id: u.id,
-    name: u.staff?.name ?? u.username,
-    role: u.role as "ADMIN" | "STAFF",
-  }));
-
-  return { prepared: all.filter((u) => u.role === "STAFF"), checked: all };
+  return splitSigners(users);
 }
