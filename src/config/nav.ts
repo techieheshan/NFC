@@ -76,7 +76,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     key: "payment",
     label: "Payment",
-    href: "/payment",
+    href: "/payment-new",
     icon: Banknote,
     roles: OPERATIONAL,
     surfaces: ["terminal", "desktop"],

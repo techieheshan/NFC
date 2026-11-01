@@ -6,7 +6,7 @@ import path from "node:path";
 /*
  * DECISION (Kavin, AGENTS.md "Decisions recorded from the 3A review"): Full, Half and No charge
  * are open to everyone who can use the screen, for any month, with no note. Who can open the NEW
- * screens at all is ONE constant (PAYMENT_NEW_ROLES in access.ts, ADMIN only until the menu
+ * screens at all is ONE constant (PAYMENT_NEW_ROLES in access.ts, ADMIN + STAFF since the menu
  * switch). So nothing else the screen is built from may look at a role: a role check in the
  * month detail, the cards, the actions or the read-side libraries would quietly turn a mode off
  * for staff after the switch.

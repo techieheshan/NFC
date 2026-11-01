@@ -18,7 +18,7 @@ const ROUTE = "/payment-new/receipts";
  *
  * The search is a plain GET form: the query is a searchParam, so a search is a fresh server
  * render and works before the page has hydrated (AGENTS rule 17 — nothing to sync into state).
- * ADMIN only until the menu switch, through the one constant in ../access.ts. This page is
+ * ADMIN + STAFF since the menu switch, through the one constant in ../access.ts. This page is
  * never cached by the service worker (it caches /attendance and nothing else).
  */
 export default async function PaymentNewReceiptsPage({
