@@ -123,10 +123,20 @@ test("cash flow: banking more than the drawer holds is flagged, never hidden", (
   assert.equal(formatCents(f.left), "−5.00");
 });
 
-test("cash flow: deductions above the cash make 'Should be' negative, and it is shown as such", () => {
+test("cash flow: deductions above the cash make 'Should be' negative, shown as such — and that alone is NOT over-banking", () => {
   const f = computeCashFlow({ bringForward: 0, collected: 0, deductions: 450000, bank: [] });
   assert.equal(f.shouldBe, -450000);
   assert.equal(formatCents(f.shouldBe), "−4,500.00");
+  assert.equal(f.left, -450000);
+  assert.equal(f.overdrawn, false); // a loss day with nothing banked can still be printed
+});
+
+test("cash flow: any bank line on a drawer that is already short IS over-banking", () => {
+  const f = computeCashFlow({ bringForward: 0, collected: 0, deductions: 450000, bank: [{ cents: 100 }] });
+  assert.equal(f.overdrawn, true);
+  const exact = computeCashFlow({ bringForward: 0, collected: 1000, deductions: 0, bank: [{ cents: 1000 }] });
+  assert.equal(exact.left, 0);
+  assert.equal(exact.overdrawn, false); // banking exactly what the drawer holds is fine
 });
 
 test("isClockTime accepts real clock times only", () => {

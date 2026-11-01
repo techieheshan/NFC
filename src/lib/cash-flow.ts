@@ -25,7 +25,11 @@ export type CashFlow = {
   shouldBe: number;
   bankTotal: number;
   left: number;
-  /** More was banked than the drawer should hold: an error the screen shows, never hides. */
+  /**
+   * Money WAS banked and it is more than the drawer should hold: an error the screen shows, never hides.
+   * A day whose deductions exceed its cash, with nothing banked, is not this: its Left is negative and shows as such,
+   * but nothing was over-banked and the document can still be printed.
+   */
   overdrawn: boolean;
 };
 
@@ -45,7 +49,7 @@ export function computeCashFlow(input: {
     shouldBe,
     bankTotal,
     left,
-    overdrawn: left < 0,
+    overdrawn: bankTotal > 0 && left < 0,
   };
 }
 

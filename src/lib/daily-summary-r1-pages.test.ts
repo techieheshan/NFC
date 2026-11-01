@@ -65,6 +65,7 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     await row("2026-10-14T05:00:00Z", "1250.00", { ref: "B", by: staff2.id, mode: "HALF" });
     await row("2026-10-14T06:00:00Z", "2500.00", { ref: "VOID", cancelled: true });
     await db.expense.create({ data: { expenseTypeId: xenon.id, amount: "950.00", reason: "repair: door lock", date: new Date("2026-10-14T00:00:00Z"), recordedById: w.admin.id, authorizedById: admin2.id } });
+    await db.expense.create({ data: { expenseTypeId: xenon.id, amount: "4500.00", reason: "electricity bill", date: new Date("2026-10-11T00:00:00Z"), recordedById: w.admin.id, authorizedById: w.admin.id } }); // a day with no payments: a loss
     unfreezeClock();
     freezeClock("2026-11-01T15:48:00Z"); // 21:18 in Colombo
   });
@@ -131,6 +132,13 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     const over = await page(doc as never, good({ b: [`10:30~${99_999_999_99}~~`] }));
     assert.ok(over.includes("more than the drawer should hold"));
     assert.ok(!over.includes("Draft, not saved"));
+  });
+
+  test("a loss day with nothing banked (deductions above the cash) can still be printed", async () => {
+    asStaff();
+    const html = await page(doc as never, { date: "2026-10-11", prep: w.staff.id, chk: w.admin.id });
+    assert.ok(!html.includes("more than the drawer should hold") && !html.includes("Choose Prepared by"));
+    assert.ok(html.includes("Left in drawer"));
   });
 
   test("a range document has no cash book and no signatures, and needs neither signer", async () => {

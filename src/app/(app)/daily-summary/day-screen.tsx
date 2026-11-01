@@ -210,7 +210,7 @@ export function DayScreen({
           </Step>
         </ol>
 
-        <div className={`mt-2 flex items-center justify-between gap-3 rounded-lg px-3 py-4 text-white ${flow.overdrawn ? "bg-red-700" : "bg-primary"}`}>
+        <div className={`mt-2 flex items-center justify-between gap-3 rounded-lg px-3 py-4 text-white ${flow.left < 0 ? "bg-red-700" : "bg-primary"}`}>
           <span>
             <span className="block text-sm font-medium">Left in drawer</span>
             <span className="block text-xs opacity-90">Suggested as tomorrow&rsquo;s bring-forward</span>
