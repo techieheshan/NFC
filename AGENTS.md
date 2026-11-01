@@ -434,9 +434,13 @@ with `PAYMENT_NEW_ROLES` flipped in the same step. What job 5 did, and what must
   that person's non-cancelled class months in the same month and person filter (NULL counted
   as normal). A No-charge month's waived value is not stored (0.00), so none is shown. No CSV.
   Everyone who recorded a month is NAMED, whatever role they hold today: a taker who is no
-  longer ADMIN / STAFF shows their name with "(former role)", appears in the person filter and
-  can be filtered on, and a user that cannot be found reads "Unknown user (#id)" — never a dash
-  (`takerName`). The cap and cancelled notes say what the figures cover (`capNotes`): the counts
+  longer ADMIN / STAFF shows their name with "(former role)", and a user that cannot be found
+  reads "Unknown user (#id)" — never a dash (`takerName`). The person filter accepts ONLY ids it
+  offers: the current ADMIN / STAFF logins, plus anyone who recorded a Half or No-charge month
+  in the chosen month (a former taker is offered, and can be filtered on, only for a month in
+  which they recorded one). Any other `staff` value — no such user, a teacher, a former taker
+  with nothing that month — is ignored like any junk in the URL (rule 23), so the select and
+  the report always agree. The cap and cancelled notes say what the figures cover (`capNotes`): the counts
   cover the non-cancelled rows, and only cancelled rows actually listed are called shown. The
   month parameter is a real month in 2000-2100 (`parseMonthParam`), else the current month.
 - **Observed, NOT fixed (out of scope for job 5):** printing the voucher can come out blank.
