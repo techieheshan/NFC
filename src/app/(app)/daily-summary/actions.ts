@@ -2,6 +2,7 @@
 
 import { requireRole } from "@/lib/authz";
 import { colomboNow } from "@/lib/colombo-time";
+import { resolveRange } from "@/lib/daily-summary-dates";
 import { db } from "@/lib/db";
 import { dailySummary, type DailySummary } from "@/lib/reports";
 
@@ -12,20 +13,16 @@ import { dailySummary, type DailySummary } from "@/lib/reports";
  */
 const OPERATIONAL = ["ADMIN", "STAFF"] as const;
 
-const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
-
 export async function loadDailySummary(
   from: string,
   to: string,
 ): Promise<DailySummary> {
   await requireRole([...OPERATIONAL]);
 
-  const today = colomboNow().date;
-  const start = isDate(from) ? from : today;
-  const end = isDate(to) ? to : today;
-
-  // Tolerate a reversed range rather than returning a confusing empty report.
-  return dailySummary(start <= end ? start : end, start <= end ? end : start);
+  // A REAL calendar day in 2000..2100 or today (the old regex let "2026-13-45" through and crashed the
+  // page); a reversed range is swapped and one longer than a year is cut.
+  const range = resolveRange(from, to, colomboNow().date);
+  return dailySummary(range.from, range.to);
 }
 
 /** A person who can sign a cash-book: the account, named as staff know them. */
