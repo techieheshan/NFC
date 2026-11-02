@@ -150,8 +150,8 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     assert.ok((await page(doc as never, good({ date: "0001-01-01" }))).includes(today));
     assert.ok((await page(doc as never, good({ date: ["2026-10-14", "2026-10-13"] }))).includes("DS-20261014"), "first value wins");
     assert.ok((await page(doc as never, good({ date: "2099-01-01" }))).includes(today), "the future is today");
-    const huge = await page(doc as never, good({ b: ["25:99~1~~", "garbage", "10:00~-4~~", "10:00~1~~~extra"] }));
-    assert.ok(huge.includes("Left in drawer") && !huge.includes("Money taken to the bank"));
+    const junkBank = await page(doc as never, good({ b: ["25:99~1~~", "garbage", "10:00~-4~~", "10:00~1~~~extra"] })).then(() => null, (e: Error) => e);
+    assert.ok(junkBank && /NEXT_REDIRECT/.test(junkBank.message), "junk bank lines send the user back instead of printing a smaller bank total");
     assert.ok((await page(doc as never, good({ prep: "nobody", chk: ["../x"] }))).includes("Choose Prepared by"));
     assert.ok((await page(doc as never, { date: "2026-10-14", auto: ["print", "pdf"] })).includes("Choose Prepared by"));
   });
@@ -177,6 +177,50 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     // a good or absent bf still builds the document
     assert.ok((await page(doc as never, good({ bf: "5,000.50" }))).includes("Left in drawer"));
     assert.ok((await page(doc as never, good({ bf: undefined }))).includes("Left in drawer"));
+  });
+
+  test("a junk bank line or an 11th line never prints a smaller 'Taken to bank': the document redirects, keeping bf, prep, the VALID lines and a re-resolved chk; a STAFF id in chk does not survive", async () => {
+    asStaff();
+    const v1 = "09:15~100000~SLIP-1~first";
+    const v2 = "10:30~50000~~";
+    const redirected = async (q: Q) => {
+      const err = await page(doc as never, q).then(() => null, (e: Error & { url?: string }) => e);
+      assert.ok(err && /NEXT_REDIRECT/.test(err.message), "redirects");
+      return new URL(err.url!, "http://x");
+    };
+    // a junk line between two valid ones
+    let url = await redirected(good({ b: [v1, "garbage~x~y~z", v2] }));
+    assert.equal(url.pathname, "/daily-summary");
+    assert.equal(url.searchParams.get("date"), "2026-10-14");
+    assert.deepEqual(url.searchParams.getAll("notice"), ["bank"]);
+    assert.equal(url.searchParams.get("bf"), "5000.00", "a valid bring-forward comes back");
+    assert.deepEqual(url.searchParams.getAll("b").map((b) => b.split("~").slice(0, 2).join("~")), ["09:15~100000", "10:30~50000"], "the valid lines come back, in order, and the junk one does not");
+    assert.equal(url.searchParams.get("prep"), w.staff.id);
+    assert.equal(url.searchParams.get("chk"), w.admin.id);
+    // an 11th line (all valid)
+    const eleven = Array.from({ length: 11 }, (_, i) => `10:${String(i).padStart(2, "0")}~${1000 + i}~~`);
+    url = await redirected(good({ b: eleven }));
+    assert.deepEqual(url.searchParams.getAll("notice"), ["bank"]);
+    assert.equal(url.searchParams.getAll("b").length, 10, "the first ten come back");
+    // a STAFF id as Checked by does not come back through the redirect (only the ADMIN list resolves chk)
+    url = await redirected(good({ b: [v1, "junk"], chk: staff2.id }));
+    assert.equal(url.searchParams.get("chk"), null, "a STAFF id in chk does not survive the round trip");
+    assert.equal(url.searchParams.get("prep"), w.staff.id);
+    // a bad bring-forward AND a junk line: both notices, the valid line still comes back, the bad bf does not
+    url = await redirected(good({ bf: "abc", b: [v1, "junk"] }));
+    assert.deepEqual(url.searchParams.getAll("notice"), ["bf", "bank"]);
+    assert.equal(url.searchParams.get("bf"), null);
+    assert.equal(url.searchParams.getAll("b").length, 1);
+    // the day screen shows the bank notice (redirect AND hand-edited address), keeps the valid lines, and shows none for good input
+    for (const q of [good({ b: v1, notice: "bank" }), good({ b: [v1, "junk"] })]) {
+      const html = await page(day as never, q);
+      assert.ok(html.includes("Some bank lines in the address were not valid"));
+      assert.ok(html.includes("SLIP-1"), "the valid line is on the screen");
+    }
+    assert.ok(!(await page(day as never, good({ b: v1 }))).includes("bank lines in the address were not valid"));
+    // every valid combination still builds the document
+    assert.ok((await page(doc as never, good({ b: [v1, v2] }))).includes("Money taken to the bank"));
+    assert.ok((await page(doc as never, good({ b: Array.from({ length: 10 }, (_, i) => `10:${String(i).padStart(2, "0")}~${100 + i}~~`) }))).includes("Money taken to the bank"), "exactly 10 lines is fine");
   });
 
   test("bank lines print in their own section; banking more than the drawer holds blocks the document", async () => {

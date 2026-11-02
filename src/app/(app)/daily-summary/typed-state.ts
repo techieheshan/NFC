@@ -59,6 +59,12 @@ export type TypedState = {
    */
   bringForwardInvalid: boolean;
   bank: BankLine[];
+  /**
+   * A bank line was given that is not usable (junk, wrong shape, bad time or amount), or there were more than 10 lines.
+   * The usable lines (at most 10) are kept in `bank`; the document route never prints a smaller "Taken to bank" without
+   * saying so: it sends the user back to the day screen with a notice.
+   */
+  bankLinesInvalid: boolean;
   prepared: Signer | null;
   checked: Signer | null;
 };
@@ -71,14 +77,15 @@ export function parseTypedState(
   // Never truncated before parsing: a 21-character value is refused, not read as a different number.
   const bfGiven = bfRaw !== undefined && bfRaw.trim() !== "";
   const bf = bfGiven && bfRaw.length <= 20 ? parseTypedAmount(bfRaw) : null;
-  const lines = (Array.isArray(q.b) ? q.b : q.b === undefined ? [] : [q.b])
-    .slice(0, MAX_BANK_LINES)
-    .map((raw) => (typeof raw === "string" ? parseBankLine(raw) : null))
-    .filter((l): l is BankLine => l !== null);
+  const given = Array.isArray(q.b) ? q.b : q.b === undefined ? [] : [q.b];
+  // Bounded work: at most 50 entries are even looked at; more than 10 is itself a refusal, whatever they hold.
+  const parsed = given.slice(0, 50).map((raw) => (typeof raw === "string" ? parseBankLine(raw) : null));
+  const lines = parsed.filter((l): l is BankLine => l !== null).slice(0, MAX_BANK_LINES);
   return {
     bringForwardCents: bf && bf.ok ? bf.cents : 0,
     bringForwardInvalid: bfGiven && !(bf && bf.ok),
     bank: lines,
+    bankLinesInvalid: given.length > MAX_BANK_LINES || parsed.some((l) => l === null),
     prepared: pickSigner(lists.prepared, first(q.prep)),
     checked: pickSigner(lists.checked, first(q.chk)),
   };

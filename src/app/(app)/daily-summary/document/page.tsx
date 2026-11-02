@@ -7,6 +7,7 @@ import { colomboNow } from "@/lib/colombo-time";
 import { resolveRange } from "@/lib/daily-summary-dates";
 
 import { loadDayBundle, loadRangeBundle } from "../bundle";
+import { noticeKeys } from "../notices";
 import { NO_ADMIN_MESSAGE } from "../signer-lists";
 import { parseTypedState, typedQuery } from "../typed-state";
 import { DocumentView } from "./document-view";
@@ -63,11 +64,14 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
 
   const b = await loadDayBundle(first(q.date) ?? range?.from);
   const typed = parseTypedState(q, b.signers);
-  if (typed.bringForwardInvalid) {
-    // An amount in the address that is not a real amount must not print as 0.00: back to the day screen, with a message.
-    const back = typedQuery({ bringForwardCents: 0, bank: typed.bank, preparedId: typed.prepared?.id, checkedId: typed.checked?.id });
+  if (typed.bringForwardInvalid || typed.bankLinesInvalid) {
+    // Something in the address could not be used (a bring-forward that is not an amount, a junk or an 11th bank line). The
+    // document must not print a quietly smaller number: back to the day screen, with a notice. What WAS valid comes back
+    // with the user (the bring-forward when it was fine, the valid bank lines, and prep / chk re-resolved against the
+    // offered lists — so a STAFF id in `chk` does not survive the round trip).
+    const back = typedQuery({ bringForwardCents: typed.bringForwardCents, bank: typed.bank, preparedId: typed.prepared?.id, checkedId: typed.checked?.id });
     back.set("date", b.date);
-    back.set("notice", "bf");
+    for (const key of noticeKeys(typed, undefined)) back.append("notice", key);
     redirect(`/daily-summary?${back.toString()}`);
   }
   const flow = computeCashFlow({

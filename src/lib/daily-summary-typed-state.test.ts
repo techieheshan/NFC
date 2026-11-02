@@ -34,7 +34,7 @@ test("round trip: bring-forward, three bank lines (with awkward text) and both s
 });
 
 test("an empty query is an empty state (nothing typed, nobody chosen)", () => {
-  assert.deepEqual(parse({}), { bringForwardCents: 0, bringForwardInvalid: false, bank: [], prepared: null, checked: null });
+  assert.deepEqual(parse({}), { bringForwardCents: 0, bringForwardInvalid: false, bank: [], bankLinesInvalid: false, prepared: null, checked: null });
 });
 
 test("a bad bring-forward is FLAGGED (not read as 0.00), a missing or blank one is simply not set, a good one is neither", () => {
@@ -123,4 +123,22 @@ test("serializeBankLine escapes the separator so a note can never split the line
   const s = serializeBankLine({ cents: 100, time: "10:00", slip: "a~b", note: "c~d~e" });
   assert.equal(s.split("~").length, 4);
   assert.deepEqual(parseBankLine(s), { cents: 100, time: "10:00", slip: "a~b", note: "c~d~e" });
+});
+
+test("a junk bank line, or an 11th line, is FLAGGED (and the valid lines are kept); no line, or only valid lines, is not", () => {
+  const ok = (i: number) => `10:${String(i).padStart(2, "0")}~${100 + i}~~`;
+  assert.equal(parse({}).bankLinesInvalid, false);
+  assert.equal(parse({ b: ok(1) }).bankLinesInvalid, false);
+  assert.equal(parse({ b: [ok(1), ok(2), ok(3)] }).bankLinesInvalid, false);
+  assert.equal(parse({ b: Array.from({ length: 10 }, (_, i) => ok(i)) }).bankLinesInvalid, false, "exactly 10 is allowed");
+  for (const junk of ["", "garbage", "25:00~100~~", "10:00~0~~", "10:00~-5~~", "10:00~1.5~~", "10:00~100", "10:00~100~~~extra", "10:00~100~%E0%A4%A~", `10:00~100~~${"a".repeat(2000)}`]) {
+    const r = parse({ b: [ok(1), junk, ok(2)] });
+    assert.equal(r.bankLinesInvalid, true, junk);
+    assert.deepEqual(r.bank.map((l) => l.cents), [101, 102], "the valid lines are kept: " + junk);
+  }
+  const eleven = parse({ b: Array.from({ length: 11 }, (_, i) => ok(i)) });
+  assert.equal(eleven.bankLinesInvalid, true, "an 11th line is a refusal even though every line is valid");
+  assert.equal(eleven.bank.length, 10, "and the first 10 are kept");
+  assert.equal(parse({ b: Array.from({ length: 500 }, (_, i) => ok(i % 60)) }).bankLinesInvalid, true, "hundreds of lines: refused, and only a bounded number is even looked at");
+  assert.equal(parse({ b: [1 as never, null as never] }).bankLinesInvalid, true, "non-string entries are junk");
 });

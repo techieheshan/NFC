@@ -6,7 +6,8 @@ import { colomboNow } from "@/lib/colombo-time";
 import { resolveRange } from "@/lib/daily-summary-dates";
 
 import { loadDayBundle } from "./bundle";
-import { BF_NOTICE, DayScreen } from "./day-screen";
+import { DayScreen } from "./day-screen";
+import { NOTICE_TEXT, noticeKeys } from "./notices";
 import { parseTypedState } from "./typed-state";
 
 export const metadata = { title: "Daily Summary" };
@@ -48,7 +49,7 @@ export default async function DailySummaryPage({ searchParams }: PageProps<"/dai
       cancelled={b.cancelled}
       staff={b.staff}
       signers={b.signers}
-      notice={typed.bringForwardInvalid || first(q.notice) === "bf" ? BF_NOTICE : null}
+      notices={noticeKeys(typed, q.notice).map((k) => ({ key: k, text: NOTICE_TEXT[k] }))}
       initial={{
         bf: typed.bringForwardCents > 0 ? formatCents(typed.bringForwardCents).replace(/,/g, "") : "",
         bank: typed.bank,

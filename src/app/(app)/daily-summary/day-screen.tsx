@@ -18,9 +18,6 @@ import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "
 import { NO_ADMIN_MESSAGE, type Signer } from "./signer-lists";
 import { typedQuery } from "./typed-state";
 
-/** Shown when the bring-forward in the address was not a valid amount (the document sends people back here with it). */
-export const BF_NOTICE = "The bring-forward in the address was not a valid amount, so it was cleared. Type it again.";
-
 const SELECT = "border-input bg-background h-11 w-full rounded-md border px-3 text-base shadow-xs";
 
 /**
@@ -34,7 +31,7 @@ const SELECT = "border-input bg-background h-11 w-full rounded-md border px-3 te
  * through a reload. Release 2 will store them; this release does not.
  */
 export function DayScreen({
-  date, today, report, cancelled, staff, signers, initial, notice,
+  date, today, report, cancelled, staff, signers, initial, notices,
 }: {
   date: string;
   today: string;
@@ -43,7 +40,7 @@ export function DayScreen({
   staff: StaffCollected[];
   signers: { prepared: Signer[]; checked: Signer[] };
   initial: { bf: string; bank: BankLine[]; preparedId: string; checkedId: string };
-  notice: string | null;
+  notices: { key: string; text: string }[];
 }) {
   const [bfText, setBfText] = useState(initial.bf);
   const [editingBf, setEditingBf] = useState(false);
@@ -97,7 +94,9 @@ export function DayScreen({
   return (
     <div className="mx-auto w-full max-w-[720px] space-y-4 pb-24">
       <h1 className="text-xl font-semibold tracking-tight">Daily Summary</h1>
-      {notice && <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
+      {notices.map((n) => (
+        <p key={n.key} role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{n.text}</p>
+      ))}
 
       {/* date strip */}
       <div className="flex items-center justify-between gap-2">
