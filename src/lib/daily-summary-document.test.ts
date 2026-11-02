@@ -123,6 +123,15 @@ test("collected by staff: the table total equals Total collected; a cancelled li
   assert.equal(dayModel({}, {}, { receipts: 3, total: "10.00" }).cancelledLine, "Cancelled: 3 receipts, 10.00 (not counted)");
 });
 
+test("the document says 'Smart card replacement (N)' and puts the Admission note under the Admission line, in that order", () => {
+  const text = html(dayModel());
+  const a = text.indexOf("Admission (4)");
+  const n = text.indexOf("Admission includes the first smart card");
+  const c = text.indexOf("Smart card replacement (3)");
+  assert.ok(a > 0 && n > a && c > n, "Admission, then its note, then Smart card replacement");
+  assert.ok(!text.includes("Smart card (3)"));
+});
+
 test("a day document has the signature boxes and the info grid; the words 'Asia/Colombo' appear nowhere in it", () => {
   const text = html(dayModel());
   for (const needle of ["Prepared by", "Checked by (admin)", "Signature", "Date", "Document no.", "DS-20261014", "Draft, not saved", "Wednesday, 14 October 2026", "Collection and cash book", "XENON", "INSTITUTE"]) {

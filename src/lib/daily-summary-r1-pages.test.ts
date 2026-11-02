@@ -194,6 +194,7 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     for (const n of ["Sadun Staff", "Thilini Staff", "Nadeesha Admin", "Ruwan Admin"]) assert.ok(prepared.includes(n), n);
     assert.ok(html.includes("Wed 14 Oct 2026") && html.includes("Checked by Nadeesha Admin") && html.includes("3,750.00"));
     assert.ok(html.includes("Collected by staff") && html.includes("Several days") && html.includes("Left in drawer"));
+    assert.ok(html.includes("Smart card replacement (0)") && html.includes("Admission includes the first smart card") && !html.includes("Smart card (0)"));
     assert.ok(!html.includes("Asia/Colombo") && !html.includes("Not paid") && !html.includes("−0.00"));
     const quiet = await page(day as never, { date: "2026-10-11" });
     assert.ok(!quiet.includes("−0.00") && !quiet.includes("-0.00") && quiet.includes("Not checked"));
@@ -224,6 +225,7 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     const html = await page(range as never, { from: "2026-10-12", to: "2026-10-14" });
     for (const n of ["Range, view only", "Day by day", "Mon 12 Oct 2026", "Wed 14 Oct 2026", "A range is a quick look. The cash book and signatures belong to a single day."]) assert.ok(html.includes(n), n);
     assert.ok(!/Cash book|Prepared by|Left in drawer|Asia\/Colombo/.test(html));
+    assert.ok(html.includes("Smart card replacement (0)") && html.includes("Admission includes the first smart card"));
     const wide = await page(range as never, { from: "2000-01-01", to: "2100-12-31" });
     assert.ok(wide.includes("longer than a year"));
     assert.ok(!(await page(range as never, { from: "2026-10-12", to: "2026-10-14" })).includes("longer than a year"));

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { includedMonthsNote, ofWhichLines } from "@/app/(app)/daily-summary/extra-lines";
+import { ADMISSION_NOTE, includedMonthsNote, ofWhichLines, smartCardLabel } from "@/app/(app)/daily-summary/extra-lines";
 
 /*
  * Daily Summary R1 (this replaces the job-5 "Half months (N): amount, included in Class fees / -" wording).
@@ -64,4 +64,20 @@ test("ONE source: the day screen, the range screen and the document all take the
     assert.ok(!/halfMonths\??\.total|noChargeMonths\??\.count/.test(f), "no screen reads the Half amount itself");
     assert.ok(!f.includes("included in Class fees"), "the old wording is gone");
   }
+});
+
+test("the Smart card line reads 'Smart card replacement (N)' and Admission carries the note 'Admission includes the first smart card'", () => {
+  assert.equal(smartCardLabel(0), "Smart card replacement (0)");
+  assert.equal(smartCardLabel(3), "Smart card replacement (3)");
+  assert.equal(ADMISSION_NOTE, "Admission includes the first smart card");
+});
+
+test("ONE source for that wording: the day screen, the range screen and the document use the helpers, and no old 'Smart card (N)' label is left", () => {
+  const root = path.join(process.cwd(), "src", "app", "(app)", "daily-summary");
+  const read = (...p: string[]) => readFileSync(path.join(root, ...p), "utf8");
+  for (const f of [read("day-screen.tsx"), read("range", "page.tsx"), read("document", "blocks.tsx")]) {
+    assert.ok(f.includes("smartCardLabel(") && f.includes("ADMISSION_NOTE"), "uses the helpers");
+    assert.ok(!/`Smart card \(\$\{/.test(f), "no hand-written 'Smart card (N)' label");
+  }
+  assert.ok(!read("day-screen.tsx").includes('label="Admission and smart card"'), "the old row title is gone");
 });

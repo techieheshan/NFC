@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { Placement } from "@/lib/paginate";
 
+import { ADMISSION_NOTE, smartCardLabel } from "../extra-lines";
 import type { DocModel } from "./model";
 
 /**
@@ -125,7 +126,8 @@ function IncomeBlock({ m }: { m: DocModel }) {
           <Kv label="Class fees" value={m.classFees} />
           {m.ofWhich.map((l) => <Kv key={l.key} cls="sub" label={l.label} value={l.total} />)}
           <Kv label={`Admission (${m.admission.count})`} value={m.admission.total} />
-          <Kv label={`Smart card (${m.smartCard.count})`} value={m.smartCard.total} />
+          <Kv cls="sub" label={ADMISSION_NOTE} value="" />
+          <Kv label={smartCardLabel(m.smartCard.count)} value={m.smartCard.total} />
           <Kv cls="strong" label="Total collected" value={m.totalCollected} />
           <Kv label="Teacher advances" value={m.teacherAdvances} />
           <Kv label="Xenon expenses" value={m.xenonExpenses} />

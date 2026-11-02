@@ -13,7 +13,7 @@ import type { DailySummary } from "@/lib/reports";
 
 import { BankSheet } from "./bank-sheet";
 import { cancelledLine, deductionKind } from "./document/model";
-import { ofWhichLines } from "./extra-lines";
+import { ADMISSION_NOTE, ofWhichLines, smartCardLabel } from "./extra-lines";
 import type { Signer } from "./signer-lists";
 import { typedQuery } from "./typed-state";
 
@@ -152,7 +152,8 @@ export function DayScreen({
               <Detail label="Class fees" value={formatMoney(report.classTotal)} />
               {lines.map((l) => <Detail key={l.key} sub label={l.label} value={l.total} />)}
               <Detail label={`Admission (${report.admission.count})`} value={formatMoney(report.admission.total)} />
-              <Detail label={`Smart card (${report.smartCard.count})`} value={formatMoney(report.smartCard.total)} />
+              <p className="text-muted-foreground pl-4 text-xs">{ADMISSION_NOTE}</p>
+              <Detail label={smartCardLabel(report.smartCard.count)} value={formatMoney(report.smartCard.total)} />
               <Detail strong label="Total collected" value={formatMoney(report.totalCollected)} />
               {cancelledText && <p className="text-muted-foreground pt-1 text-xs">{cancelledText}</p>}
             </Expander>
@@ -268,9 +269,10 @@ export function DayScreen({
             {noPayments.length > 0 && <li className="text-muted-foreground break-words text-xs">No payments: {noPayments.map((c) => c.course).join(", ")}</li>}
           </ul>
         </Expander>
-        <Expander label="Admission and smart card" row>
+        <Expander label="Admission and smart card replacement" row>
           <Detail label={`Admission (${report.admission.count})`} value={formatMoney(report.admission.total)} />
-          <Detail label={`Smart card (${report.smartCard.count})`} value={formatMoney(report.smartCard.total)} />
+          <p className="text-muted-foreground pl-4 text-xs">{ADMISSION_NOTE}</p>
+          <Detail label={smartCardLabel(report.smartCard.count)} value={formatMoney(report.smartCard.total)} />
         </Expander>
         <Expander label="Collected by staff" row>
           {staff.length === 0 && <p className="text-muted-foreground py-1 text-sm">No receipts.</p>}

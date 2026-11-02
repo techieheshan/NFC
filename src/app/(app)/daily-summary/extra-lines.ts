@@ -31,3 +31,14 @@ export function includedMonthsNote(report: Pick<DailySummary, "halfMonths" | "no
   ];
   return parts.length === 0 ? null : `${parts.join(" and ")} are included in the amounts.`;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Wording for the Admission and Smart card lines (day screen, range screen, A4 document): ONE source, so they
+// cannot disagree. Wording only — the data object and its field names (admission, smartCard) are untouched.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The SMART_CARD line. */
+export const smartCardLabel = (count: number) => `Smart card replacement (${count})`;
+
+/** Shown under the Admission line. */
+export const ADMISSION_NOTE = "Admission includes the first smart card";

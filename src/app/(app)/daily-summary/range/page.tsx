@@ -8,7 +8,7 @@ import { dayLabelShort } from "@/lib/daily-summary-dates";
 
 import { loadRangeBundle } from "../bundle";
 import { cancelledLine, deductionKind } from "../document/model";
-import { ofWhichLines } from "../extra-lines";
+import { ADMISSION_NOTE, ofWhichLines, smartCardLabel } from "../extra-lines";
 
 export const metadata = { title: "Daily Summary, several days" };
 
@@ -91,7 +91,8 @@ export default async function RangePage({ searchParams }: PageProps<"/daily-summ
         <Row label="Class fees" value={formatMoney(r.classTotal)} />
         {lines.map((l) => <Row key={l.key} sub label={l.label} value={l.total} />)}
         <Row label={`Admission (${r.admission.count})`} value={formatMoney(r.admission.total)} />
-        <Row label={`Smart card (${r.smartCard.count})`} value={formatMoney(r.smartCard.total)} />
+        <p className="text-muted-foreground pl-4 text-xs">{ADMISSION_NOTE}</p>
+        <Row label={smartCardLabel(r.smartCard.count)} value={formatMoney(r.smartCard.total)} />
         <Row strong label="Total collected" value={formatMoney(r.totalCollected)} />
         {cancelled && <p className="text-muted-foreground pt-1 text-xs">{cancelled}</p>}
       </section>
