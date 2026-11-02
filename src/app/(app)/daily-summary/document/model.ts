@@ -61,13 +61,6 @@ export type DocModel = {
   dayByDayTotal: { collected: string; deductions: string; net: string } | null;
 };
 
-/**
- * A name as the DOCUMENT prints it: without a trailing role hint such as " (Admin)" or " (Staff)". The screens keep their
- * role hints (they help choose a person); a signed paper names the person.
- */
-const ROLE_HINT = /\s*\((?:admin|administrator|staff)\)\s*$/i;
-export const plainName = (name: string): string => name.replace(ROLE_HINT, "").trim() || name;
-
 export function cancelledLine(c: CancelledSummary): string | null {
   return c.receipts === 0 ? null : `Cancelled: ${c.receipts} receipt${c.receipts === 1 ? "" : "s"}, ${formatMoney(c.total)} (not counted)`;
 }
@@ -120,9 +113,9 @@ export function buildDocModel(input: {
     docNo: documentNumber(report.from, report.to),
     dateText: isDay ? dayLabelLong(report.from) : `${friendlyDate(report.from)} → ${friendlyDate(report.to)}`,
     generatedText: generatedStamp(input.generated),
-    generatedBy: plainName(input.generatedBy),
-    preparedBy: input.day?.preparedBy ? plainName(input.day.preparedBy) : null,
-    checkedBy: input.day?.checkedBy ? plainName(input.day.checkedBy) : null,
+    generatedBy: input.generatedBy,
+    preparedBy: input.day?.preparedBy ?? null,
+    checkedBy: input.day?.checkedBy ?? null,
     courses,
     noPaymentCourses: report.courses.filter((c) => !hasPayments(c)).map((c) => c.course),
     classFees: formatMoney(report.classTotal),
@@ -146,11 +139,11 @@ export function buildDocModel(input: {
       overdrawn: flow.overdrawn,
     },
     deductions: report.deductionLines.map((d) => ({
-      date: d.date, kind: deductionKind(d), person: d.person ? plainName(d.person) : "—", reason: d.reason, authorizedBy: plainName(d.authorizedBy), amount: formatMoney(d.amount),
+      date: d.date, kind: deductionKind(d), person: d.person ?? "—", reason: d.reason, authorizedBy: d.authorizedBy, amount: formatMoney(d.amount),
     })),
     bank: bank.map((l) => ({ time: to12Hour(l.time), slip: l.slip || "—", note: l.note || "—", amount: formatCents(l.cents) })),
     bankTotal: formatCents(bank.reduce((s, l) => s + l.cents, 0)),
-    staff: staff.map((r) => ({ name: plainName(r.name), receipts: r.receipts, collected: formatMoney(r.collected) })),
+    staff: staff.map((r) => ({ name: r.name, receipts: r.receipts, collected: formatMoney(r.collected) })),
     staffTotal: { receipts: staffReceipts, collected: formatCents(staffCents) },
     cancelledLine: cancelledLine(input.cancelled),
     dayByDay: (input.byDay?.days ?? []).map((d) => ({ date: dayLabelShort(d.date), collected: formatMoney(d.collected), deductions: formatDeduction(d.deductions), net: formatMoney(d.net) })),

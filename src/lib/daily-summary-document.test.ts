@@ -14,7 +14,7 @@ import { OverflowNotice } from "@/app/(app)/daily-summary/document/overflow-noti
 import { OVERFLOW_WARNING, overflowWarning, paginateDocument } from "@/app/(app)/daily-summary/document/paginate-document";
 import { withTemporaryStyle } from "@/app/(app)/daily-summary/document/temporary-style";
 import { makeBlocks } from "@/app/(app)/daily-summary/document/blocks";
-import { buildDocModel, plainName } from "@/app/(app)/daily-summary/document/model";
+import { buildDocModel } from "@/app/(app)/daily-summary/document/model";
 import type { DailySummary } from "@/lib/reports";
 
 /*
@@ -146,21 +146,18 @@ test("the document says 'Smart card replacement (N)' and puts the Admission note
   assert.ok(!text.includes("Smart card (3)"));
 });
 
-test("the document names people without a role hint ('Sadun', not 'Sadun (Staff)') in the grid, signatures, deductions, staff table and footer", () => {
+test("the document prints names EXACTLY as given: nothing is trimmed, not even a stored bracket (the proof against real stored names is daily-summary-document-names.test.ts)", () => {
   const m = buildDocModel({
     report: { ...base, deductionLines: [{ date: "2026-10-14", kind: "XENON", person: "Chathura (Staff)", reason: "salary advance", authorizedBy: "Ruwan (Admin)", isStaffAdvance: true, amount: "2500.00" }] },
     cancelled: { receipts: 0, total: "0.00" }, generated, generatedBy: "Nadeesha (Administrator)",
-    day: { staff: [{ userId: "u", name: "Sadun (Staff)", receipts: 1, collected: "76375.00" }], bringForwardCents: 0, bank: [], preparedBy: "Sadun (Staff)", checkedBy: "Nadeesha (Admin)" },
+    day: { staff: [{ userId: "u", name: "Sadun (Staff)", receipts: 1, collected: "76375.00" }], bringForwardCents: 0, bank: [], preparedBy: "Sadun (Staff)", checkedBy: "Kumari (Maths)" },
   });
-  assert.deepEqual([m.preparedBy, m.checkedBy, m.generatedBy], ["Sadun", "Nadeesha", "Nadeesha"]);
-  assert.equal(m.deductions[0].person, "Chathura");
-  assert.equal(m.deductions[0].authorizedBy, "Ruwan");
-  assert.equal(m.staff[0].name, "Sadun");
+  assert.deepEqual([m.preparedBy, m.checkedBy, m.generatedBy], ["Sadun (Staff)", "Kumari (Maths)", "Nadeesha (Administrator)"]);
+  assert.equal(m.deductions[0].person, "Chathura (Staff)");
+  assert.equal(m.deductions[0].authorizedBy, "Ruwan (Admin)");
+  assert.equal(m.staff[0].name, "Sadun (Staff)");
   const text = html(m);
-  for (const hint of ["(Staff)", "(Admin)", "(Administrator)"]) assert.ok(!text.includes(hint), hint);
-  assert.equal(plainName("Mr. A. Gunawardena"), "Mr. A. Gunawardena");
-  assert.equal(plainName("Kumari (Maths)"), "Kumari (Maths)", "only a role hint is removed, not any bracket");
-  assert.equal(plainName("(Staff)"), "(Staff)", "a name that is only the hint is kept");
+  for (const stored of ["Sadun (Staff)", "Kumari (Maths)", "Chathura (Staff)", "Ruwan (Admin)"]) assert.ok(text.includes(stored), stored);
 });
 
 test("the info grid has three rows a side: Date, Prepared by, Checked by (admin) | Document no., Status, Generated", () => {
