@@ -507,7 +507,7 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
 - **Download PDF is a RASTER PDF.** jsPDF's built-in fonts have no Sinhala, so a text PDF would print
   Sinhala as garbage (the other nine reports still do, through `downloadReportPdf`, which is untouched).
   Each sheet is drawn with html2canvas 1.4.1 (MIT; already in the tree as jsPDF's optional dependency)
-  to a JPEG (scale 2, then 1.5 and 1 if the device cannot allocate it) in an A4 PDF; the text cannot be
+  to a JPEG (scale 2; a sheet that fails or stalls is drawn again at 1.5, then 1 — see "The PDF is made only when…") in an A4 PDF; the text cannot be
   selected. Two traps are handled and tested: html2canvas cannot parse the `oklch()` colours the rest of
   the app uses (the sheet CSS gives every element hex border/outline colours and the clone a white page),
   and Tailwind's `img { display: block }` makes html2canvas draw text about 6 px low (an inline-img rule
@@ -543,13 +543,34 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   webfonts are not there the browser draws a fallback face and the PDF no longer matches the print. So `make-pdf.ts` first
   loads every family the sheet uses (read from the sheet's computed font-family: Geist, and Noto Sans Sinhala when the sheets contain
   Sinhala) at weights 400, 600 and 700 (`document/sheet-fonts.ts`, pure over a font-set interface and tested with fakes), and
-  repeats the check on the clone's own fonts inside html2canvas's `onclone` (the library awaits it). A font that is missing,
-  failed, undeclared or still loading after 5 s raises `SheetFontsError`; each sheet's capture also has a 30 s deadline
-  (`document/deadline.ts`, `DeadlineError`) because a clone that waits for a font that never arrives neither starts nor fails.
-  Neither is retried at a smaller scale. `downloadPdf` turns ANY failure into the one sentence "Couldn't make the PDF on this device.
-  Use Print and choose Save as PDF.", and no file is made. Proven locally (Chrome 154): with the font files blocked the message
-  shows in about 0.3 s and nothing downloads (the previous build made a PDF in the fallback face); a normal run produces pixel-identical
-  pages to the build before the change. NOT covered: if the PAGE's own fonts never load, the app stays on its startup splash (older behaviour).
+  repeats the check on the CLONE's own fonts inside html2canvas's `onclone` (`document/clone-fonts.ts`; the library awaits it). A font
+  that is missing, failed, undeclared or still loading raises `SheetFontsError`. One check can wait up to about 10 s: 5 s for the font
+  loads, then up to 5 s more for `document.fonts.ready` (`FONT_TIMEOUT_MS`, one after the other). A `SheetFontsError` is never
+  retried at a smaller scale: it ends the job at once. `downloadPdf` turns ANY failure into the one sentence "Couldn't make the PDF on
+  this device. Use Print and choose Save as PDF." and no file is made. NOT covered: if the PAGE's own fonts never load, the app stays on
+  its startup splash (older behaviour).
+- **Retry at a lower scale, and the deadlines (`document/capture-plan.ts`, `document/deadline.ts`).** One ATTEMPT is one sheet at one
+  scale. A sheet that fails or does not finish inside its deadline is drawn AGAIN, the same sheet, at the next rung: scale 2, then 1.5,
+  then 1, each rung with its own deadline (`ATTEMPT_DEADLINES_MS`, 25 s each). The ladder is shared by the whole PDF — once it has
+  stepped down, later sheets start at the lower rung — so there are at most three failed attempts in total, and a capture that hangs
+  ends with the message after at most 75 s (3 x 25 s) however many sheets there are, plus the quick preamble. A device that finishes
+  every sheet inside its deadline is never cut off, whatever the number of sheets. The dynamic import of html2canvas and jsPDF has its
+  own deadline (`IMPORT_DEADLINE_MS`, 20 s) and ends in the same one message. **Why the deadline is per sheet:** measured on the laptop
+  with CPU throttling, drawing a sheet costs the SAME time at scale 2, 1.5 and 1 (about 12.4 s per sheet at 12x, at every scale), so a
+  smaller scale does not rescue a CPU-slow device — it helps when a big canvas cannot be allocated. A deadline over the whole document
+  therefore cut off a slow device that was making steady progress (3 sheets at 12x failed under a 25 s whole-attempt deadline in the
+  first version of this work and are made under the per-sheet deadline); the per-sheet deadline only trips on a stall. An abandoned
+  attempt cannot be stopped (a browser promise has no cancel), so it is marked dead: its late result is freed, never encoded, never
+  reaches the PDF, and cannot draw another sheet or report progress. The hidden `iframe.html2canvas-container` copies of the page that
+  html2canvas leaves behind after a failure are removed after every failed attempt and in a `finally` (`clone-cleanup.ts`; only copies
+  this capture added, never one it did not see appear). Only one PDF is made at a time: a module-level lock (`exclusive.ts`) refuses a
+  second call at once ("A PDF is already being made. Wait for it to finish.", the only other sentence), and the button is disabled while
+  busy. The button shows "Preparing PDF, page n of N" while it works. **Measured** (Chrome 154, 360 px, `Emulation.setCPUThrottlingRate`;
+  this is a laptop with a throttled main thread, NOT a Terminal 1): 2-sheet day, scale 2 throughout: 2.2 s unthrottled, 7.7 s at 4x
+  (3.9 s per sheet), 11.4 s at 6x (5.8 s per sheet). 3-sheet dense day, scale 2 throughout: 3.1 s, 11.0 s at 4x, 18.0 s at 6x, 34.6 s
+  at 12x, 45.7 s at 16x, 69.9 s at 24x (about 21 s per sheet, inside the 25 s deadline). With the clone's font files never answering, both
+  days end with the message at 77.1 s, nothing downloaded, the button back to "Download PDF", and no clone iframe left in the page.
+  Chrome 102 / the Terminal 1 are still NOT proven. The evidence is in `~/xenon-release/r1-fix4-evidence/`.
 - **Small pure units behind the day screen, so they can be tested without a browser.** What is typed (bring-forward, bank lines,
   signers) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen only
   dispatches). Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`
