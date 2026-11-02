@@ -14,6 +14,8 @@ export const NOTICE_TEXT: Record<NoticeKey, string> = {
   bank: "Some bank lines in the address were not valid (or there were more than 10), so they were removed. Check the bank list and add any missing line again.",
 };
 
+import { parseTypedAmount } from "@/lib/cents";
+
 const KEYS = Object.keys(NOTICE_TEXT) as NoticeKey[];
 
 /** The notice keys to show: what parsing found, plus any `notice` parameters, each once, in a fixed order. */
@@ -23,4 +25,18 @@ export function noticeKeys(found: { bringForwardInvalid: boolean; bankLinesInval
   if (found.bringForwardInvalid) want.add("bf");
   if (found.bankLinesInvalid) want.add("bank");
   return KEYS.filter((k) => want.has(k));
+}
+
+/**
+ * Notices disappear once the user has put right what they were about.
+ * Typing a VALID bring-forward dismisses the `bf` notice (an empty or still-invalid box keeps it).
+ */
+export function afterBfInput(open: readonly string[], typed: string): string[] {
+  const valid = typed.trim() !== "" && parseTypedAmount(typed).ok;
+  return valid ? open.filter((k) => k !== "bf") : [...open];
+}
+
+/** Adding or removing a bank line dismisses the `bank` notice: the list on screen is now the user's own. */
+export function afterBankChange(open: readonly string[]): string[] {
+  return open.filter((k) => k !== "bank");
 }

@@ -248,7 +248,16 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     try {
       const html = await page(day as never, good({ chk: w.admin.id }));
       assert.ok(html.includes(msg));
-      assert.ok(!html.includes('id="checked"') || html.indexOf(msg) > html.indexOf('id="checked"'), "the message sits in Checked by's place");
+      // the message sits where Checked by sits: after the "Checked by (admin)" text and before everything below the signer box
+      const heading = html.indexOf('id="checked-label"');
+      const firstMsg = html.indexOf(msg);
+      const detail = html.indexOf("By course");
+      const sticky = html.lastIndexOf(msg);
+      assert.ok(heading > 0 && firstMsg > heading && firstMsg < detail, "the first copy of the sentence is in Checked by's place, above the detail rows");
+      assert.ok(sticky > detail, "the other copy is the sticky bar's reason line, which is not what this test relies on");
+      const around = html.slice(heading - 20, firstMsg + msg.length + 10);
+      assert.ok(/<p role="alert" aria-labelledby="checked-label"/.test(around), "the message is a plain text element named by the Checked by text");
+      assert.ok(!html.includes('for="checked"') && !html.includes('id="checked"'), "no <label for> and no element with id=checked: nothing for a label to point at");
       assert.ok(!html.includes("<select id=\"checked\""), "no Checked by list at all");
       assert.ok(!html.includes("auto=print") && !html.includes("auto=pdf"), "no link to the document");
       assert.equal((html.match(/<button type="button" disabled=""[^>]*>[^<]*(?:<svg[^>]*>.*?<\/svg>)?(?:Print|Download PDF)/g) ?? []).length, 2, "both buttons are disabled");
@@ -259,7 +268,9 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     } finally {
       await db.user.updateMany({ where: { role: "ADMIN" }, data: { active: true } });
     }
-    assert.ok(!(await page(day as never, good())).includes(msg), "and back to normal when an admin is active");
+    const normal = await page(day as never, good());
+    assert.ok(!normal.includes(msg), "and back to normal when an admin is active");
+    assert.ok(normal.includes('for="checked"') && normal.includes('<select id="checked"'), "with an admin: a real label for a real list");
   });
 
   test("the RANGE screen and the RANGE document both carry the reconcile warning when the range includes a payer on a tier outside Full/Half/25% (17 Oct), and neither does otherwise", async () => {

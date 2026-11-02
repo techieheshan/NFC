@@ -54,3 +54,10 @@ test("the day screen's cash flow shows the sign on the LABEL and the number with
   assert.ok(/label="− Taken to bank"[\s\S]{0,260}value=\{formatCents\(flow\.bankTotal\)\}/.test(src), "Taken to bank: unsigned number");
   assert.ok(!src.includes("formatDeduction"), "no signed deduction figure on the day screen");
 });
+
+test("the day screen wires the notice dismissal to the bring-forward input and to adding and removing a bank line, and renders only open notices", () => {
+  const src = read("day-screen.tsx");
+  assert.ok(/onChange=\{\(e\) => \{\s*setBfText\(e\.target\.value\);\s*setOpenNotices\(\(o\) => afterBfInput\(o, e\.target\.value\)\);/.test(src), "typing a bring-forward");
+  assert.equal((src.match(/setOpenNotices\(afterBankChange\)/g) ?? []).length, 2, "adding a line and removing a line");
+  assert.ok(src.includes("notices.filter((n) => openNotices.includes(n.key))"), "only the open ones render");
+});

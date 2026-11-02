@@ -15,6 +15,7 @@ import { BankSheet } from "./bank-sheet";
 import { ReconcileNotice } from "./reconcile-notice";
 import { cancelledLine, deductionKind } from "./document/model";
 import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "./extra-lines";
+import { afterBankChange, afterBfInput } from "./notices";
 import { NO_ADMIN_MESSAGE, type Signer } from "./signer-lists";
 import { typedQuery } from "./typed-state";
 
@@ -48,6 +49,8 @@ export function DayScreen({
   const [preparedId, setPreparedId] = useState(initial.preparedId);
   const [checkedId, setCheckedId] = useState(initial.checkedId);
   const [sheet, setSheet] = useState(false);
+  // Notices from the address: each goes away once the user has put right what it was about (rule 17: initial value only).
+  const [openNotices, setOpenNotices] = useState<string[]>(() => notices.map((n) => n.key));
 
   const bfParsed = bfText.trim() === "" ? ({ ok: true, cents: 0 } as const) : parseTypedAmount(bfText);
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
@@ -94,7 +97,7 @@ export function DayScreen({
   return (
     <div className="mx-auto w-full max-w-[720px] space-y-4 pb-24">
       <h1 className="text-xl font-semibold tracking-tight">Daily Summary</h1>
-      {notices.map((n) => (
+      {notices.filter((n) => openNotices.includes(n.key)).map((n) => (
         <p key={n.key} role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{n.text}</p>
       ))}
 
@@ -138,7 +141,10 @@ export function DayScreen({
                 <label htmlFor="bf" className="text-muted-foreground block text-sm">Bring-forward</label>
                 <input
                   id="bf" autoFocus inputMode="decimal" autoComplete="off" placeholder="0.00" value={bfText}
-                  onChange={(e) => setBfText(e.target.value)}
+                  onChange={(e) => {
+                    setBfText(e.target.value);
+                    setOpenNotices((o) => afterBfInput(o, e.target.value));
+                  }}
                   onBlur={() => setEditingBf(false)}
                   onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                   className="border-input bg-background mt-1 h-12 w-full rounded-md border px-3 text-xl font-semibold tabular-nums"
@@ -212,7 +218,10 @@ export function DayScreen({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <span className="tabular-nums">{formatCents(l.cents)}</span>
-                      <button type="button" aria-label={`Remove the ${to12Hour(l.time)} bank line`} onClick={() => setBank((b) => b.filter((_, j) => j !== i))} className="text-muted-foreground grid size-9 place-items-center rounded-md border">
+                      <button type="button" aria-label={`Remove the ${to12Hour(l.time)} bank line`} onClick={() => {
+                        setBank((b) => b.filter((_, j) => j !== i));
+                        setOpenNotices(afterBankChange);
+                      }} className="text-muted-foreground grid size-9 place-items-center rounded-md border">
                         <X className="size-4" aria-hidden />
                       </button>
                     </span>
@@ -252,14 +261,20 @@ export function DayScreen({
           </select>
         </div>
         <div>
-          <label htmlFor="checked" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></label>
           {noAdmin ? (
-            <p role="alert" id="checked" className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{NO_ADMIN_MESSAGE}</p>
+            <>
+              {/* No control exists, so no <label for>: plain text names the message, which a screen reader reads with it. */}
+              <p id="checked-label" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></p>
+              <p role="alert" aria-labelledby="checked-label" className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{NO_ADMIN_MESSAGE}</p>
+            </>
           ) : (
-            <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => setCheckedId(e.target.value)}>
-              <option value="">Select an admin…</option>
-              {signers.checked.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <>
+              <label htmlFor="checked" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></label>
+              <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => setCheckedId(e.target.value)}>
+                <option value="">Select an admin…</option>
+                {signers.checked.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </>
           )}
         </div>
       </section>
@@ -318,6 +333,7 @@ export function DayScreen({
           onClose={() => setSheet(false)}
           onAdd={(line) => {
             setBank((b) => [...b, line].slice(0, MAX_BANK_LINES));
+            setOpenNotices(afterBankChange);
             setSheet(false);
           }}
         />
