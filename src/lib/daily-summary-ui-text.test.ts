@@ -45,3 +45,10 @@ test("no file in the Daily Summary folders is named like a Next.js route file by
   walkPages(root);
   assert.deepEqual(pages.sort(), ["document/page.tsx", "page.tsx", "range/page.tsx"], "exactly the three routes");
 });
+
+test("the day screen's cash flow shows the sign on the LABEL and the number without one ('− Deductions', '− Taken to bank')", () => {
+  const src = read("day-screen.tsx");
+  assert.ok(src.includes('label="− Deductions" value={formatMoney(report.deductions.total)}'), "Deductions: unsigned number");
+  assert.ok(/label="− Taken to bank"[\s\S]{0,260}value=\{formatCents\(flow\.bankTotal\)\}/.test(src), "Taken to bank: unsigned number");
+  assert.ok(!src.includes("formatDeduction"), "no signed deduction figure on the day screen");
+});

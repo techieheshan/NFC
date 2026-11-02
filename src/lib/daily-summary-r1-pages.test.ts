@@ -250,6 +250,7 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     for (const n of ["Sadun Staff", "Thilini Staff", "Nadeesha Admin", "Ruwan Admin"]) assert.ok(prepared.includes(n), n);
     assert.ok(html.includes("Wed 14 Oct 2026") && html.includes("Checked by Nadeesha Admin") && html.includes("3,750.00"));
     assert.ok(html.includes("Collected by staff") && html.includes("Several days") && html.includes("Left in drawer"));
+    assert.ok(html.includes("− Deductions") && html.includes("950.00") && !html.includes("−950.00"), "the Deductions figure carries no second minus sign");
     assert.ok(html.includes("Smart card replacement (0)") && html.includes("Admission includes the first smart card") && !html.includes("Smart card (0)"));
     assert.ok(!html.includes("Asia/Colombo") && !html.includes("Not paid") && !html.includes("−0.00"));
     const quiet = await page(day as never, { date: "2026-10-11" });
