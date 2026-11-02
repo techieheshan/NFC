@@ -245,6 +245,14 @@ model User {
   hallOverridesSet  HallAllocationOverride[] @relation("HallOverrideBy")
   expensesAuthorized Expense[]   @relation("ExpenseAuthorizedBy")
 
+  // Daily Summary Release 2 (back-relations only: no column on "User")
+  dsVersionsDone      DailySummaryVersion[]  @relation("DsDoneBy")
+  dsVersionsPrepared  DailySummaryVersion[]  @relation("DsPreparedBy")
+  dsVersionsSaved     DailySummaryVersion[]  @relation("DsSavedBy")
+  dsBankLinesRecorded DailySummaryBankLine[] @relation("DsBankRecordedBy")
+  dsChecksAsChecker   DailySummaryCheck[]    @relation("DsCheckedBy")
+  dsChecksMarked      DailySummaryCheck[]    @relation("DsCheckMarkedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -602,4 +610,114 @@ model Expense {
   @@index([date])
   @@index([expenseTypeId])
   @@index([teacherId])
+}
+
+// ----------------------------------------------------------------------------
+// DAILY SUMMARY, SAVED DAYS (Release 2). ADDITIVE: new enum and tables only.
+//
+// A day is SAVED only when someone taps "Save day". Every save, edit or re-save writes a NEW
+// immutable DailySummaryVersion: a full frozen snapshot of the document's inputs plus the cash
+// book in Decimal(12,2). Versions are never updated. Bank deposits are rows of their own, copied
+// into every version (a version is complete on its own, and deleting a day deletes them with it).
+// "Checked by" is a row that belongs to ONE version: a money change makes a new version with no
+// check. Rows are kept 3 months after the DATE of the day, then deleted (lazy purge); payments
+// and expenses are never touched.
+// ----------------------------------------------------------------------------
+
+enum DailySummarySaveKind {
+  SAVE // version 1: the day was saved
+  EDIT // bring-forward or bank lines changed; the frozen numbers were kept
+  RESAVE_LIVE // saved again with the live numbers
+}
+
+model DailySummaryDay {
+  id Int @id @default(autoincrement())
+  // The Colombo calendar day (colomboDateValue). ONE saved day per date.
+  date DateTime @unique @db.Date
+  // Number of the newest version: the optimistic-concurrency token (compared under a per-day lock).
+  currentVersion Int
+
+  versions DailySummaryVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DailySummaryVersion {
+  id      Int                  @id @default(autoincrement())
+  day     DailySummaryDay      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  dayId   Int
+  version Int // 1, 2, 3 ... within the day
+  kind    DailySummarySaveKind
+
+  // The cash book of THIS version (rule 4: Decimal, never Float; 99,999,999.99 is the largest typed amount).
+  bringForward     Decimal @db.Decimal(12, 2)
+  collected        Decimal @db.Decimal(12, 2)
+  deductions       Decimal @db.Decimal(12, 2)
+  shouldBeInDrawer Decimal @db.Decimal(12, 2)
+  bankTotal        Decimal @db.Decimal(12, 2)
+  leftInDrawer     Decimal @db.Decimal(12, 2)
+  net              Decimal @db.Decimal(12, 2)
+
+  // The frozen inputs of the A4 document and of the saved-vs-live comparison:
+  // { report: DailySummary, cancelled, staff }. Written once, never changed. snapshotSchema
+  // says which shape it is, so a later release can still read this one.
+  snapshot       Json
+  snapshotSchema Int  @default(1)
+
+  // Structured change items (what changed from the previous version), rendered to text on screen.
+  changes Json
+
+  // Done by of THIS version: who did this save, edit or re-save. Required every time.
+  doneBy     User   @relation("DsDoneBy", fields: [doneById], references: [id])
+  doneById   String
+  doneByName String // frozen text
+  // Done by of version 1, carried unchanged into every later version. Never edited.
+  preparedBy     User   @relation("DsPreparedBy", fields: [preparedById], references: [id])
+  preparedById   String
+  preparedByName String // frozen text
+  // The signed-in user who tapped Save (audit).
+  savedBy   User     @relation("DsSavedBy", fields: [savedById], references: [id])
+  savedById String
+  savedAt   DateTime @default(now())
+
+  bankLines DailySummaryBankLine[]
+  check     DailySummaryCheck?
+
+  @@unique([dayId, version])
+}
+
+model DailySummaryBankLine {
+  id        Int                 @id @default(autoincrement())
+  version   DailySummaryVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId Int
+  position  Int // 1..10, the order shown
+  time      String // "HH:mm", Colombo (rule: times of day are strings)
+  amount    Decimal @db.Decimal(12, 2)
+  slip      String  @default("")
+  note      String  @default("")
+  // Done by of the version that ADDED this deposit. A later version that keeps the line (or edits only its
+  // time, slip or note) carries recordedBy and recordedAt over unchanged.
+  recordedBy   User     @relation("DsBankRecordedBy", fields: [recordedById], references: [id])
+  recordedById String
+  recordedAt   DateTime
+
+  @@unique([versionId, position])
+}
+
+model DailySummaryCheck {
+  id        Int                 @id @default(autoincrement())
+  version   DailySummaryVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId Int                 @unique
+  // The ACTIVE ADMIN named (printed on the signature box) ...
+  checkedBy     User   @relation("DsCheckedBy", fields: [checkedById], references: [id])
+  checkedById   String
+  checkedByName String // frozen text
+  // ... and the ADMIN or STAFF user who tapped "Mark as checked".
+  markedBy     User   @relation("DsCheckMarkedBy", fields: [markedById], references: [id])
+  markedById   String
+  markedByName String // frozen text
+  checkedAt    DateTime @default(now())
+  // Set when a later version kept the same money (only slip, note, time or order changed) and the check was carried over.
+  carriedFromVersion Int?
 }
