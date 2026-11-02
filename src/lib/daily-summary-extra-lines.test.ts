@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { ADMISSION_NOTE, includedMonthsNote, ofWhichLines, smartCardLabel } from "@/app/(app)/daily-summary/extra-lines";
+import { ADMISSION_NOTE, includedMonthsNote, ofWhichLines, reconcileWarning, smartCardLabel } from "@/app/(app)/daily-summary/extra-lines";
 
 /*
  * Daily Summary R1 (this replaces the job-5 "Half months (N): amount, included in Class fees / -" wording).
@@ -80,4 +80,12 @@ test("ONE source for that wording: the day screen, the range screen and the docu
     assert.ok(!/`Smart card \(\$\{/.test(f), "no hand-written 'Smart card (N)' label");
   }
   assert.ok(!read("day-screen.tsx").includes('label="Admission and smart card"'), "the old row title is gone");
+});
+
+test("the reconcile warning counts the courses whose own flag says they do not reconcile, and says nothing otherwise", () => {
+  const c = (reconciles: boolean) => ({ reconciles }) as never;
+  assert.equal(reconcileWarning({ courses: [] }), null);
+  assert.equal(reconcileWarning({ courses: [c(true), c(true)] }), null);
+  assert.equal(reconcileWarning({ courses: [c(true), c(false)] }), "1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
+  assert.equal(reconcileWarning({ courses: [c(false), c(false), c(true), c(false)] }), "3 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
 });

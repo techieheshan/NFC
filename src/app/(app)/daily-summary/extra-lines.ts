@@ -42,3 +42,15 @@ export const smartCardLabel = (count: number) => `Smart card replacement (${coun
 
 /** Shown under the Admission line. */
 export const ADMISSION_NOTE = "Admission includes the first smart card";
+
+// ---------------------------------------------------------------------------------------------------------------
+// The reconcile warning (it was on the old screen and was dropped in the redesign; it is back). `reconciles` is a
+// flag the data object already carries per course; this only COUNTS the courses where it is false. Nothing here
+// touches the data object.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** "N row(s) do not reconcile: a payment used a tier outside Full/Half/25%", or null when every course reconciles. */
+export function reconcileWarning(report: Pick<DailySummary, "courses">): string | null {
+  const n = report.courses.filter((c) => !c.reconciles).length;
+  return n === 0 ? null : `${n} row(s) do not reconcile: a payment used a tier outside Full/Half/25%`;
+}

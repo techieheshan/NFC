@@ -173,6 +173,14 @@ test("the info grid has three rows a side: Date, Prepared by, Checked by (admin)
   assert.ok(!left.includes("<span>Status</span>") && !left.includes("<span>Generated</span>"));
 });
 
+test("the document carries the reconcile warning in the course note when some course does not reconcile, and not otherwise", () => {
+  const bad = dayModel({ courses: [{ ...base.courses[0], reconciles: false }, base.courses[1]] });
+  assert.equal(bad.reconcileWarning, "1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
+  assert.ok(html(bad).includes("1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%."));
+  assert.equal(dayModel().reconcileWarning, null);
+  assert.ok(!html(dayModel()).includes("do not reconcile"));
+});
+
 test("a day document has the signature boxes and the info grid; the words 'Asia/Colombo' appear nowhere in it", () => {
   const text = html(dayModel());
   for (const needle of ["Prepared by", "Checked by (admin)", "Signature", "Date", "Document no.", "DS-20261014", "Draft, not saved", "Wednesday, 14 October 2026", "Collection and cash book", "XENON", "INSTITUTE"]) {

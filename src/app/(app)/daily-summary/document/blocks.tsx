@@ -203,6 +203,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
         foot={["Class fees", "", "", "", "", "", "", m.classFees]}
         note={
           <>
+            {m.reconcileWarning && <><b>{m.reconcileWarning}.</b>{" "}</>}
             {m.noPaymentCourses.length > 0 && <>No payments: {m.noPaymentCourses.join(", ")}. </>}
             Half is the Half fee tier.
             {m.includedNote && <> {m.includedNote}</>}

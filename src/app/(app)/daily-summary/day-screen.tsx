@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
 
 import { amountErrorText, decimalToCents, formatCents, formatMoney, parseTypedAmount } from "@/lib/cents";
 import { MAX_BANK_LINES, computeCashFlow, type BankLine } from "@/lib/cash-flow";
@@ -13,7 +13,7 @@ import type { DailySummary } from "@/lib/reports";
 
 import { BankSheet } from "./bank-sheet";
 import { cancelledLine, deductionKind } from "./document/model";
-import { ADMISSION_NOTE, ofWhichLines, smartCardLabel } from "./extra-lines";
+import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "./extra-lines";
 import type { Signer } from "./signer-lists";
 import { typedQuery } from "./typed-state";
 
@@ -84,6 +84,7 @@ export function DayScreen({
   };
 
   const lines = ofWhichLines(report);
+  const unreconciled = reconcileWarning(report);
   const cancelledText = cancelledLine(cancelled);
   const withPayments = report.courses.filter((c) => c.paidFull + c.paidHalf + c.paidQuarter > 0 || decimalToCents(c.amount) > 0);
   const noPayments = report.courses.filter((c) => !withPayments.includes(c));
@@ -252,6 +253,13 @@ export function DayScreen({
           {signers.checked.length === 0 && <p role="alert" className="text-destructive mt-1 text-xs">No active admin account can check this.</p>}
         </div>
       </section>
+
+      {unreconciled && (
+        <p role="alert" className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="min-w-0">{unreconciled}</span>
+        </p>
+      )}
 
       {/* detail rows */}
       <section className="divide-y rounded-xl border">

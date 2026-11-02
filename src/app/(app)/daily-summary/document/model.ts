@@ -6,7 +6,7 @@ import { friendlyDate } from "@/lib/friendly-date";
 import { to12Hour } from "@/lib/colombo-time";
 import type { DailySummary } from "@/lib/reports";
 
-import { includedMonthsNote, ofWhichLines, type OfWhichLine } from "../extra-lines";
+import { includedMonthsNote, ofWhichLines, reconcileWarning, type OfWhichLine } from "../extra-lines";
 
 /**
  * The A4 document, as plain data: everything the sheets print, already formatted. Pure — it reads the
@@ -33,6 +33,8 @@ export type DocModel = {
   classFees: string;
   ofWhich: OfWhichLine[];
   includedNote: string | null;
+  /** "N row(s) do not reconcile: …" or null. */
+  reconcileWarning: string | null;
   admission: { count: number; total: string };
   smartCard: { count: number; total: string };
   totalCollected: string;
@@ -126,6 +128,7 @@ export function buildDocModel(input: {
     classFees: formatMoney(report.classTotal),
     ofWhich: ofWhichLines(report),
     includedNote: includedMonthsNote(report),
+    reconcileWarning: reconcileWarning(report),
     admission: { count: report.admission.count, total: formatMoney(report.admission.total) },
     smartCard: { count: report.smartCard.count, total: formatMoney(report.smartCard.total) },
     totalCollected: formatMoney(report.totalCollected),

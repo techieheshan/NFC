@@ -65,6 +65,11 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     await row("2026-10-14T05:00:00Z", "1250.00", { ref: "B", by: staff2.id, mode: "HALF" });
     await row("2026-10-14T06:00:00Z", "2500.00", { ref: "VOID", cancelled: true });
     await db.expense.create({ data: { expenseTypeId: xenon.id, amount: "950.00", reason: "repair: door lock", date: new Date("2026-10-14T00:00:00Z"), recordedById: w.admin.id, authorizedById: admin2.id } });
+    // a payer on a custom tier (not Full / Half / 25%): that course cannot reconcile on 17 Oct
+    const special = await db.feeTier.create({ data: { code: "SPECIAL", label: "Special", multiplier: "0.750" } });
+    const sk = await makeStudent(db, { admissionPaid: true });
+    await enrol(db, { studentId: sk.id, courseId: c1.id, tierId: special.id, since: "2026-08-05T06:00:00Z" });
+    await db.payment.create({ data: { kind: "CLASS", studentId: sk.id, amount: "1875.00", paidAt: new Date("2026-10-17T05:00:00Z"), takenById: w.staff.id, courseId: c1.id, billingYear: 2026, billingMonth: 10, feeTierId: special.id, transactionRef: "SPECIAL-1" } });
     await db.expense.create({ data: { expenseTypeId: xenon.id, amount: "4500.00", reason: "electricity bill", date: new Date("2026-10-11T00:00:00Z"), recordedById: w.admin.id, authorizedById: w.admin.id } }); // a day with no payments: a loss
     unfreezeClock();
     freezeClock("2026-11-01T15:48:00Z"); // 21:18 in Colombo
@@ -181,6 +186,15 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     const over = await page(doc as never, good({ b: [`10:30~${99_999_999_99}~~`] }));
     assert.ok(over.includes("more than the drawer should hold"));
     assert.ok(!over.includes("Draft, not saved"));
+  });
+
+  test("the reconcile warning shows on the day screen and in the document when a payer used a tier outside Full/Half/25%, and only then", async () => {
+    asStaff();
+    const warn = "do not reconcile: a payment used a tier outside Full/Half/25%";
+    assert.ok((await page(day as never, { date: "2026-10-17" })).includes(warn));
+    assert.ok((await page(doc as never, { date: "2026-10-17", prep: w.staff.id, chk: w.admin.id })).includes(warn));
+    assert.ok(!(await page(day as never, good())).includes("do not reconcile"));
+    assert.ok(!(await page(doc as never, good())).includes("do not reconcile"));
   });
 
   test("a loss day with nothing banked (deductions above the cash) can still be printed", async () => {
