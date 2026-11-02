@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
 
 import { amountErrorText, decimalToCents, formatCents, formatMoney, parseTypedAmount } from "@/lib/cents";
@@ -15,8 +15,8 @@ import { BankSheet } from "./bank-sheet";
 import { ReconcileNotice } from "./reconcile-notice";
 import { cancelledLine, deductionKind } from "./document/model";
 import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "./extra-lines";
-import { afterBankChange, afterBfInput } from "./notices";
 import { NO_ADMIN_MESSAGE, type Signer } from "./signer-lists";
+import { initialTypedState, typedReducer } from "./typed-reducer";
 import { typedQuery } from "./typed-state";
 
 const SELECT = "border-input bg-background h-11 w-full rounded-md border px-3 text-base shadow-xs";
@@ -43,14 +43,12 @@ export function DayScreen({
   initial: { bf: string; bank: BankLine[]; preparedId: string; checkedId: string };
   notices: { key: string; text: string }[];
 }) {
-  const [bfText, setBfText] = useState(initial.bf);
+  // What is typed (bring-forward, bank lines, signers) and which notices are open: ONE pure state machine (typed-reducer.ts), so its
+  // transitions are tested as they run here. Initial value only, never synced from props (rule 17).
+  const [typed, dispatch] = useReducer(typedReducer, undefined, () => initialTypedState(initial, notices.map((n) => n.key)));
+  const { bfText, bank, preparedId, checkedId, openNotices } = typed;
   const [editingBf, setEditingBf] = useState(false);
-  const [bank, setBank] = useState<BankLine[]>(initial.bank);
-  const [preparedId, setPreparedId] = useState(initial.preparedId);
-  const [checkedId, setCheckedId] = useState(initial.checkedId);
   const [sheet, setSheet] = useState(false);
-  // Notices from the address: each goes away once the user has put right what it was about (rule 17: initial value only).
-  const [openNotices, setOpenNotices] = useState<string[]>(() => notices.map((n) => n.key));
 
   const bfParsed = bfText.trim() === "" ? ({ ok: true, cents: 0 } as const) : parseTypedAmount(bfText);
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
@@ -141,10 +139,7 @@ export function DayScreen({
                 <label htmlFor="bf" className="text-muted-foreground block text-sm">Bring-forward</label>
                 <input
                   id="bf" autoFocus inputMode="decimal" autoComplete="off" placeholder="0.00" value={bfText}
-                  onChange={(e) => {
-                    setBfText(e.target.value);
-                    setOpenNotices((o) => afterBfInput(o, e.target.value));
-                  }}
+                  onChange={(e) => dispatch({ type: "bf", text: e.target.value })}
                   onBlur={() => setEditingBf(false)}
                   onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                   className="border-input bg-background mt-1 h-12 w-full rounded-md border px-3 text-xl font-semibold tabular-nums"
@@ -218,10 +213,7 @@ export function DayScreen({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <span className="tabular-nums">{formatCents(l.cents)}</span>
-                      <button type="button" aria-label={`Remove the ${to12Hour(l.time)} bank line`} onClick={() => {
-                        setBank((b) => b.filter((_, j) => j !== i));
-                        setOpenNotices(afterBankChange);
-                      }} className="text-muted-foreground grid size-9 place-items-center rounded-md border">
+                      <button type="button" aria-label={`Remove the ${to12Hour(l.time)} bank line`} onClick={() => dispatch({ type: "bankRemove", index: i })} className="text-muted-foreground grid size-9 place-items-center rounded-md border">
                         <X className="size-4" aria-hidden />
                       </button>
                     </span>
@@ -255,7 +247,7 @@ export function DayScreen({
       <section className="space-y-3 rounded-xl border p-4">
         <div>
           <label htmlFor="prepared" className="block text-sm font-medium">Prepared by <span className="text-destructive">*</span></label>
-          <select id="prepared" className={`${SELECT} mt-1`} value={prepared?.id ?? ""} onChange={(e) => setPreparedId(e.target.value)}>
+          <select id="prepared" className={`${SELECT} mt-1`} value={prepared?.id ?? ""} onChange={(e) => dispatch({ type: "prepared", id: e.target.value })}>
             <option value="">Select staff…</option>
             {signers.prepared.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role === "ADMIN" ? "Admin" : "Staff"})</option>)}
           </select>
@@ -270,7 +262,7 @@ export function DayScreen({
           ) : (
             <>
               <label htmlFor="checked" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></label>
-              <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => setCheckedId(e.target.value)}>
+              <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => dispatch({ type: "checked", id: e.target.value })}>
                 <option value="">Select an admin…</option>
                 {signers.checked.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
@@ -332,8 +324,7 @@ export function DayScreen({
           inDrawerCents={flow.shouldBe - flow.bankTotal}
           onClose={() => setSheet(false)}
           onAdd={(line) => {
-            setBank((b) => [...b, line].slice(0, MAX_BANK_LINES));
-            setOpenNotices(afterBankChange);
+            dispatch({ type: "bankAdd", line });
             setSheet(false);
           }}
         />

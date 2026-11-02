@@ -55,9 +55,10 @@ test("the day screen's cash flow shows the sign on the LABEL and the number with
   assert.ok(!src.includes("formatDeduction"), "no signed deduction figure on the day screen");
 });
 
-test("the day screen wires the notice dismissal to the bring-forward input and to adding and removing a bank line, and renders only open notices", () => {
+test("the day screen runs ALL its typed state through the pure reducer: it dispatches, and holds no copy of its own", () => {
   const src = read("day-screen.tsx");
-  assert.ok(/onChange=\{\(e\) => \{\s*setBfText\(e\.target\.value\);\s*setOpenNotices\(\(o\) => afterBfInput\(o, e\.target\.value\)\);/.test(src), "typing a bring-forward");
-  assert.equal((src.match(/setOpenNotices\(afterBankChange\)/g) ?? []).length, 2, "adding a line and removing a line");
-  assert.ok(src.includes("notices.filter((n) => openNotices.includes(n.key))"), "only the open ones render");
+  assert.ok(src.includes("useReducer(typedReducer"), "driven by the reducer");
+  for (const type of ["bf", "bankAdd", "bankRemove", "prepared", "checked"]) assert.ok(src.includes(`dispatch({ type: "${type}"`), `dispatches ${type}`);
+  for (const gone of ["setBfText", "setBank(", "setPreparedId", "setCheckedId", "setOpenNotices"]) assert.ok(!src.includes(gone), `${gone} is gone: nothing sets that state outside the reducer`);
+  assert.ok(src.includes("notices.filter((n) => openNotices.includes(n.key))"), "only the open notices render");
 });
