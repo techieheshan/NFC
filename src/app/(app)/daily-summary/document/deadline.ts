@@ -28,8 +28,9 @@ export const IMPORT_DEADLINE_MS = 20_000;
 
 /**
  * ONE sheet drawn at ONE scale: scale 2, then 1.5, then 1 for the same sheet if it fails or stalls (capture-plan.ts). Each rung has
- * its own deadline, and the ladder is shared by the whole PDF, so a capture that hangs ends within the SUM of these (75 s) whatever
- * the number of sheets, while a slow device that finishes every sheet inside its deadline is never cut off. What was measured, and
- * why a sheet's deadline rather than the whole document's, is in AGENTS.md.
+ * its own deadline, and the ladder is shared by the whole PDF, so there are at most three failed attempts: the SUM of these (75 s)
+ * bounds the FAILED attempts only, whatever the number of sheets. Sheets that finish before a hang add their own time (up to 25 s
+ * each), and the page-font check before the first sheet can take about 10 s. A slow device that finishes every sheet inside its
+ * deadline is never cut off. What was measured, and why a sheet's deadline rather than the whole document's, is in AGENTS.md.
  */
 export const ATTEMPT_DEADLINES_MS = [25_000, 25_000, 25_000] as const;

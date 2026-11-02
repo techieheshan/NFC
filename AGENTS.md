@@ -553,8 +553,10 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   scale. A sheet that fails or does not finish inside its deadline is drawn AGAIN, the same sheet, at the next rung: scale 2, then 1.5,
   then 1, each rung with its own deadline (`ATTEMPT_DEADLINES_MS`, 25 s each). The ladder is shared by the whole PDF — once it has
   stepped down, later sheets start at the lower rung — so there are at most three failed attempts in total, and a capture that hangs
-  ends with the message after at most 75 s (3 x 25 s) however many sheets there are, plus the quick preamble. A device that finishes
-  every sheet inside its deadline is never cut off, whatever the number of sheets. The dynamic import of html2canvas and jsPDF has its
+  ends with the message after at most 75 s of FAILED attempts (3 x 25 s) however many sheets there are. That 75 s counts only the failed
+  attempts: sheets that finish before the hang add their own time (up to 25 s each), and the page-font check before the first sheet can
+  take about 10 s (a stalled import ends separately, at 20 s). A device that finishes every sheet inside its deadline is never cut off,
+  whatever the number of sheets. The dynamic import of html2canvas and jsPDF has its
   own deadline (`IMPORT_DEADLINE_MS`, 20 s) and ends in the same one message. **Why the deadline is per sheet:** measured on the laptop
   with CPU throttling, drawing a sheet costs the SAME time at scale 2, 1.5 and 1 (about 12.4 s per sheet at 12x, at every scale), so a
   smaller scale does not rescue a CPU-slow device — it helps when a big canvas cannot be allocated. A deadline over the whole document
@@ -571,6 +573,15 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   at 12x, 45.7 s at 16x, 69.9 s at 24x (about 21 s per sheet, inside the 25 s deadline). With the clone's font files never answering, both
   days end with the message at 77.1 s, nothing downloaded, the button back to "Download PDF", and no clone iframe left in the page.
   Chrome 102 / the Terminal 1 are still NOT proven. The evidence is in `~/xenon-release/r1-fix4-evidence/`.
+- **Known limit: a lower scale does not fix a stalled font or a slow CPU.** A sheet costs the same at every scale, so a clone font that
+  never answers stalls all three rungs: the message comes after about 77 s, not sooner. If Terminal 1 turns out slower than this
+  laptop, the per-sheet deadline constant (`ATTEMPT_DEADLINES_MS`) is the lever.
+- **Known limit: the PDF lock is module-level.** After a give-up a dead attempt may still be rendering when the lock is released, and
+  after navigating away in the middle of a PDF another day's tap says "A PDF is already being made".
+- **Known limit: memory.** Every page image is held until the PDF is finished, so the peak memory is about double the old code
+  (which added each page as it went).
+- **Known limit: a deadline can only fire between tasks.** `withDeadline` fires at a macrotask boundary: a long synchronous parse or
+  render is never cut off in the middle, only noticed at the next real wait.
 - **Small pure units behind the day screen, so they can be tested without a browser.** What is typed (bring-forward, bank lines,
   signers) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen only
   dispatches). Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`

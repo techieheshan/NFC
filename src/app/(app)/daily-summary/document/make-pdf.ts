@@ -36,7 +36,7 @@ export const IMG_RULE = "img { display: inline !important; vertical-align: basel
 
 const pdfLock = createLock();
 
-/** `onProgress(page, total)` is called as each sheet is started (again from page 1 when a smaller scale is tried). */
+/** `onProgress(page, total)` is called as each attempt on a sheet starts; a retry draws the SAME sheet again and reports that page again (it does not restart from page 1). */
 export function sheetsToPdf(sheets: HTMLElement[], filename: string, onProgress?: (page: number, total: number) => void): Promise<void> {
   return pdfLock.run(() => makePdf(sheets, filename, onProgress));
 }
