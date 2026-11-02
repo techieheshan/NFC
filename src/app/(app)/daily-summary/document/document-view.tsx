@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { hasOverflow, paginate, type Block, type Page } from "@/lib/paginate";
 
 import { makeBlocks, type DocBlockDef } from "./blocks";
-import { CONTENT_H } from "./layout";
+import { CONTENT_H } from "./sheet-geometry";
 import { DOCUMENT_CSS } from "./document-css";
 import type { DocModel } from "./model";
 import { PDF_FAIL_MESSAGE, sheetsToPdf } from "./make-pdf";

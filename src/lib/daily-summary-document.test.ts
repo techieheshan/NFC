@@ -8,7 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DOCUMENT_CSS } from "@/app/(app)/daily-summary/document/document-css";
-import { CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_TOP, SAFETY_MARGIN, SHEET_H } from "@/app/(app)/daily-summary/document/layout";
+import { CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_TOP, SAFETY_MARGIN, SHEET_H } from "@/app/(app)/daily-summary/document/sheet-geometry";
 import { makeBlocks } from "@/app/(app)/daily-summary/document/blocks";
 import { buildDocModel, plainName } from "@/app/(app)/daily-summary/document/model";
 import type { DailySummary } from "@/lib/reports";
