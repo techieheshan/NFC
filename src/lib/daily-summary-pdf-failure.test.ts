@@ -255,6 +255,16 @@ test("runCaptures: a capture that hangs on every rung → exactly three attempts
   assert.equal(await downloadPdf(async () => { throw err; }), MESSAGE);
 });
 
+test("runCaptures: each rung uses ITS OWN deadline (distinct values, so 'always the first' cannot pass)", async () => {
+  installFakeTimers();
+  const t = plan({ deadlinesMs: [1111, 2222, 3333], capture: async (index, scale) => { t.calls.push({ index, scale }); return never(); } }, 1);
+  const run = runCaptures(t.p).then(() => null, (e: unknown) => e);
+  for (let i = 0; i < 3; i++) { await settle(); fireOldest(); }
+  assert.ok((await run) instanceof DeadlineError);
+  assert.deepEqual(created, [1111, 2222, 3333]);
+  assert.deepEqual(fired, [1111, 2222, 3333]);
+});
+
 test("runCaptures: the ladder is shared — stalls on three DIFFERENT sheets still end after three failed attempts in total, not three per sheet", async () => {
   installFakeTimers();
   // every attempt at the current rung of its own sheet stalls: sheet 0 @2 → sheet 0 @1.5 ok; sheet 1 @1.5 stalls → @1 ok; sheet 2 @1 stalls → end
