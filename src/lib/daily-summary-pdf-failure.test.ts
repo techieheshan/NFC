@@ -368,8 +368,9 @@ function fakeFonts(missing: boolean): FontSetLike & { loads: string[] } {
   };
 }
 function fakeCloneDoc(fonts: FontSetLike) {
-  const style = { background: "", color: "" };
-  return { doc: { documentElement: { style }, body: { style }, fonts } as unknown as Document, style };
+  const html = { background: "", color: "" };
+  const body = { background: "", color: "" };
+  return { doc: { documentElement: { style: html }, body: { style: body }, fonts } as unknown as Document, html, body };
 }
 
 test("onclone checks the CLONE's fonts — every weight — and never the live page's document.fonts", async () => {
@@ -377,11 +378,13 @@ test("onclone checks the CLONE's fonts — every weight — and never the live p
   const cloneFonts = fakeFonts(false);
   (globalThis as { document?: unknown }).document = { fonts: pageFonts };
   try {
-    const { doc, style } = fakeCloneDoc(cloneFonts);
+    const { doc, html, body } = fakeCloneDoc(cloneFonts);
     await makeOnClone(["Geist"], "Daily Summary")(doc);
     assert.deepEqual(cloneFonts.loads.sort(), ['400 13px "Geist"', '600 13px "Geist"', '700 13px "Geist"']);
     assert.deepEqual(pageFonts.loads, [], "the live page's fonts were not consulted");
-    assert.equal(style.background, "#ffffff", "the clone gets a white page");
+    assert.equal(html.background, "#ffffff", "the clone's <html> gets a white page");
+    assert.equal(body.background, "#ffffff", "…and so does its <body>");
+    assert.equal(body.color, "#1d1530", "…with the document's text colour");
   } finally {
     delete (globalThis as { document?: unknown }).document;
   }
