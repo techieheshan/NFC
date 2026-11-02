@@ -33,7 +33,7 @@ export type DocModel = {
   classFees: string;
   ofWhich: OfWhichLine[];
   includedNote: string | null;
-  /** "N row(s) do not reconcile: …" or null. */
+  /** "N row(s) do not reconcile. …" or null. */
   reconcileWarning: string | null;
   admission: { count: number; total: string };
   smartCard: { count: number; total: string };

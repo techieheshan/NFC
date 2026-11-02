@@ -515,6 +515,30 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   this route (`document/fonts.ts`, `preload: false`). **Tested on Chrome 154 only: Chrome 102 / the
   Terminal 1 are NOT proven** — see `~/xenon-release/DAILY-SUMMARY-R1-CHECKS.md`. If the capture
   throws, the screen says to use Print and choose Save as PDF.
+- **Anything unusable in the address is refused, never printed smaller.** A bring-forward that is not an amount
+  (unparseable, negative, above 99,999,999.99, longer than 20 characters — never truncated before parsing), a junk bank
+  line, or an 11th bank line makes the document route redirect to the day screen (`notice=bf` / `notice=bank`, texts in
+  `daily-summary/notices.ts`), keeping what WAS valid: the bring-forward when it was fine, the first ten valid bank lines,
+  `prep`, and `chk` re-resolved against the ADMIN list (a STAFF id does not survive the round trip). The day screen shows
+  the same notices for a hand-edited address; the bring-forward notice goes away when a valid amount is typed, the bank
+  notice when a line is added or removed. With NO active admin the Checked by place shows "No active admin account. Ask an
+  owner to activate one." (plain text named by aria-labelledby, no `<label for>`), and Print and Download PDF stay disabled.
+- **The reconcile warning is back, and says what it can say.** "N row(s) do not reconcile. A payment used a tier outside
+  Full/Half/25%, or a student's enrolment changed. Check these courses." — only when N > 0, from each course's existing
+  `reconciles` flag (`reconcileWarning` in `extra-lines.ts`; the data object is not touched), on the day screen, the range
+  screen and both documents. It is true for those two causes (and for a student who paid under two tiers in a range);
+  it does not say which course, so staff check the By course list.
+- **Names print exactly as stored.** The document does not trim or decorate a name (there is no `plainName`): signers are
+  `Staff.name ?? username`, deduction people are teacher / staff names, and the collected-by-staff table is
+  `Staff.name ?? username`. `daily-summary-document-names.test.ts` sends real stored names (a Sinhala one, one with a bracket,
+  a login with no Staff record) through the real loaders and requires the same strings on the model. The screens' Prepared
+  by list adds "(Admin)" / "(Staff)" to the option text only.
+- **The sheet's numbers live in ONE file, `document/sheet-geometry.ts`** (794 x 1123 px, padding, the 713 px measuring width
+  that a 210 mm print can hold, the 20 px page margin, A4 in mm). The stylesheet, the paginator (`paginate-document.ts`)
+  and the PDF step import them; a test fails if one of them writes 794, 1123 or 713 itself. Do NOT name a file in these
+  folders `layout`, `template`, `default`, `error`, `loading`, `not-found` or `route`: Next reads them as route files (a
+  `layout.ts` here broke the build once, and a test now guards it). When a page reports overflow the document shows a visible,
+  unprinted warning (`OverflowNotice`).
 - **Follow-ups, not in this release.** Release 2: saved days, history, stored bank deposits (a schema
   change, its own job and migration). Other-income entry (income that is not a payment) is its own later job.
 

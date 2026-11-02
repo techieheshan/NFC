@@ -49,8 +49,8 @@ export const ADMISSION_NOTE = "Admission includes the first smart card";
 // touches the data object.
 // ---------------------------------------------------------------------------------------------------------------
 
-/** "N row(s) do not reconcile: a payment used a tier outside Full/Half/25%", or null when every course reconciles. */
+/** "N row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.", or null when every course reconciles. */
 export function reconcileWarning(report: Pick<DailySummary, "courses">): string | null {
   const n = report.courses.filter((c) => !c.reconciles).length;
-  return n === 0 ? null : `${n} row(s) do not reconcile: a payment used a tier outside Full/Half/25%`;
+  return n === 0 ? null : `${n} row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.`;
 }

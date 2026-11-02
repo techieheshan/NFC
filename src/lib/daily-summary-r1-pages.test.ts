@@ -234,7 +234,7 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
 
   test("the reconcile warning shows on the day screen and in the document when a payer used a tier outside Full/Half/25%, and only then", async () => {
     asStaff();
-    const warn = "do not reconcile: a payment used a tier outside Full/Half/25%";
+    const warn = "do not reconcile. A payment used a tier outside Full/Half/25%, or a student&#x27;s enrolment changed. Check these courses.";
     assert.ok((await page(day as never, { date: "2026-10-17" })).includes(warn));
     assert.ok((await page(doc as never, { date: "2026-10-17", prep: w.staff.id, chk: w.admin.id })).includes(warn));
     assert.ok(!(await page(day as never, good())).includes("do not reconcile"));

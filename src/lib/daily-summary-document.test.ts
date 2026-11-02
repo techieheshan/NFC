@@ -176,8 +176,8 @@ test("the info grid has three rows a side: Date, Prepared by, Checked by (admin)
 
 test("the document carries the reconcile warning in the course note when some course does not reconcile, and not otherwise", () => {
   const bad = dayModel({ courses: [{ ...base.courses[0], reconciles: false }, base.courses[1]] });
-  assert.equal(bad.reconcileWarning, "1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
-  assert.ok(html(bad).includes("1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%."));
+  assert.equal(bad.reconcileWarning, "1 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.");
+  assert.ok(html(bad).replace(/&#x27;/g, "'").includes("1 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses."));
   assert.equal(dayModel().reconcileWarning, null);
   assert.ok(!html(dayModel()).includes("do not reconcile"));
 });
@@ -189,8 +189,8 @@ test("the RANGE document carries the reconcile warning in its course note too (s
     byDay: { days: [{ date: "2026-10-12", collected: "1.00", deductions: "0.00", net: "1.00" }], total: { date: "total", collected: "1.00", deductions: "0.00", net: "1.00" } },
   });
   assert.equal(m.kind, "range");
-  assert.equal(m.reconcileWarning, "1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
-  assert.ok(html(m).includes("1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%."));
+  assert.equal(m.reconcileWarning, "1 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.");
+  assert.ok(html(m).replace(/&#x27;/g, "'").includes("1 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses."));
 });
 
 test("a day document has the signature boxes and the info grid; the words 'Asia/Colombo' appear nowhere in it", () => {

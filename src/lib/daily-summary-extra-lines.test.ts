@@ -86,6 +86,6 @@ test("the reconcile warning counts the courses whose own flag says they do not r
   const c = (reconciles: boolean) => ({ reconciles }) as never;
   assert.equal(reconcileWarning({ courses: [] }), null);
   assert.equal(reconcileWarning({ courses: [c(true), c(true)] }), null);
-  assert.equal(reconcileWarning({ courses: [c(true), c(false)] }), "1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
-  assert.equal(reconcileWarning({ courses: [c(false), c(false), c(true), c(false)] }), "3 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
+  assert.equal(reconcileWarning({ courses: [c(true), c(false)] }), "1 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.");
+  assert.equal(reconcileWarning({ courses: [c(false), c(false), c(true), c(false)] }), "3 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.");
 });
