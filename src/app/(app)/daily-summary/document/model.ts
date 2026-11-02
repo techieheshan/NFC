@@ -135,10 +135,10 @@ export function buildDocModel(input: {
     flow: flow && {
       bringForward: formatCents(flow.bringForward),
       collected: formatCents(flow.collected),
-      deductions: formatCents(-flow.deductions),
+      deductions: formatCents(flow.deductions),
       shouldBe: formatCents(flow.shouldBe),
       bankCount: bank.length,
-      bankTotal: formatCents(-flow.bankTotal),
+      bankTotal: formatCents(flow.bankTotal),
       left: formatCents(flow.left),
       overdrawn: flow.overdrawn,
     },

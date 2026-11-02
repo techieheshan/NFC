@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
 
-import { amountErrorText, decimalToCents, formatCents, formatDeduction, formatMoney, parseTypedAmount } from "@/lib/cents";
+import { amountErrorText, decimalToCents, formatCents, formatMoney, parseTypedAmount } from "@/lib/cents";
 import { MAX_BANK_LINES, computeCashFlow, type BankLine } from "@/lib/cash-flow";
 import { dayLabelShort, shiftDay } from "@/lib/daily-summary-dates";
 import { to12Hour } from "@/lib/colombo-time";
@@ -160,7 +160,7 @@ export function DayScreen({
           </Step>
 
           <Step dot="minus">
-            <Expander label="− Deductions" value={formatDeduction(report.deductions.total)}>
+            <Expander label="− Deductions" value={formatMoney(report.deductions.total)}>
               {report.deductionLines.length === 0 && <p className="text-muted-foreground py-1 text-sm">No deductions.</p>}
               <ul className="space-y-2">
                 {report.deductionLines.map((d, i) => (
@@ -188,7 +188,7 @@ export function DayScreen({
             <Expander
               label="− Taken to bank"
               sub={bank.length === 0 ? "Nothing banked yet" : `${bank.length} line${bank.length === 1 ? "" : "s"} · last ${to12Hour(lastBankTime!)}`}
-              value={formatCents(-flow.bankTotal)}
+              value={formatCents(flow.bankTotal)}
             >
               {bank.length === 0 && <p className="text-muted-foreground py-1 text-sm">No money taken to the bank yet.</p>}
               <ul className="space-y-2">

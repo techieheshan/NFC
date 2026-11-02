@@ -69,14 +69,23 @@ test("Half and No-charge months: indented 'of which' lines under Class fees, and
 test("the cash flow: bring-forward + collected − deductions = should be in the drawer; minus the bank = left in the drawer", () => {
   const m = dayModel({}, { bringForwardCents: 500000, bank: [{ cents: 5000000, time: "10:30", slip: "S-1", note: "Peoples Bank" }, { cents: 1500000, time: "13:05", slip: "", note: "" }] });
   assert.deepEqual(m.flow, {
-    bringForward: "5,000.00", collected: "76,375.00", deductions: "−8,450.00", shouldBe: "72,925.00",
-    bankCount: 2, bankTotal: "−65,000.00", left: "7,925.00", overdrawn: false,
+    bringForward: "5,000.00", collected: "76,375.00", deductions: "8,450.00", shouldBe: "72,925.00",
+    bankCount: 2, bankTotal: "65,000.00", left: "7,925.00", overdrawn: false,
   });
   const text = html(m);
   assert.ok(text.includes("Left in drawer") && text.includes("7,925.00"));
   assert.ok(text.includes("All money collected is cash. Bank deposits are listed below."));
   assert.deepEqual(m.bank.map((l) => [l.time, l.slip, l.amount]), [["10:30 AM", "S-1", "50,000.00"], ["1:05 PM", "—", "15,000.00"]]);
   assert.equal(m.bankTotal, "65,000.00");
+});
+
+test("cash book: the sign is on the LABEL ('− Deductions', '− Taken to bank (N)'), the number has none, so it never reads minus-minus; elsewhere negatives keep their sign", () => {
+  const m = dayModel({}, { bank: [{ cents: 2000000, time: "10:30", slip: "", note: "" }] });
+  const text = html(m);
+  assert.ok(/− Deductions<\/span><span>8,450\.00</.test(text), "'− Deductions' then an unsigned number");
+  assert.ok(/− Taken to bank \(1\)<\/span><span>20,000\.00</.test(text));
+  assert.ok(!/− Deductions<\/span><span>−/.test(text) && !/− Taken to bank \(\d+\)<\/span><span>−/.test(text), "no minus-minus");
+  assert.ok(text.includes("−5,000.00") && text.includes("−3,450.00"), "the Totals lines keep their minus sign");
 });
 
 test("no bank lines: the 'Money taken to the bank' section is omitted entirely", () => {
