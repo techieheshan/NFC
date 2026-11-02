@@ -8,7 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DOCUMENT_CSS } from "@/app/(app)/daily-summary/document/document-css";
-import { A4_H_MM, A4_W_MM, CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_SIDE, PAD_TOP, SAFETY_MARGIN, SHEET_H, SHEET_W } from "@/app/(app)/daily-summary/document/sheet-geometry";
+import { CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_TOP, SAFETY_MARGIN, SHEET_H } from "@/app/(app)/daily-summary/document/sheet-geometry";
 import { IMG_RULE, PDF_FAIL_MESSAGE } from "@/app/(app)/daily-summary/document/make-pdf";
 import { OverflowNotice } from "@/app/(app)/daily-summary/document/overflow-notice";
 import { OVERFLOW_WARNING, overflowWarning, paginateDocument } from "@/app/(app)/daily-summary/document/paginate-document";
