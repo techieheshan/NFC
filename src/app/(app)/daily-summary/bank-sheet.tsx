@@ -8,6 +8,9 @@ import { colomboNow } from "@/lib/colombo-time";
 
 import { NOTE_MAX, SLIP_MAX } from "./typed-state";
 
+/** Shown under the Note field: the note is printed on the document and carried in the address. */
+export const BANK_NOTE_WARNING = "Don't type account numbers.";
+
 const FIELD = "border-input bg-background h-11 w-full rounded-md border px-3 text-base shadow-xs";
 
 /**
@@ -82,6 +85,7 @@ export function BankSheet({
         </div>
         <label htmlFor="bank-note" className="mt-4 block text-sm font-medium">Note <span className="text-muted-foreground font-normal">(optional)</span></label>
         <input id="bank-note" maxLength={NOTE_MAX} autoComplete="off" className={`${FIELD} mt-1`} value={note} onChange={(e) => setNote(e.target.value)} />
+        <p className="text-muted-foreground mt-1 text-xs">{BANK_NOTE_WARNING}</p>
 
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button type="button" onClick={onClose} className="border-input bg-background h-12 rounded-md border text-base font-medium">Cancel</button>
