@@ -197,6 +197,27 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     assert.ok(!(await page(doc as never, good())).includes("do not reconcile"));
   });
 
+  test("no active admin: the day screen says so where Checked by sits, Print and Download PDF stay disabled, and the document is not built", async () => {
+    asStaff();
+    const msg = "No active admin account. Ask an owner to activate one.";
+    await db.user.updateMany({ where: { role: "ADMIN" }, data: { active: false } });
+    try {
+      const html = await page(day as never, good({ chk: w.admin.id }));
+      assert.ok(html.includes(msg));
+      assert.ok(!html.includes('id="checked"') || html.indexOf(msg) > html.indexOf('id="checked"'), "the message sits in Checked by's place");
+      assert.ok(!html.includes("<select id=\"checked\""), "no Checked by list at all");
+      assert.ok(!html.includes("auto=print") && !html.includes("auto=pdf"), "no link to the document");
+      assert.equal((html.match(/<button type="button" disabled=""[^>]*>[^<]*(?:<svg[^>]*>.*?<\/svg>)?(?:Print|Download PDF)/g) ?? []).length, 2, "both buttons are disabled");
+      assert.ok(html.includes("Not checked"));
+      // prepared still works (an admin may prepare, staff certainly may) and the document refuses with the same sentence
+      const docHtml = await page(doc as never, good({ chk: w.admin.id }));
+      assert.ok(docHtml.includes(msg) && !docHtml.includes("Draft, not saved"));
+    } finally {
+      await db.user.updateMany({ where: { role: "ADMIN" }, data: { active: true } });
+    }
+    assert.ok(!(await page(day as never, good())).includes(msg), "and back to normal when an admin is active");
+  });
+
   test("a loss day with nothing banked (deductions above the cash) can still be printed", async () => {
     asStaff();
     const html = await page(doc as never, { date: "2026-10-11", prep: w.staff.id, chk: w.admin.id });

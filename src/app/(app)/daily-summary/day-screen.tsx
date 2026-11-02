@@ -14,7 +14,7 @@ import type { DailySummary } from "@/lib/reports";
 import { BankSheet } from "./bank-sheet";
 import { cancelledLine, deductionKind } from "./document/model";
 import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "./extra-lines";
-import type { Signer } from "./signer-lists";
+import { NO_ADMIN_MESSAGE, type Signer } from "./signer-lists";
 import { typedQuery } from "./typed-state";
 
 /** Shown when the bring-forward in the address was not a valid amount (the document sends people back here with it). */
@@ -70,7 +70,10 @@ export function DayScreen({
     }
   }, [queryText]);
 
-  const reason = !bfParsed.ok
+  const noAdmin = signers.checked.length === 0;
+  const reason = noAdmin
+    ? NO_ADMIN_MESSAGE
+    : !bfParsed.ok
     ? "Fix the bring-forward amount first."
     : !prepared || !checked
       ? "Choose Prepared by and Checked by first."
@@ -250,11 +253,14 @@ export function DayScreen({
         </div>
         <div>
           <label htmlFor="checked" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></label>
-          <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => setCheckedId(e.target.value)}>
-            <option value="">Select an admin…</option>
-            {signers.checked.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          {signers.checked.length === 0 && <p role="alert" className="text-destructive mt-1 text-xs">No active admin account can check this.</p>}
+          {noAdmin ? (
+            <p role="alert" id="checked" className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{NO_ADMIN_MESSAGE}</p>
+          ) : (
+            <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => setCheckedId(e.target.value)}>
+              <option value="">Select an admin…</option>
+              {signers.checked.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
         </div>
       </section>
 

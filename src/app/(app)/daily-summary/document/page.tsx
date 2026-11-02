@@ -7,6 +7,7 @@ import { colomboNow } from "@/lib/colombo-time";
 import { resolveRange } from "@/lib/daily-summary-dates";
 
 import { loadDayBundle, loadRangeBundle } from "../bundle";
+import { NO_ADMIN_MESSAGE } from "../signer-lists";
 import { parseTypedState, typedQuery } from "../typed-state";
 import { DocumentView } from "./document-view";
 import { sinhala } from "./fonts";
@@ -75,7 +76,9 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
     deductions: decimalToCents(b.report.deductions.total),
     bank: typed.bank,
   });
-  const blocked = !typed.prepared || !typed.checked
+  const blocked = b.signers.checked.length === 0
+    ? NO_ADMIN_MESSAGE
+    : !typed.prepared || !typed.checked
     ? "Choose Prepared by and Checked by (an admin) first. Go back and choose them."
     : flow.overdrawn
       ? "The money taken to the bank is more than the drawer should hold. Go back and correct it."

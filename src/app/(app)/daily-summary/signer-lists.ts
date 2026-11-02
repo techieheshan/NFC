@@ -24,6 +24,9 @@ export function splitSigners(users: readonly SignerUser[]): { prepared: Signer[]
   return { prepared: all, checked: all.filter((u) => u.role === "ADMIN") };
 }
 
+/** Shown where Checked by sits when no admin account is active: nobody can check, so nothing can be printed or downloaded. */
+export const NO_ADMIN_MESSAGE = "No active admin account. Ask an owner to activate one.";
+
 /** The signer with this id in THIS list, or null: a hostile, repeated or stale id resolves to nobody. */
 export function pickSigner(list: readonly Signer[], id: unknown): Signer | null {
   if (typeof id !== "string" || id === "") return null;

@@ -5,7 +5,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import type { PrismaClient } from "@prisma/client";
 
-import { pickSigner, splitSigners, type SignerUser } from "@/app/(app)/daily-summary/signer-lists";
+import { NO_ADMIN_MESSAGE, pickSigner, splitSigners, type SignerUser } from "@/app/(app)/daily-summary/signer-lists";
 
 /*
  * Daily Summary R1, rule 24: Prepared by = any active ADMIN or STAFF; Checked by = active ADMIN ONLY.
@@ -32,6 +32,12 @@ test("an ADMIN-only account set: the admin can prepare and check", () => {
   const r = splitSigners([u("a1", "ADMIN"), u("a2", "ADMIN")]);
   assert.equal(r.prepared.length, 2);
   assert.equal(r.checked.length, 2);
+});
+
+test("no active admin: Checked by is empty and the message is the agreed sentence", () => {
+  assert.equal(NO_ADMIN_MESSAGE, "No active admin account. Ask an owner to activate one.");
+  assert.deepEqual(splitSigners([u("s1", "STAFF"), u("s2", "STAFF")]).checked, []);
+  assert.deepEqual(splitSigners([]).checked, []);
 });
 
 test("a TEACHER row is never offered, even if one reaches the function", () => {
