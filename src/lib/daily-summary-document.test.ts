@@ -353,7 +353,10 @@ test("sheet-geometry.ts is the single source: the stylesheet shows its numbers, 
   const path = await import("node:path");
   const dir = path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document");
   for (const f of ["document-css.ts", "make-pdf.ts", "paginate-document.ts", "document-view.tsx"]) {
-    assert.ok(!/\b(794|1123|713)\b/.test(readFileSync(path.join(dir, f), "utf8")), `${f} has no hard-coded sheet number`);
+    const text = readFileSync(path.join(dir, f), "utf8");
+    // digits-only boundaries: "794px" and "794," must be caught too ("\\b" is not a boundary between the 4 and the p)
+    assert.ok(!/(?<!\d)(794|1123|713)(?!\d)/.test(text), `${f} has no hard-coded sheet number`);
+    assert.ok(!/(?<!\d)(210|297)(?!\d)/.test(text), `${f} has no hard-coded A4 size`);
   }
   assert.ok(readFileSync(path.join(dir, "make-pdf.ts"), "utf8").includes("SHEET_W") && readFileSync(path.join(dir, "document-css.ts"), "utf8").includes("SHEET_W"));
 });
