@@ -9,6 +9,7 @@ import {
   type CancelledSummary, type DayFigures, type StaffCollected,
 } from "@/lib/daily-summary-extras";
 import { db } from "@/lib/db";
+import { displayName } from "@/lib/display-name";
 import { dailySummary, type DailySummary } from "@/lib/reports";
 
 import { splitSigners, type Signer } from "./signer-lists";
@@ -52,7 +53,7 @@ async function signedInName(): Promise<string> {
   const id = session?.user?.id;
   if (!id) return "unknown";
   const u = await db.user.findUnique({ where: { id }, select: { username: true, staff: { select: { name: true } } } });
-  return u?.staff?.name ?? u?.username ?? session!.user.username;
+  return u ? displayName(u) : session!.user.username;
 }
 
 async function activeSigners() {

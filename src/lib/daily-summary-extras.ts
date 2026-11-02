@@ -2,8 +2,8 @@ import "server-only";
 
 import { colomboDateValue, colomboNextDay, colomboNow, colomboRangeUtc } from "@/lib/colombo-time";
 import { db } from "@/lib/db";
-import { decimalToCents, formatCents } from "@/lib/cents";
 import { shiftDay } from "@/lib/daily-summary-dates";
+import { COUNTED, aggregateStaff, asCents, money, type StaffCollected } from "@/lib/daily-summary-rows";
 
 /*
  * Daily Summary R1: the three READ-ONLY figures the new screens need that `dailySummary()` does not give.
@@ -13,13 +13,6 @@ import { shiftDay } from "@/lib/daily-summary-dates";
  * in integer cents, and never writes. They are not server actions: the guarded loaders in `bundle.ts`
  * (which call `requireRole` first) are the only way the screens reach them.
  */
-
-const asCents = (d: { toFixed(n: number): string }) => decimalToCents(d.toFixed(2));
-/** The data object's own string form: "76375.00", an ASCII "-" for a loss, never a thousands comma. */
-const money = (cents: number) => `${cents < 0 ? "-" : ""}${formatCents(Math.abs(cents)).replace(/,/g, "")}`;
-
-/** The rows `dailySummary()` counts as collected money: admission, smart card, and a CLASS row that has a course. */
-const COUNTED = (p: { kind: string; courseId: number | null }) => (p.kind === "CLASS" ? p.courseId !== null : true);
 
 // ---- cancelled receipts (not counted anywhere else) ------------------------------------------------------------
 
@@ -41,7 +34,7 @@ export async function cancelledReceipts(from: string, to: string): Promise<Cance
 
 // ---- collected by staff -----------------------------------------------------------------------------------------
 
-export type StaffCollected = { userId: string; name: string; receipts: number; collected: string };
+export type { StaffCollected };
 
 /** Receipts and money per `takenById`. The sum of `collected` is exactly the summary's Total collected. */
 export async function collectedByStaff(from: string, to: string): Promise<StaffCollected[]> {
@@ -52,17 +45,7 @@ export async function collectedByStaff(from: string, to: string): Promise<StaffC
       takenBy: { select: { username: true, staff: { select: { name: true } } } },
     },
   });
-  const by = new Map<string, { name: string; keys: Set<string>; cents: number }>();
-  for (const p of rows.filter(COUNTED)) {
-    const e = by.get(p.takenById) ?? { name: p.takenBy.staff?.name ?? p.takenBy.username, keys: new Set<string>(), cents: 0 };
-    e.keys.add(p.transactionRef ?? `legacy:${p.id}`);
-    e.cents += asCents(p.amount);
-    by.set(p.takenById, e);
-  }
-  return [...by.entries()]
-    .map(([userId, e]) => ({ userId, name: e.name, receipts: e.keys.size, cents: e.cents }))
-    .sort((a, b) => b.cents - a.cents || a.name.localeCompare(b.name))
-    .map(({ cents, ...rest }) => ({ ...rest, collected: money(cents) }));
+  return aggregateStaff(rows);
 }
 
 // ---- day by day ------------------------------------------------------------------------------------------------

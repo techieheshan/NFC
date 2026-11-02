@@ -8,6 +8,8 @@
  * the active ADMIN/STAFF rows, and the document route resolves the ids it is given against the SAME
  * lists — an id in the URL is never trusted, only looked up here.
  */
+import { displayName } from "@/lib/display-name";
+
 export type Signer = { id: string; name: string; role: "ADMIN" | "STAFF" };
 
 export type SignerUser = {
@@ -20,7 +22,7 @@ export type SignerUser = {
 export function splitSigners(users: readonly SignerUser[]): { prepared: Signer[]; checked: Signer[] } {
   const all: Signer[] = users
     .filter((u) => u.role === "ADMIN" || u.role === "STAFF")
-    .map((u) => ({ id: u.id, name: u.staff?.name ?? u.username, role: u.role as "ADMIN" | "STAFF" }));
+    .map((u) => ({ id: u.id, name: displayName(u), role: u.role as "ADMIN" | "STAFF" }));
   return { prepared: all, checked: all.filter((u) => u.role === "ADMIN") };
 }
 
