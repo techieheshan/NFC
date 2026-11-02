@@ -19,6 +19,7 @@
  * Scale 2 keeps text crisp (about 350 KB a page as JPEG); a device that cannot allocate that canvas is
  * retried at 1.5 and then 1. If all fail the caller says so and offers Print.
  */
+import { CAPTURE_DEADLINE_MS, DeadlineError, withDeadline } from "./deadline";
 import { ensureSheetFonts, sheetFamilies, SheetFontsError, type FontSetLike } from "./sheet-fonts";
 import { A4_H_MM, A4_W_MM, SHEET_H, SHEET_W } from "./sheet-geometry";
 import { withTemporaryStyle } from "./temporary-style";
@@ -45,7 +46,7 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
       try {
         const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
         for (let i = 0; i < sheets.length; i++) {
-          const canvas = await html2canvas(sheets[i], {
+          const canvas = await withDeadline(html2canvas(sheets[i], {
             scale,
             width: SHEET_W,
             height: SHEET_H,
@@ -61,7 +62,7 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
               doc.body.style.color = "#1d1530";
               await ensureSheetFonts({ fonts: doc.fonts as unknown as FontSetLike, families, text });
             },
-          });
+          }), CAPTURE_DEADLINE_MS);
           const image = canvas.toDataURL("image/jpeg", 0.85);
           canvas.width = 0; // let the device have the memory back before the next sheet
           canvas.height = 0;
@@ -71,7 +72,8 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
         pdf.save(filename);
         return;
       } catch (e) {
-        if (e instanceof SheetFontsError) throw e; // a missing font is not fixed by a smaller scale: stop, no retry, no PDF
+        // A missing font or a clone that never loads is not fixed by a smaller scale: stop, no retry, no PDF.
+        if (e instanceof SheetFontsError || e instanceof DeadlineError) throw e;
         lastError = e;
       }
     }

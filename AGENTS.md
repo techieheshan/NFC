@@ -539,6 +539,23 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   folders `layout`, `template`, `default`, `error`, `loading`, `not-found` or `route`: Next reads them as route files (a
   `layout.ts` here broke the build once, and a test now guards it). When a page reports overflow the document shows a visible,
   unprinted warning (`OverflowNotice`).
+- **The PDF is made only when the sheets' fonts are really loaded.** The PDF is a picture, drawn from a CLONE of the page; if the
+  webfonts are not there the browser draws a fallback face and the PDF no longer matches the print. So `make-pdf.ts` first
+  loads every family the sheet uses (read from the sheet's computed font-family: Geist, and Noto Sans Sinhala when the sheets contain
+  Sinhala) at weights 400, 600 and 700 (`document/sheet-fonts.ts`, pure over a font-set interface and tested with fakes), and
+  repeats the check on the clone's own fonts inside html2canvas's `onclone` (the library awaits it). A font that is missing,
+  failed, undeclared or still loading after 5 s raises `SheetFontsError`; each sheet's capture also has a 30 s deadline
+  (`document/deadline.ts`, `DeadlineError`) because a clone that waits for a font that never arrives neither starts nor fails.
+  Neither is retried at a smaller scale. `downloadPdf` turns ANY failure into the one sentence "Couldn't make the PDF on this device.
+  Use Print and choose Save as PDF.", and no file is made. Proven locally (Chrome 154): with the font files blocked the message
+  shows in about 0.3 s and nothing downloads (the previous build made a PDF in the fallback face); a normal run produces pixel-identical
+  pages to the build before the change. NOT covered: if the PAGE's own fonts never load, the app stays on its startup splash (older behaviour).
+- **Small pure units behind the day screen, so they can be tested without a browser.** What is typed (bring-forward, bank lines,
+  signers) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen only
+  dispatches). Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`
+  (`lib/daily-summary-rows.ts`); `daily-summary-names-pure.test.ts` runs them on fake rows with no database and fails if any name
+  gets a role hint. The "one source for the sheet's numbers" test reads the real imports with the TypeScript parser, so an alias
+  (`import { CONTENT_H as H }`) or a namespace import cannot get round it.
 - **Follow-ups, not in this release.** Release 2: saved days, history, stored bank deposits (a schema
   change, its own job and migration). Other-income entry (income that is not a payment) is its own later job.
 

@@ -10,7 +10,8 @@ import type { Block, Page } from "@/lib/paginate";
 import { makeBlocks, type DocBlockDef } from "./blocks";
 import { DOCUMENT_CSS } from "./document-css";
 import type { DocModel } from "./model";
-import { PDF_FAIL_MESSAGE, sheetsToPdf } from "./make-pdf";
+import { downloadPdf } from "./download-pdf";
+import { sheetsToPdf } from "./make-pdf";
 import { OverflowNotice } from "./overflow-notice";
 import { paginateDocument } from "./paginate-document";
 
@@ -84,14 +85,11 @@ export function DocumentView({
     if (!sheetsRef.current || busy) return;
     setBusy(true);
     setError(null);
-    try {
-      window.scrollTo(0, 0);
-      await sheetsToPdf([...sheetsRef.current.querySelectorAll<HTMLElement>(".ds-sheet")], filename);
-    } catch {
-      setError(PDF_FAIL_MESSAGE);
-    } finally {
-      setBusy(false);
-    }
+    window.scrollTo(0, 0);
+    // null when the PDF was made; the one agreed sentence when it was not, whatever the reason (fonts, deadline, memory)
+    const problem = await downloadPdf(() => sheetsToPdf([...sheetsRef.current!.querySelectorAll<HTMLElement>(".ds-sheet")], filename));
+    setError(problem);
+    setBusy(false);
   };
 
   // The main screen's Print / Download PDF open this page with ?auto=…: run it once the sheets are on screen.
