@@ -19,3 +19,11 @@ test("the bank sheet says 'Don't type account numbers.' right under the Note fie
   const buttons = src.indexOf("Add to bank list");
   assert.ok(note > 0 && warn > note && warn < buttons, "between the Note input and the buttons");
 });
+
+test("the money-flow lists keep only <li> directly inside <ol> (the vertical line lives on a wrapper), and the Left in drawer row can shrink and wrap", () => {
+  const src = read("day-screen.tsx");
+  assert.ok(!/<ol[^>]*>\s*<span/.test(src), "no <span> straight inside an <ol>");
+  const left = src.slice(src.indexOf("Left in drawer"), src.indexOf("{formatCents(flow.left)}"));
+  assert.ok(left.includes("min-w-0") && left.includes("break-words"), "the label shrinks and wraps");
+  assert.ok(src.includes('shrink-0 text-2xl font-semibold tabular-nums">{formatCents(flow.left)}'), "the number stays whole");
+});

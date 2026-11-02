@@ -33,39 +33,42 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
   fix.textContent = "img { display: inline !important; vertical-align: baseline !important; max-width: none !important; }";
   document.head.appendChild(fix);
 
-  let lastError: unknown = null;
-  for (const scale of [2, 1.5, 1]) {
-    try {
-      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
-      for (let i = 0; i < sheets.length; i++) {
-        const canvas = await html2canvas(sheets[i], {
-          scale,
-          width: W,
-          height: H,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-          logging: false,
-          scrollX: 0,
-          scrollY: -window.scrollY,
-          onclone: (doc) => {
-            doc.documentElement.style.background = "#ffffff";
-            doc.body.style.background = "#ffffff";
-            doc.body.style.color = "#1d1530";
-          },
-        });
-        const image = canvas.toDataURL("image/jpeg", 0.85);
-        canvas.width = 0; // let the device have the memory back before the next sheet
-        canvas.height = 0;
-        if (i > 0) pdf.addPage("a4", "portrait");
-        pdf.addImage(image, "JPEG", 0, 0, 210, 297, undefined, "FAST");
+  try {
+    let lastError: unknown = null;
+    for (const scale of [2, 1.5, 1]) {
+      try {
+        const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+        for (let i = 0; i < sheets.length; i++) {
+          const canvas = await html2canvas(sheets[i], {
+            scale,
+            width: W,
+            height: H,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            logging: false,
+            scrollX: 0,
+            scrollY: -window.scrollY,
+            onclone: (doc) => {
+              doc.documentElement.style.background = "#ffffff";
+              doc.body.style.background = "#ffffff";
+              doc.body.style.color = "#1d1530";
+            },
+          });
+          const image = canvas.toDataURL("image/jpeg", 0.85);
+          canvas.width = 0; // let the device have the memory back before the next sheet
+          canvas.height = 0;
+          if (i > 0) pdf.addPage("a4", "portrait");
+          pdf.addImage(image, "JPEG", 0, 0, 210, 297, undefined, "FAST");
+        }
+        pdf.save(filename);
+        return;
+      } catch (e) {
+        lastError = e;
       }
-      pdf.save(filename);
-      fix.remove();
-      return;
-    } catch (e) {
-      lastError = e;
     }
+    throw lastError instanceof Error ? lastError : new Error("pdf failed");
+  } finally {
+    // Always, whichever way the capture ends: the rule changes every image in the app while it is on the page.
+    fix.remove();
   }
-  fix.remove();
-  throw lastError instanceof Error ? lastError : new Error("pdf failed");
 }

@@ -228,7 +228,8 @@ test("the PDF step puts an inline-<img> rule on the page while it draws (html2ca
   const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "make-pdf.ts"), "utf8");
   assert.ok(src.includes("img { display: inline !important;"));
   assert.ok(src.includes("document.head.appendChild(fix)"));
-  assert.equal(src.split("fix.remove()").length - 1, 2, "removed on success and on failure");
+  assert.equal(src.split("fix.remove()").length - 1, 1, "removed in ONE place");
+  assert.ok(/\} finally \{[\s\S]*?fix\.remove\(\)/.test(src), "and that place is a finally block, so no ending of the capture can leave the rule on the page");
   assert.ok(src.includes("PDF_FAIL_MESSAGE") && src.includes("Couldn't make the PDF on this device. Use Print and choose Save as PDF."));
 });
 

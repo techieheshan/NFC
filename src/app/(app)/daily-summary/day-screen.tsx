@@ -125,8 +125,9 @@ export function DayScreen({
 
       {/* money flow */}
       <section aria-label="Money flow" className="rounded-xl border p-4">
-        <ol className="relative space-y-1 pl-7">
+        <div className="relative">
           <span aria-hidden className="bg-border absolute top-3 bottom-3 left-[9px] w-0.5" />
+          <ol className="space-y-1 pl-7">
 
           <Step dot="open">
             {editingBf ? (
@@ -182,14 +183,16 @@ export function DayScreen({
             </Expander>
           </Step>
         </ol>
-
-        <div className="bg-primary/10 my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
-          <span className="text-sm font-medium">Should be in the drawer</span>
-          <span className="text-lg font-semibold tabular-nums">{formatCents(flow.shouldBe)}</span>
         </div>
 
-        <ol className="relative space-y-1 pl-7">
+        <div className="bg-primary/10 my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
+          <span className="min-w-0 break-words text-sm font-medium">Should be in the drawer</span>
+          <span className="shrink-0 text-lg font-semibold tabular-nums">{formatCents(flow.shouldBe)}</span>
+        </div>
+
+        <div className="relative">
           <span aria-hidden className="bg-border absolute top-3 bottom-3 left-[9px] w-0.5" />
+          <ol className="space-y-1 pl-7">
           <Step dot="minus">
             <Expander
               label="− Taken to bank"
@@ -216,13 +219,14 @@ export function DayScreen({
             </Expander>
           </Step>
         </ol>
+        </div>
 
         <div className={`mt-2 flex items-center justify-between gap-3 rounded-lg px-3 py-4 text-white ${flow.left < 0 ? "bg-red-700" : "bg-primary"}`}>
-          <span>
-            <span className="block text-sm font-medium">Left in drawer</span>
-            <span className="block text-xs opacity-90">Suggested as tomorrow&rsquo;s bring-forward</span>
+          <span className="min-w-0">
+            <span className="block break-words text-sm font-medium">Left in drawer</span>
+            <span className="block break-words text-xs opacity-90">Suggested as tomorrow&rsquo;s bring-forward</span>
           </span>
-          <span className="text-2xl font-semibold tabular-nums">{formatCents(flow.left)}</span>
+          <span className="shrink-0 text-2xl font-semibold tabular-nums">{formatCents(flow.left)}</span>
         </div>
         {flow.overdrawn && <p role="alert" className="text-destructive mt-2 text-sm">The bank lines add up to more than the drawer should hold. Remove or correct a line.</p>}
       </section>
