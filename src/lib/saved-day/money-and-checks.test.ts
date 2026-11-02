@@ -90,6 +90,8 @@ test("classifyEdit: bring-forward, a bank amount or the number of lines is a MON
   assert.equal(classifyEdit(base, shape(200_00, line(5000_00))).moneyChanged, true);
   assert.equal(classifyEdit(base, shape(100_00, line(5001_00))).moneyChanged, true);
   assert.equal(classifyEdit(base, shape(100_00, line(5000_00), line(1_00))).moneyChanged, true);
+  assert.equal(classifyEdit(base, shape(100_00, line(5000_00), line(9000_00))).moneyChanged, true, "a LARGER new line sorts last and is still a money change");
+  assert.equal(classifyEdit(shape(100_00, line(5000_00), line(9000_00)), base).moneyChanged, true, "and removing it too");
   assert.equal(classifyEdit(base, shape(100_00)).moneyChanged, true);
   assert.equal(classifyEdit(base, shape(100_00, line(5000_00), line(1_00))).nothingChanged, false);
 });

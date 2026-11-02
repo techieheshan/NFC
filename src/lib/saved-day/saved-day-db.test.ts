@@ -306,7 +306,9 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     await checkedDay(day);
     const original = (await newest(day)).check!;
     admin();
+    freezeClock("2026-11-02T12:00:00Z"); // two hours after the check was recorded
     const r = await edit(day, 1, u.staff2.id, { bringForward: "1,000.00", bank: [line("100.00", "09:30", "B", "y"), line("200.00", "10:00")] });
+    freezeClock(NOW);
     assert.ok(r.ok, JSON.stringify(r));
     const v2 = await newest(day);
     assert.ok(v2.check, "the check is kept");
@@ -531,7 +533,9 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal((await A.loadSavedDay("2026-08-17")).hint?.daysAgo, 7, "exactly 7 days back is still offered");
     assert.equal((await A.loadSavedDay("2026-08-18")).hint, null, "8 days is too old");
     assert.equal((await A.loadSavedDay(src)).hint, null, "a day never hints itself");
-    // a saved day that already has a bring-forward gets no hint
+    // a saved day that already has a bring-forward gets no hint, even with a saved day just before it (31 Oct)
+    await pay("2026-10-31T04:00:00Z");
+    assert.ok((await save("2026-10-31", w.admin.id)).ok);
     assert.equal((await A.loadSavedDay(DAY)).saved?.cash.bringForward, 650000);
     assert.equal((await A.loadSavedDay(DAY)).hint, null);
   });
