@@ -19,6 +19,18 @@ const DIR = path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "do
 const files = readdirSync(DIR).filter((f) => /\.(ts|tsx)$/.test(f));
 const sourceOf = (f: string) => ts.createSourceFile(f, readFileSync(path.join(DIR, f), "utf8"), ts.ScriptTarget.ES2022, true, f.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 
+/**
+ * The module an import specifier really names, as a repo-relative path without extension: "@/lib/paginate" and
+ * "../../../../lib/paginate" (from this folder) are the SAME module and must be seen as one.
+ */
+function canon(spec: string): string {
+  let abs: string;
+  if (spec.startsWith("@/")) abs = path.join(process.cwd(), "src", spec.slice(2));
+  else if (spec.startsWith(".")) abs = path.resolve(DIR, spec);
+  else return spec; // a package
+  return path.relative(process.cwd(), abs).split(path.sep).join("/").replace(/\.(tsx?|jsx?)$/, "");
+}
+
 type Imp = { module: string; names: string[]; namespace: boolean; typeOnly: boolean; dynamic: boolean; reexport: boolean };
 
 function importsOf(sf: ts.SourceFile): Imp[] {
@@ -33,12 +45,12 @@ function importsOf(sf: ts.SourceFile): Imp[] {
         if (ts.isNamespaceImport(c.namedBindings)) namespace = true;
         else for (const e of c.namedBindings.elements) names.push((e.propertyName ?? e.name).text); // the ORIGINAL name, whatever it is called locally
       }
-      out.push({ module: n.moduleSpecifier.text, names, namespace, typeOnly: !!c?.isTypeOnly, dynamic: false, reexport: false });
+      out.push({ module: canon(n.moduleSpecifier.text), names, namespace, typeOnly: !!c?.isTypeOnly, dynamic: false, reexport: false });
     } else if (ts.isExportDeclaration(n) && n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier)) {
       const names = n.exportClause && ts.isNamedExports(n.exportClause) ? n.exportClause.elements.map((e) => (e.propertyName ?? e.name).text) : [];
-      out.push({ module: n.moduleSpecifier.text, names, namespace: !n.exportClause || ts.isNamespaceExport(n.exportClause), typeOnly: n.isTypeOnly, dynamic: false, reexport: true });
+      out.push({ module: canon(n.moduleSpecifier.text), names, namespace: !n.exportClause || ts.isNamespaceExport(n.exportClause), typeOnly: n.isTypeOnly, dynamic: false, reexport: true });
     } else if (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword && n.arguments[0] && ts.isStringLiteral(n.arguments[0])) {
-      out.push({ module: n.arguments[0].text, names: [], namespace: true, typeOnly: false, dynamic: true, reexport: false });
+      out.push({ module: canon(n.arguments[0].text), names: [], namespace: true, typeOnly: false, dynamic: true, reexport: false });
     }
     ts.forEachChild(n, visit);
   };
@@ -46,8 +58,8 @@ function importsOf(sf: ts.SourceFile): Imp[] {
   return out;
 }
 
-const GEOMETRY = "./sheet-geometry";
-const PAGINATE = "@/lib/paginate";
+const GEOMETRY = canon("./sheet-geometry");
+const PAGINATE = canon("@/lib/paginate");
 /** The only files that may take the sheet's numbers from sheet-geometry.ts. */
 const MAY_IMPORT_GEOMETRY = new Set(["document-css.ts", "make-pdf.ts", "paginate-document.ts"]);
 /** The only file that may use the paginator's VALUES (types are fine anywhere). */
@@ -56,23 +68,36 @@ const MAY_IMPORT_PAGINATE_VALUES = new Set(["paginate-document.ts"]);
 test("the parser sees what it should (guard against a test that parses nothing)", () => {
   assert.ok(files.length >= 10, `${files.length} source files in the document folder`);
   const view = importsOf(sourceOf("document-view.tsx"));
-  assert.ok(view.some((i) => i.module === "./paginate-document" && i.names.includes("paginateDocument")));
-  assert.ok(view.some((i) => i.module === "./make-pdf" && i.names.includes("sheetsToPdf")));
+  assert.ok(view.some((i) => i.module === canon("./paginate-document") && i.names.includes("paginateDocument")));
+  assert.ok(view.some((i) => i.module === canon("./make-pdf") && i.names.includes("sheetsToPdf")));
   const aliased = ts.createSourceFile("x.ts", `import { CONTENT_H as H } from "./sheet-geometry"; import { paginate as fit } from "@/lib/paginate"; import * as g from "./sheet-geometry"; export * from "./sheet-geometry"; const m = import("./sheet-geometry");`, ts.ScriptTarget.ES2022, true);
   const found = importsOf(aliased);
   assert.deepEqual(found.map((i) => [i.module, i.names.join(","), i.namespace, i.dynamic, i.reexport]), [
-    ["./sheet-geometry", "CONTENT_H", false, false, false],
-    ["@/lib/paginate", "paginate", false, false, false],
-    ["./sheet-geometry", "", true, false, false],
-    ["./sheet-geometry", "", true, false, true],
-    ["./sheet-geometry", "", true, true, false],
+    [GEOMETRY, "CONTENT_H", false, false, false],
+    [PAGINATE, "paginate", false, false, false],
+    [GEOMETRY, "", true, false, false],
+    [GEOMETRY, "", true, false, true],
+    [GEOMETRY, "", true, true, false],
   ], "an alias, a namespace import, a re-export and a dynamic import are all reported under their real module and original name");
+});
+
+test("a RELATIVE path to the same module is seen as that module (not only the '@/…' spelling)", () => {
+  assert.equal(canon("@/lib/paginate"), "src/lib/paginate");
+  assert.equal(canon("../../../../lib/paginate"), "src/lib/paginate", "four levels up from the document folder");
+  assert.equal(canon("../../../../lib/paginate.ts"), "src/lib/paginate", "with an extension too");
+  assert.equal(canon("./sheet-geometry"), canon("@/app/(app)/daily-summary/document/sheet-geometry"));
+  assert.equal(canon("../document/sheet-geometry"), GEOMETRY, "round-trips through a sibling folder name");
+  assert.equal(canon("react"), "react", "a package stays as it is");
+  const sneaky = ts.createSourceFile("x.ts", `import { paginate as fit } from "../../../../lib/paginate"; import { CONTENT_H as H } from "../document/sheet-geometry"; export { SHEET_W } from "../../daily-summary/document/sheet-geometry";`, ts.ScriptTarget.ES2022, true);
+  const found = importsOf(sneaky);
+  assert.deepEqual(found.map((i) => i.module), [PAGINATE, GEOMETRY, GEOMETRY], "all three are caught under their real module");
+  assert.ok(found.every((i) => !i.typeOnly));
 });
 
 test("only the stylesheet, the PDF step and the fitting function import the sheet's numbers — under any alias, namespace, re-export or import()", () => {
   const offenders: string[] = [];
   for (const f of files) {
-    const touches = importsOf(sourceOf(f)).filter((i) => i.module === GEOMETRY || i.module.endsWith("/sheet-geometry"));
+    const touches = importsOf(sourceOf(f)).filter((i) => i.module === GEOMETRY);
     if (touches.length > 0 && !MAY_IMPORT_GEOMETRY.has(f) && f !== "sheet-geometry.ts") offenders.push(`${f} imports ${touches.map((t) => t.names.join(",") || "*").join(";")}`);
   }
   assert.deepEqual(offenders, []);
@@ -102,7 +127,7 @@ test("the view fits blocks with paginateDocument and nothing else: it cannot tak
     });
     return valueNames > 0;
   }), []);
-  assert.ok(imps.some((i) => i.module === "./paginate-document" && i.names.includes("paginateDocument")));
+  assert.ok(imps.some((i) => i.module === canon("./paginate-document") && i.names.includes("paginateDocument")));
   // and the call is really made: paginateDocument( ... ) appears as a call expression (not just an import)
   let called = false;
   const walk = (n: ts.Node) => { if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "paginateDocument") called = true; ts.forEachChild(n, walk); };
