@@ -101,3 +101,42 @@ test("the view shows what downloadPdf returns and has no failure sentence of its
   assert.ok(callsDownloadPdf && setsError);
   assert.ok(!readFileSync(path.join(DIR, "document-view.tsx"), "utf8").includes("Couldn't make the PDF"), "the sentence lives in one place (make-pdf.ts)");
 });
+
+test("make-pdf draws every sheet INSIDE withTemporaryStyle(document, IMG_RULE, …), so the image rule is on the page for the capture and off it afterwards", () => {
+  const sf = parse("make-pdf.ts");
+  let styled: ts.CallExpression | null = null;
+  const captures: ts.CallExpression[] = [];
+  const walk = (n: ts.Node) => {
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
+      if (n.expression.text === "withTemporaryStyle") styled = n;
+      if (n.expression.text === "html2canvas") captures.push(n);
+    }
+    ts.forEachChild(n, walk);
+  };
+  walk(sf);
+  assert.ok(styled, "withTemporaryStyle is called");
+  const call = styled as unknown as ts.CallExpression;
+  assert.equal(call.arguments[0].getText(), "document");
+  assert.equal(call.arguments[1].getText(), "IMG_RULE");
+  assert.ok(ts.isArrowFunction(call.arguments[2]) || ts.isFunctionExpression(call.arguments[2]), "the capture is its callback");
+  assert.ok(captures.length >= 1);
+  for (const c of captures) {
+    let inside = false;
+    for (let p: ts.Node | undefined = c.parent; p; p = p.parent) if (p === call.arguments[2]) inside = true;
+    assert.ok(inside, "every html2canvas capture is inside that callback");
+  }
+});
+
+test("the view renders <OverflowNotice pages={pages} /> and has no overflow sentence of its own", () => {
+  const sf = parse("document-view.tsx");
+  let rendered = false;
+  const walk = (n: ts.Node) => {
+    if ((ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) && n.tagName.getText() === "OverflowNotice") {
+      rendered = n.attributes.properties.some((a) => ts.isJsxAttribute(a) && a.name.getText() === "pages");
+    }
+    ts.forEachChild(n, walk);
+  };
+  walk(sf);
+  assert.ok(rendered, "OverflowNotice is rendered with the pages");
+  assert.ok(!readFileSync(path.join(DIR, "document-view.tsx"), "utf8").includes("may be cut off"), "the sentence lives in one place (paginate-document.ts)");
+});
