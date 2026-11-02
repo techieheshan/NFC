@@ -145,12 +145,33 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     assert.ok((await page(doc as never, good({ date: "0001-01-01" }))).includes(today));
     assert.ok((await page(doc as never, good({ date: ["2026-10-14", "2026-10-13"] }))).includes("DS-20261014"), "first value wins");
     assert.ok((await page(doc as never, good({ date: "2099-01-01" }))).includes(today), "the future is today");
-    const neg = await page(doc as never, good({ bf: "-5" }));
-    assert.ok(neg.includes("Left in drawer") && !neg.includes("−5.00"));
-    const huge = await page(doc as never, good({ bf: "9".repeat(40), b: ["25:99~1~~", "garbage", "10:00~-4~~", "10:00~1~~~extra"] }));
+    const huge = await page(doc as never, good({ b: ["25:99~1~~", "garbage", "10:00~-4~~", "10:00~1~~~extra"] }));
     assert.ok(huge.includes("Left in drawer") && !huge.includes("Money taken to the bank"));
     assert.ok((await page(doc as never, good({ prep: "nobody", chk: ["../x"] }))).includes("Choose Prepared by"));
     assert.ok((await page(doc as never, { date: "2026-10-14", auto: ["print", "pdf"] })).includes("Choose Prepared by"));
+  });
+
+  test("a bad bring-forward in the address never prints as 0.00: the document sends the user back to the day screen with a notice", async () => {
+    asStaff();
+    for (const bad of ["-5000", "abc", "100000000.00", "9".repeat(21), "1.234"]) {
+      const err = await page(doc as never, good({ bf: bad })).then(() => null, (e: Error & { url?: string }) => e);
+      assert.ok(err && /NEXT_REDIRECT/.test(err.message), `redirects for bf=${bad}`);
+      const url = new URL(err.url!, "http://x");
+      assert.equal(url.pathname, "/daily-summary");
+      assert.equal(url.searchParams.get("date"), "2026-10-14");
+      assert.equal(url.searchParams.get("notice"), "bf");
+      assert.equal(url.searchParams.get("bf"), null, "the bad value is dropped, not carried back");
+      assert.equal(url.searchParams.get("prep"), w.staff.id, "what else was typed comes back with the user");
+      assert.equal(url.searchParams.get("chk"), w.admin.id);
+    }
+    // the day screen shows the notice, for the redirect AND for a bad bf typed straight into the address; a good one shows none
+    for (const q of [good({ bf: undefined, notice: "bf" }), good({ bf: "-5" })]) {
+      assert.ok((await page(day as never, q)).includes("was not a valid amount, so it was cleared"));
+    }
+    assert.ok(!(await page(day as never, good())).includes("was not a valid amount"));
+    // a good or absent bf still builds the document
+    assert.ok((await page(doc as never, good({ bf: "5,000.50" }))).includes("Left in drawer"));
+    assert.ok((await page(doc as never, good({ bf: undefined }))).includes("Left in drawer"));
   });
 
   test("bank lines print in their own section; banking more than the drawer holds blocks the document", async () => {

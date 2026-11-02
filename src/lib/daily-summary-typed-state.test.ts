@@ -34,7 +34,27 @@ test("round trip: bring-forward, three bank lines (with awkward text) and both s
 });
 
 test("an empty query is an empty state (nothing typed, nobody chosen)", () => {
-  assert.deepEqual(parse({}), { bringForwardCents: 0, bank: [], prepared: null, checked: null });
+  assert.deepEqual(parse({}), { bringForwardCents: 0, bringForwardInvalid: false, bank: [], prepared: null, checked: null });
+});
+
+test("a bad bring-forward is FLAGGED (not read as 0.00), a missing or blank one is simply not set, a good one is neither", () => {
+  for (const bad of ["-5", "−5", "1e9", "abc", "99999999999", "100000000.00", "1.234", "5,00", "0x10", "NaN", "<script>", "1".repeat(21), "5000.00" + "0".repeat(30)]) {
+    const r = parse({ bf: bad });
+    assert.equal(r.bringForwardInvalid, true, bad);
+    assert.equal(r.bringForwardCents, 0, bad);
+  }
+  for (const fine of [undefined, "", "   "]) assert.equal(parse({ bf: fine }).bringForwardInvalid, false, String(fine));
+  for (const ok of ["0", "5000", "5,000.50", "99999999.99", "1".repeat(20).slice(0, 8)]) assert.equal(parse({ bf: ok }).bringForwardInvalid, false, ok);
+  assert.equal(parse({ bf: ["5000", "-1"] }).bringForwardInvalid, false, "first value wins, and it is fine");
+  assert.equal(parse({ bf: ["-1", "5000"] }).bringForwardInvalid, true);
+});
+
+test("no truncation before parsing: a value longer than 20 characters is refused, never read as a shorter number", () => {
+  const r = parse({ bf: "100000000000000000001" }); // 21 chars; the first 20 would have read as a big number
+  assert.equal(r.bringForwardInvalid, true);
+  assert.equal(r.bringForwardCents, 0);
+  const exactly20 = parse({ bf: "0.000000000000000001".padEnd(20, "0") });
+  assert.equal(exactly20.bringForwardInvalid, true, "20 characters but 18 decimals is still not an amount");
 });
 
 test("hostile bring-forward values are ignored, never turned into money", () => {

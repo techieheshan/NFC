@@ -53,6 +53,11 @@ export function parseBankLine(raw: string): BankLine | null {
 
 export type TypedState = {
   bringForwardCents: number;
+  /**
+   * A `bf` was given and is not a valid amount (unparseable, negative, above 99,999,999.99, or longer than 20
+   * characters). It is NOT turned into 0.00 quietly: the document refuses it and sends the user back to the day screen.
+   */
+  bringForwardInvalid: boolean;
   bank: BankLine[];
   prepared: Signer | null;
   checked: Signer | null;
@@ -63,13 +68,16 @@ export function parseTypedState(
   lists: { prepared: readonly Signer[]; checked: readonly Signer[] },
 ): TypedState {
   const bfRaw = first(q.bf);
-  const bf = bfRaw === undefined ? null : parseTypedAmount(bfRaw.slice(0, 20));
+  // Never truncated before parsing: a 21-character value is refused, not read as a different number.
+  const bfGiven = bfRaw !== undefined && bfRaw.trim() !== "";
+  const bf = bfGiven && bfRaw.length <= 20 ? parseTypedAmount(bfRaw) : null;
   const lines = (Array.isArray(q.b) ? q.b : q.b === undefined ? [] : [q.b])
     .slice(0, MAX_BANK_LINES)
     .map((raw) => (typeof raw === "string" ? parseBankLine(raw) : null))
     .filter((l): l is BankLine => l !== null);
   return {
     bringForwardCents: bf && bf.ok ? bf.cents : 0,
+    bringForwardInvalid: bfGiven && !(bf && bf.ok),
     bank: lines,
     prepared: pickSigner(lists.prepared, first(q.prep)),
     checked: pickSigner(lists.checked, first(q.chk)),

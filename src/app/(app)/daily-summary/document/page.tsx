@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { requireNavAccess } from "@/lib/authz";
 import { computeCashFlow } from "@/lib/cash-flow";
@@ -62,6 +62,13 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
 
   const b = await loadDayBundle(first(q.date) ?? range?.from);
   const typed = parseTypedState(q, b.signers);
+  if (typed.bringForwardInvalid) {
+    // An amount in the address that is not a real amount must not print as 0.00: back to the day screen, with a message.
+    const back = typedQuery({ bringForwardCents: 0, bank: typed.bank, preparedId: typed.prepared?.id, checkedId: typed.checked?.id });
+    back.set("date", b.date);
+    back.set("notice", "bf");
+    redirect(`/daily-summary?${back.toString()}`);
+  }
   const flow = computeCashFlow({
     bringForward: typed.bringForwardCents,
     collected: decimalToCents(b.report.totalCollected),

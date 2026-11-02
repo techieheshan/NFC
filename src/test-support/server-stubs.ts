@@ -49,8 +49,9 @@ internals._load = function (this: unknown, request: string, ...rest: unknown[]) 
         notFound() {
           throw new Error("NEXT_NOT_FOUND");
         },
-        redirect() {
-          throw new Error("NEXT_REDIRECT");
+        redirect(url?: string) {
+          // The target travels on the error so a test can assert WHERE a page sends someone.
+          throw Object.assign(new Error("NEXT_REDIRECT"), { url });
         },
       };
     default:
