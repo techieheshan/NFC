@@ -17,7 +17,6 @@ import { parseSnapshot } from "./snapshot";
 
 const NOW = "2026-11-02T10:00:00Z";
 const DAY = "2026-11-01";
-const OTHER = "2026-10-31";
 
 type Actions = typeof import("@/app/(app)/daily-summary/saved-actions");
 
@@ -26,8 +25,8 @@ let handle: TestDatabase;
 let w: World;
 let A: Actions;
 let u: {
-  admin2: { id: string };
-  staff2: { id: string };
+  admin2: { id: string; username: string };
+  staff2: { id: string; username: string };
   inactiveStaff: { id: string };
   inactiveAdmin: { id: string };
   teacher: { id: string };
