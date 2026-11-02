@@ -184,7 +184,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
       id: "dayByDay", table: true,
       render: (s) => (
         <DocTable id="dayByDay" title="Day by day" slice={s}
-          cols={[{ label: "Day", w: 214 }, { label: "Collected", w: 166, right: true }, { label: "Deductions", w: 166, right: true }, { label: "Net", w: 168, right: true }]}
+          cols={[{ label: "Day", w: 213 }, { label: "Collected", w: 166, right: true }, { label: "Deductions", w: 166, right: true }, { label: "Net", w: 168, right: true }]}
           rows={m.dayByDay.map((d) => [d.date, d.collected, d.deductions, d.net])}
           foot={["Total", m.dayByDayTotal!.collected, m.dayByDayTotal!.deductions, m.dayByDayTotal!.net]} />
       ),
@@ -195,7 +195,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
     id: "courses", table: true,
     render: (s) => (
       <DocTable id="courses" title={day ? "1 Collection by course" : "Collection by course"} slice={s}
-        cols={[{ label: "Course", w: 210 }, { label: "Teacher", w: 150 }, { label: "Paid", w: 44, right: true }, { label: "Full", w: 44, right: true },
+        cols={[{ label: "Course", w: 209 }, { label: "Teacher", w: 150 }, { label: "Paid", w: 44, right: true }, { label: "Full", w: 44, right: true },
           { label: "Half", w: 44, right: true }, { label: "25%", w: 44, right: true }, { label: "Free", w: 44, right: true }, { label: "Amount (Rs.)", w: 134, right: true }]}
         rows={m.courses.length === 0
           ? [NONE(8, "No payments")]
@@ -217,7 +217,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
     id: "deductions", table: true,
     render: (s) => (
       <DocTable id="deductions" title={day ? "4 Deductions: what and on whose authority" : "Deductions: what and on whose authority"} slice={s}
-        cols={[{ label: "Date", w: 92 }, { label: "Kind", w: 100 }, { label: "Person", w: 126 }, { label: "Reason", w: 150 }, { label: "Authorised by", w: 126 }, { label: "Amount", w: 120, right: true }]}
+        cols={[{ label: "Date", w: 92 }, { label: "Kind", w: 100 }, { label: "Person", w: 126 }, { label: "Reason", w: 149 }, { label: "Authorised by", w: 126 }, { label: "Amount", w: 120, right: true }]}
         rows={m.deductions.length === 0
           ? [NONE(6, "No deductions")]
           : m.deductions.map((d) => [d.date, d.kind, d.person, d.reason, d.authorizedBy, d.amount])} />
@@ -229,7 +229,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
       id: "bank", table: true,
       render: (s) => (
         <DocTable id="bank" title="5 Money taken to the bank" slice={s}
-          cols={[{ label: "Time", w: 90 }, { label: "Bank slip no.", w: 150 }, { label: "Note", w: 354 }, { label: "Amount", w: 120, right: true }]}
+          cols={[{ label: "Time", w: 90 }, { label: "Bank slip no.", w: 150 }, { label: "Note", w: 353 }, { label: "Amount", w: 120, right: true }]}
           rows={m.bank.map((l) => [l.time, l.slip, l.note, l.amount])}
           foot={["Total", "", "", m.bankTotal]} />
       ),
@@ -241,7 +241,7 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
       id: "staff", table: true,
       render: (s) => (
         <DocTable id="staff" title="6 Collected by staff" slice={s}
-          cols={[{ label: "Staff", w: 354 }, { label: "Receipts", w: 120, right: true }, { label: "Collected", w: 240, right: true }]}
+          cols={[{ label: "Staff", w: 353 }, { label: "Receipts", w: 120, right: true }, { label: "Collected", w: 240, right: true }]}
           rows={m.staff.length === 0 ? [NONE(3, "No receipts")] : m.staff.map((r) => [r.name, r.receipts, r.collected])}
           foot={["Total", m.staffTotal.receipts, m.staffTotal.collected]} />
       ),

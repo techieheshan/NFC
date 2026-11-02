@@ -8,6 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DOCUMENT_CSS } from "@/app/(app)/daily-summary/document/document-css";
+import { CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_TOP, SAFETY_MARGIN, SHEET_H } from "@/app/(app)/daily-summary/document/layout";
 import { makeBlocks } from "@/app/(app)/daily-summary/document/blocks";
 import { buildDocModel, plainName } from "@/app/(app)/daily-summary/document/model";
 import type { DailySummary } from "@/lib/reports";
@@ -221,4 +222,38 @@ test("the PDF step puts an inline-<img> rule on the page while it draws (html2ca
   assert.ok(src.includes("document.head.appendChild(fix)"));
   assert.equal(src.split("fix.remove()").length - 1, 2, "removed on success and on failure");
   assert.ok(src.includes("PDF_FAIL_MESSAGE") && src.includes("Couldn't make the PDF on this device. Use Print and choose Save as PDF."));
+});
+
+test("print width: blocks are measured at 713 px and every table's columns add up to at most 713 (210 mm prints a 713.7 px content box)", () => {
+  assert.equal(MEASURE_W, 713);
+  assert.ok(MEASURE_W <= (210 / 25.4) * 96 - 80, "less than the printed content box");
+  const m = /\.ds-measure \{[^}]*width: (\d+)px/.exec(DOCUMENT_CSS);
+  assert.ok(m && Number(m[1]) <= 713, "the measuring container is at most 713 px");
+  const withBank = dayModel({}, { bank: [{ cents: 100, time: "09:00", slip: "", note: "" }] });
+  const range = buildDocModel({ report: { ...base, from: "2026-10-12", to: "2026-10-14" }, cancelled: { receipts: 0, total: "0.00" }, generated, generatedBy: "N", byDay: { days: [{ date: "2026-10-12", collected: "1.00", deductions: "0.00", net: "1.00" }], total: { date: "total", collected: "1.00", deductions: "0.00", net: "1.00" } } });
+  let tables = 0;
+  for (const model of [withBank, range]) {
+    for (const block of makeBlocks(model)) {
+      const out = renderToStaticMarkup(createElement("div", null, block.render()));
+      if (!out.includes("<table")) continue;
+      tables++;
+      const sum = [...out.matchAll(/<col style="width:(\d+)px"/g)].reduce((s, x) => s + Number(x[1]), 0);
+      assert.ok(sum > 0 && sum <= 713, `${block.id}: columns add up to ${sum}`);
+    }
+  }
+  assert.ok(tables >= 6, "courses, deductions, bank, staff (day) and day-by-day, courses, deductions (range)");
+});
+
+test("pages are filled 20 px short of the footer, on top of the rounding slack", () => {
+  assert.ok(CONTENT_H <= SHEET_H - PAD_TOP - FOOTER_RESERVE - SAFETY_MARGIN);
+  assert.equal(SAFETY_MARGIN, 20);
+});
+
+test("the document view reads Page.overflow and shows a visible warning when any page reports it", async () => {
+  const { readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "document-view.tsx"), "utf8");
+  assert.ok(src.includes("hasOverflow(pages)") && src.includes("OVERFLOW_WARNING"));
+  assert.ok(src.includes("may be cut off"));
+  assert.ok(src.includes('role="alert"'));
 });

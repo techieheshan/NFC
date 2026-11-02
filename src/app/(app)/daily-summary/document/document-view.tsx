@@ -5,16 +5,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { paginate, type Block, type Page } from "@/lib/paginate";
+import { hasOverflow, paginate, type Block, type Page } from "@/lib/paginate";
 
 import { makeBlocks, type DocBlockDef } from "./blocks";
+import { CONTENT_H } from "./layout";
 import { DOCUMENT_CSS } from "./document-css";
 import type { DocModel } from "./model";
 import { PDF_FAIL_MESSAGE, sheetsToPdf } from "./make-pdf";
 
 
-/** A sheet is 1123 px tall: 40 px above, 64 px below (footer), and a few px of slack for rounding. */
-const CONTENT_H = 1123 - 40 - 64 - 4;
+export const OVERFLOW_WARNING = "Part of this document is taller than one page and may be cut off. Check the print preview before you print or download it.";
 const CONT_LABEL = 22; // the "(continued)" line above a repeated header
 
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
@@ -143,6 +143,11 @@ export function DocumentView({
             {pages ? `${total} A4 page${total === 1 ? "" : "s"}. The page scrolls sideways inside the grey box.` : "Preparing pages…"}
           </p>
           {error && <p role="alert" className="no-print text-destructive text-sm">{error}</p>}
+          {pages && hasOverflow(pages) && (
+            <p role="alert" className="no-print rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              {OVERFLOW_WARNING}
+            </p>
+          )}
 
           {!pages && (
             <div ref={measureRef} className="ds-measure" aria-hidden>

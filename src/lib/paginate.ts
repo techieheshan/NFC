@@ -43,6 +43,9 @@ export type Placement = {
 
 export type Page = { placements: Placement[]; used: number; overflow: boolean };
 
+/** True when any sheet holds a row or block taller than itself: the document says so instead of clipping quietly. */
+export const hasOverflow = (pages: readonly Page[]) => pages.some((p) => p.overflow);
+
 export function paginate(blocks: readonly Block[], pageHeight: number): Page[] {
   const pages: Page[] = [{ placements: [], used: 0, overflow: false }];
   const cur = () => pages[pages.length - 1];

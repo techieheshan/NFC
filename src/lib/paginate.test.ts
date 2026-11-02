@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { paginate, type Block } from "@/lib/paginate";
+import { hasOverflow, paginate, type Block } from "@/lib/paginate";
 
 /*
  * Daily Summary R1: the A4 paginator is a pure function of measured heights.
@@ -104,4 +104,11 @@ test("a continuation slice costs the repeated header (contTop), not the full top
   assert.deepEqual(pages.map((p) => p.used), [450, 430, 270]);
   assert.deepEqual(pages.map((p) => p.placements[0].rowEnd! - p.placements[0].rowStart!), [4, 4, 2]);
   assert.ok(pages.every((p) => !p.overflow));
+});
+
+test("hasOverflow reports a sheet that holds something taller than itself, and only then", () => {
+  assert.equal(hasOverflow(paginate([box("a", 100), table("t", [10, 10], 20, 10, 10)], 1000)), false);
+  assert.equal(hasOverflow(paginate([box("big", 2000)], 1000)), true);
+  assert.equal(hasOverflow(paginate([table("t", [100, 900, 100], 50, 30, 20)], 500)), true);
+  assert.equal(hasOverflow([]), false);
 });

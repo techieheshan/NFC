@@ -37,7 +37,7 @@ export const DOCUMENT_CSS = `/*
   position: absolute;
   left: -20000px;
   top: 0;
-  width: 714px; /* a sheet's content width: 794 - 2 x 40 */
+  width: 713px; /* the PRINTED content width: 210 mm is 793.7 px, less 2 x 40 = 713.7; see layout.ts */
   visibility: hidden;
   font-size: 13px;
   line-height: 1.35;
