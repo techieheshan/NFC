@@ -181,6 +181,17 @@ test("the document carries the reconcile warning in the course note when some co
   assert.ok(!html(dayModel()).includes("do not reconcile"));
 });
 
+test("the RANGE document carries the reconcile warning in its course note too (same model, same words)", () => {
+  const m = buildDocModel({
+    report: { ...base, from: "2026-10-12", to: "2026-10-17", courses: [{ ...base.courses[0], reconciles: false }, base.courses[1]] },
+    cancelled: { receipts: 0, total: "0.00" }, generated, generatedBy: "N",
+    byDay: { days: [{ date: "2026-10-12", collected: "1.00", deductions: "0.00", net: "1.00" }], total: { date: "total", collected: "1.00", deductions: "0.00", net: "1.00" } },
+  });
+  assert.equal(m.kind, "range");
+  assert.equal(m.reconcileWarning, "1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%");
+  assert.ok(html(m).includes("1 row(s) do not reconcile: a payment used a tier outside Full/Half/25%."));
+});
+
 test("a day document has the signature boxes and the info grid; the words 'Asia/Colombo' appear nowhere in it", () => {
   const text = html(dayModel());
   for (const needle of ["Prepared by", "Checked by (admin)", "Signature", "Date", "Document no.", "DS-20261014", "Draft, not saved", "Wednesday, 14 October 2026", "Collection and cash book", "XENON", "INSTITUTE"]) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
 
 import { amountErrorText, decimalToCents, formatCents, formatMoney, parseTypedAmount } from "@/lib/cents";
 import { MAX_BANK_LINES, computeCashFlow, type BankLine } from "@/lib/cash-flow";
@@ -12,6 +12,7 @@ import type { CancelledSummary, StaffCollected } from "@/lib/daily-summary-extra
 import type { DailySummary } from "@/lib/reports";
 
 import { BankSheet } from "./bank-sheet";
+import { ReconcileNotice } from "./reconcile-notice";
 import { cancelledLine, deductionKind } from "./document/model";
 import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "./extra-lines";
 import { NO_ADMIN_MESSAGE, type Signer } from "./signer-lists";
@@ -264,12 +265,7 @@ export function DayScreen({
         </div>
       </section>
 
-      {unreconciled && (
-        <p role="alert" className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span className="min-w-0">{unreconciled}</span>
-        </p>
-      )}
+      <ReconcileNotice text={unreconciled} />
 
       {/* detail rows */}
       <section className="divide-y rounded-xl border">

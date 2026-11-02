@@ -8,7 +8,8 @@ import { dayLabelShort } from "@/lib/daily-summary-dates";
 
 import { loadRangeBundle } from "../bundle";
 import { cancelledLine, deductionKind } from "../document/model";
-import { ADMISSION_NOTE, ofWhichLines, smartCardLabel } from "../extra-lines";
+import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "../extra-lines";
+import { ReconcileNotice } from "../reconcile-notice";
 
 export const metadata = { title: "Daily Summary, several days" };
 
@@ -28,6 +29,7 @@ export default async function RangePage({ searchParams }: PageProps<"/daily-summ
   const b = await loadRangeBundle(first(q.from), first(q.to));
   const r = b.report;
   const lines = ofWhichLines(r);
+  const unreconciled = reconcileWarning(r);
   const cancelled = cancelledLine(b.cancelled);
   const withPayments = r.courses.filter((c) => c.paidFull + c.paidHalf + c.paidQuarter > 0 || decimalToCents(c.amount) > 0);
   const noPayments = r.courses.filter((c) => !withPayments.includes(c));
@@ -118,6 +120,8 @@ export default async function RangePage({ searchParams }: PageProps<"/daily-summ
           </ul>
         </details>
       </section>
+
+      <ReconcileNotice text={unreconciled} />
 
       <section className="rounded-xl border px-4">
         <details className="group">

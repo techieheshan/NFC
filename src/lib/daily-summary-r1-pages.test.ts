@@ -218,6 +218,22 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     assert.ok(!(await page(day as never, good())).includes(msg), "and back to normal when an admin is active");
   });
 
+  test("the RANGE screen and the RANGE document both carry the reconcile warning when the range includes a payer on a tier outside Full/Half/25% (17 Oct), and neither does otherwise", async () => {
+    asStaff();
+    const warn = "do not reconcile";
+    const wide = { from: "2026-10-12", to: "2026-10-17" };
+    const narrow = { from: "2026-10-12", to: "2026-10-14" };
+    const screen = await page(range as never, wide);
+    assert.ok(screen.includes(warn) && screen.includes("1 row(s) do not reconcile"), "range screen, range with the special payer");
+    assert.ok((await page(doc as never, wide)).includes("1 row(s) do not reconcile"), "range document, same range");
+    assert.ok(!(await page(range as never, narrow)).includes(warn), "range screen, range without it");
+    assert.ok(!(await page(doc as never, narrow)).includes(warn), "range document, range without it");
+    // the screen and its own document agree, in the same words
+    const w1 = /(\d+ row\(s\) do not reconcile[^<]*)/.exec(screen)?.[1];
+    const w2 = /(\d+ row\(s\) do not reconcile[^<]*)/.exec(await page(doc as never, wide))?.[1];
+    assert.ok(w1 && w2 && w1.replace(/\.$/, "") === w2.replace(/\.$/, ""), `same sentence: "${w1}" vs "${w2}"`);
+  });
+
   test("a loss day with nothing banked (deductions above the cash) can still be printed", async () => {
     asStaff();
     const html = await page(doc as never, { date: "2026-10-11", prep: w.staff.id, chk: w.admin.id });
