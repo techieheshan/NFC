@@ -58,6 +58,7 @@ export function DocumentView({
   const defs = useMemo(() => makeBlocks(model), [model]);
   const [pages, setPages] = useState<Page[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ page: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const sheetsRef = useRef<HTMLDivElement>(null);
@@ -87,8 +88,9 @@ export function DocumentView({
     setError(null);
     window.scrollTo(0, 0);
     // null when the PDF was made; the one agreed sentence when it was not, whatever the reason (fonts, deadline, memory)
-    const problem = await downloadPdf(() => sheetsToPdf([...sheetsRef.current!.querySelectorAll<HTMLElement>(".ds-sheet")], filename));
+    const problem = await downloadPdf(() => sheetsToPdf([...sheetsRef.current!.querySelectorAll<HTMLElement>(".ds-sheet")], filename, (page, total) => setProgress({ page, total })));
     setError(problem);
+    setProgress(null);
     setBusy(false);
   };
 
@@ -127,7 +129,7 @@ export function DocumentView({
               <Printer className="size-4" aria-hidden /> Print
             </Button>
             <Button className="gap-2" onClick={doPdf} disabled={!pages || busy}>
-              <Download className="size-4" aria-hidden /> {busy ? "Preparing…" : "Download PDF"}
+              <Download className="size-4" aria-hidden /> {busy ? (progress ? `Preparing PDF, page ${progress.page} of ${progress.total}` : "Preparing…") : "Download PDF"}
             </Button>
           </div>
         )}

@@ -104,32 +104,30 @@ test("document.fonts.ready that never settles does not hang the PDF: it times ou
   assert.ok(e.missing.includes("fonts still loading (timed out)"));
 });
 
-// ---- the wiring in make-pdf.ts, read with the parser ----
+// ---- the wiring in make-pdf.ts, read with the parser (the behaviour of the clone step and of the retries is in daily-summary-pdf-failure.test.ts) ----
 
 const MAKE_PDF = path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "make-pdf.ts");
 
-test("make-pdf checks the fonts before it draws anything, and again inside html2canvas's clone step, and does not retry a missing font", () => {
+test("make-pdf checks the PAGE's fonts once, before anything is drawn, and hands html2canvas the clone-font step made by makeOnClone", () => {
   const sf = ts.createSourceFile("make-pdf.ts", readFileSync(MAKE_PDF, "utf8"), ts.ScriptTarget.ES2022, true);
-  const calls: { pos: number; inOnclone: boolean }[] = [];
+  const ensureCalls: ts.CallExpression[] = [];
   let withStylePos = -1;
-  let rethrowsFontError = false;
-  const walk = (n: ts.Node, inOnclone: boolean) => {
+  let makeOnCloneVar = "";
+  let oncloneValue = "";
+  const walk = (n: ts.Node) => {
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
-      if (n.expression.text === "ensureSheetFonts") calls.push({ pos: n.getStart(), inOnclone });
+      if (n.expression.text === "ensureSheetFonts") ensureCalls.push(n);
       if (n.expression.text === "withTemporaryStyle") withStylePos = n.getStart();
     }
-    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword && ts.isIdentifier(n.right) && n.right.text === "SheetFontsError") rethrowsFontError = true;
-    let next = inOnclone;
-    if (ts.isPropertyAssignment(n) && ts.isIdentifier(n.name) && n.name.text === "onclone") {
-      assert.ok(ts.isArrowFunction(n.initializer) && !!n.initializer.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword), "onclone is an async function (html2canvas awaits what it returns)");
-      next = true;
-    }
-    ts.forEachChild(n, (c) => walk(c, next));
+    if (ts.isVariableDeclaration(n) && n.initializer && ts.isCallExpression(n.initializer) && n.initializer.expression.getText() === "makeOnClone" && ts.isIdentifier(n.name)) makeOnCloneVar = n.name.text;
+    if (ts.isShorthandPropertyAssignment(n) && n.name.text === "onclone") oncloneValue = "onclone";
+    if (ts.isPropertyAssignment(n) && n.name.getText() === "onclone") oncloneValue = n.initializer.getText();
+    ts.forEachChild(n, walk);
   };
-  walk(sf, false);
-  const before = calls.filter((c) => !c.inOnclone);
-  assert.equal(before.length, 1, "one check before the capture");
-  assert.ok(before[0].pos < withStylePos, "…and it comes before the page is touched and anything is drawn");
-  assert.equal(calls.filter((c) => c.inOnclone).length, 1, "one check inside onclone, on the clone's own fonts");
-  assert.ok(rethrowsFontError, "a SheetFontsError is rethrown, not retried at a smaller scale");
+  walk(sf);
+  assert.equal(ensureCalls.length, 1, "exactly one direct check in make-pdf.ts (the clone's check lives in clone-fonts.ts)");
+  assert.equal(ensureCalls[0].arguments[0].getText().replace(/\s+/g, " ").includes("document.fonts"), true, "…and it is on the live page's document.fonts");
+  assert.ok(ensureCalls[0].getStart() < withStylePos, "…before the page is touched and anything is drawn");
+  assert.ok(makeOnCloneVar !== "", "the clone step comes from makeOnClone");
+  assert.equal(oncloneValue, makeOnCloneVar, "…and is the very value given to html2canvas as onclone");
 });

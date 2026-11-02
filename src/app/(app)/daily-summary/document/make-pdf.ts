@@ -16,11 +16,16 @@
  * by comparing the PDF with the print), so an inline-img rule is added to the page while the sheets are drawn and
  * removed again afterwards.
  *
- * Scale 2 keeps text crisp (about 350 KB a page as JPEG); a device that cannot allocate that canvas is
- * retried at 1.5 and then 1. If all fail the caller says so and offers Print.
+ * Scale 2 keeps text crisp (about 350 KB a page as JPEG). A sheet that fails or runs out of time is drawn again at 1.5 and then 1,
+ * each attempt with its own deadline (capture-plan.ts, deadline.ts). If every rung fails the caller says so and offers Print.
+ * One PDF at a time: a second call while one is being made is refused (exclusive.ts).
  */
-import { CAPTURE_DEADLINE_MS, DeadlineError, withDeadline } from "./deadline";
-import { ensureSheetFonts, sheetFamilies, SheetFontsError, type FontSetLike } from "./sheet-fonts";
+import { CLONE_SELECTOR, trackNew } from "./clone-cleanup";
+import { makeOnClone } from "./clone-fonts";
+import { runCaptures, SCALES } from "./capture-plan";
+import { ATTEMPT_DEADLINES_MS, IMPORT_DEADLINE_MS, withDeadline } from "./deadline";
+import { createLock } from "./exclusive";
+import { ensureSheetFonts, sheetFamilies, type FontSetLike } from "./sheet-fonts";
 import { A4_H_MM, A4_W_MM, SHEET_H, SHEET_W } from "./sheet-geometry";
 import { withTemporaryStyle } from "./temporary-style";
 
@@ -29,9 +34,16 @@ export const PDF_FAIL_MESSAGE = "Couldn't make the PDF on this device. Use Print
 /** html2canvas's text placement needs an INLINE <img>; Tailwind makes them blocks. Held on the page only while drawing. */
 export const IMG_RULE = "img { display: inline !important; vertical-align: baseline !important; max-width: none !important; }";
 
-export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Promise<void> {
+const pdfLock = createLock();
+
+/** `onProgress(page, total)` is called as each sheet is started (again from page 1 when a smaller scale is tried). */
+export function sheetsToPdf(sheets: HTMLElement[], filename: string, onProgress?: (page: number, total: number) => void): Promise<void> {
+  return pdfLock.run(() => makePdf(sheets, filename, onProgress));
+}
+
+async function makePdf(sheets: HTMLElement[], filename: string, onProgress?: (page: number, total: number) => void): Promise<void> {
   if (sheets.length === 0) throw new Error("no sheets");
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
+  const [{ default: html2canvas }, { jsPDF }] = await withDeadline(Promise.all([import("html2canvas"), import("jspdf")]), IMPORT_DEADLINE_MS);
 
   // The PDF is a picture of the sheets: if their fonts are not really loaded it would be drawn in a fallback face and no longer
   // match the print. Load them (Geist, and Noto Sans Sinhala when there is Sinhala, at every weight used) and, if any is still
@@ -40,13 +52,19 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
   const families = sheetFamilies(getComputedStyle(sheets[0]).fontFamily);
   await ensureSheetFonts({ fonts: document.fonts as unknown as FontSetLike, families, text });
 
-  await withTemporaryStyle(document, IMG_RULE, async () => {
-    let lastError: unknown = null;
-    for (const scale of [2, 1.5, 1]) {
-      try {
-        const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
-        for (let i = 0; i < sheets.length; i++) {
-          const canvas = await withDeadline(html2canvas(sheets[i], {
+  const onclone = makeOnClone(families, text);
+  // html2canvas leaves its hidden page copy behind after a failure; take away what THIS capture added, whatever happens.
+  const clones = trackNew(() => document.querySelectorAll<HTMLIFrameElement>(CLONE_SELECTOR));
+  try {
+    await withTemporaryStyle(document, IMG_RULE, () =>
+      runCaptures<string>({
+        count: sheets.length,
+        scales: SCALES,
+        deadlinesMs: ATTEMPT_DEADLINES_MS,
+        onProgress,
+        cleanup: () => { clones.removeNew(); },
+        capture: async (i, scale, isLive) => {
+          const canvas = await html2canvas(sheets[i], {
             scale,
             width: SHEET_W,
             height: SHEET_H,
@@ -56,27 +74,25 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
             scrollX: 0,
             scrollY: -window.scrollY,
             // html2canvas draws from a CLONE of the page; wait for the clone's own fonts too (it awaits what this returns).
-            onclone: async (doc) => {
-              doc.documentElement.style.background = "#ffffff";
-              doc.body.style.background = "#ffffff";
-              doc.body.style.color = "#1d1530";
-              await ensureSheetFonts({ fonts: doc.fonts as unknown as FontSetLike, families, text });
-            },
-          }), CAPTURE_DEADLINE_MS);
-          const image = canvas.toDataURL("image/jpeg", 0.85);
+            onclone,
+          });
+          // An attempt that was given up on may still answer, late: free its canvas and do nothing else with it.
+          const image = isLive() ? canvas.toDataURL("image/jpeg", 0.85) : "";
           canvas.width = 0; // let the device have the memory back before the next sheet
           canvas.height = 0;
-          if (i > 0) pdf.addPage("a4", "portrait");
-          pdf.addImage(image, "JPEG", 0, 0, A4_W_MM, A4_H_MM, undefined, "FAST");
-        }
-        pdf.save(filename);
-        return;
-      } catch (e) {
-        // A missing font or a clone that never loads is not fixed by a smaller scale: stop, no retry, no PDF.
-        if (e instanceof SheetFontsError || e instanceof DeadlineError) throw e;
-        lastError = e;
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error("pdf failed");
-  });
+          return image;
+        },
+        finish: (images) => {
+          const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+          images.forEach((image, i) => {
+            if (i > 0) pdf.addPage("a4", "portrait");
+            pdf.addImage(image, "JPEG", 0, 0, A4_W_MM, A4_H_MM, undefined, "FAST");
+          });
+          pdf.save(filename);
+        },
+      }),
+    );
+  } finally {
+    clones.removeNew();
+  }
 }

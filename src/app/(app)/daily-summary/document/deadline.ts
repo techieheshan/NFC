@@ -1,7 +1,10 @@
 /**
  * A hard time limit for one step of the PDF. html2canvas draws from a cloned page and waits for that page to finish loading;
  * if something the clone needs (a font file) never answers, it never starts and never fails — the button would say "Preparing…"
- * for ever. A DeadlineError ends that wait like any other failure: the PDF is not made and the message is shown.
+ * for ever. A DeadlineError ends that wait like any other failure.
+ *
+ * The work behind the promise is NOT stopped (a browser promise cannot be cancelled): the caller must make a late result
+ * harmless (see capture-plan.ts and clone-cleanup.ts).
  */
 export class DeadlineError extends Error {
   constructor(readonly ms: number) {
@@ -20,5 +23,13 @@ export function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** One sheet's capture. Generous (a slow 32-bit terminal at scale 2 is slow) but finite. */
-export const CAPTURE_DEADLINE_MS = 30_000;
+/** Loading html2canvas and jsPDF (two chunks fetched on first use). On a flaky connection this can stall; it must still end. */
+export const IMPORT_DEADLINE_MS = 20_000;
+
+/**
+ * ONE sheet drawn at ONE scale: scale 2, then 1.5, then 1 for the same sheet if it fails or stalls (capture-plan.ts). Each rung has
+ * its own deadline, and the ladder is shared by the whole PDF, so a capture that hangs ends within the SUM of these (75 s) whatever
+ * the number of sheets, while a slow device that finishes every sheet inside its deadline is never cut off. What was measured, and
+ * why a sheet's deadline rather than the whole document's, is in AGENTS.md.
+ */
+export const ATTEMPT_DEADLINES_MS = [25_000, 25_000, 25_000] as const;
