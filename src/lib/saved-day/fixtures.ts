@@ -35,3 +35,19 @@ export function snapshotOf(over: { report?: Partial<DailySummary>; cancelled?: S
     ],
   });
 }
+
+/** Test helper: set a nested value on a plain JSON object by a dotted path ("report.courses.0.amount"). */
+export function setPath(obj: unknown, path: string, value: unknown): void {
+  const keys = path.split(".");
+  let o = obj as Record<string, unknown>;
+  for (const k of keys.slice(0, -1)) o = o[k] as Record<string, unknown>;
+  o[keys[keys.length - 1]] = value;
+}
+
+/** Test helper: delete a nested value by a dotted path. */
+export function deletePath(obj: unknown, path: string): void {
+  const keys = path.split(".");
+  let o = obj as Record<string, unknown>;
+  for (const k of keys.slice(0, -1)) o = o[k] as Record<string, unknown>;
+  delete o[keys[keys.length - 1]];
+}

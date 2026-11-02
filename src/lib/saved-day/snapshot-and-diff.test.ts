@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { diffSummaries } from "./diff";
-import { snapshotOf, summaryOf } from "./fixtures";
+import { deletePath, setPath, snapshotOf, summaryOf } from "./fixtures";
 import { buildSnapshot, cashBookColumns, cashBookOf, parseSnapshot, SNAPSHOT_SCHEMA, SnapshotError } from "./snapshot";
 
 // ---- snapshot ----
@@ -31,14 +31,15 @@ test("a schema number this code does not know is refused, never guessed", () => 
 
 test("a stored shape that does not fit is refused (missing key, a Float where text is expected, a negative count)", () => {
   const good = JSON.parse(JSON.stringify(snapshotOf()));
-  for (const mutate of [
-    (x: any) => { delete x.report.totalCollected; },
-    (x: any) => { x.report.net = 28900.5; },
-    (x: any) => { x.report.admission.count = -1; },
-    (x: any) => { x.staff = "none"; },
-    (x: any) => { x.cancelled = null; },
-    (x: any) => { x.report.totalCollected = "12,500.00"; },
-  ]) {
+  const breakers: ((x: unknown) => void)[] = [
+    (x) => deletePath(x, "report.totalCollected"),
+    (x) => setPath(x, "report.net", 28900.5),
+    (x) => setPath(x, "report.admission.count", -1),
+    (x) => setPath(x, "staff", "none"),
+    (x) => setPath(x, "cancelled", null),
+    (x) => setPath(x, "report.totalCollected", "12,500.00"),
+  ];
+  for (const mutate of breakers) {
     const bad = JSON.parse(JSON.stringify(good));
     mutate(bad);
     assert.throws(() => parseSnapshot(bad, 1), SnapshotError);
@@ -74,34 +75,34 @@ test("identical snapshots have no differences, and money text format does not ma
 
 test("every compared figure is noticed when it changes (one at a time)", () => {
   const base = snapshotOf();
-  const cases: [string, (r: any) => void][] = [
-    ["totalCollected", (r) => { r.totalCollected = "35101.00"; }],
-    ["classTotal", (r) => { r.classTotal = "32001.00"; }],
-    ["admission.count", (r) => { r.admission.count = 3; }],
-    ["admission.total", (r) => { r.admission.total = "2700.00"; }],
-    ["smartCard.count", (r) => { r.smartCard.count = 2; }],
-    ["smartCard.total", (r) => { r.smartCard.total = "600.00"; }],
-    ["halfMonths.count", (r) => { r.halfMonths = { count: 1, total: "0.00" }; }],
-    ["halfMonths.total", (r) => { r.halfMonths = { count: 0, total: "10.00" }; }],
-    ["noChargeMonths.count", (r) => { r.noChargeMonths = { count: 1 }; }],
-    ["deductions.teacherAdvances", (r) => { r.deductions.teacherAdvances = "5001.00"; }],
-    ["deductions.xenonExpenses", (r) => { r.deductions.xenonExpenses = "1201.00"; }],
-    ["deductions.total", (r) => { r.deductions.total = "6201.00"; }],
-    ["net", (r) => { r.net = "28901.00"; }],
-    ["course:1.amount", (r) => { r.courses[0].amount = "24501.00"; }],
-    ["course:1.paidFull", (r) => { r.courses[0].paidFull = 9; }],
-    ["course:1.paidHalf", (r) => { r.courses[0].paidHalf = 2; }],
-    ["course:1.paidQuarter", (r) => { r.courses[0].paidQuarter = 2; }],
-    ["course:1.free", (r) => { r.courses[0].free = 2; }],
+  const cases: [string, string, unknown][] = [
+    ["totalCollected", "totalCollected", "35101.00"],
+    ["classTotal", "classTotal", "32001.00"],
+    ["admission.count", "admission.count", 3],
+    ["admission.total", "admission.total", "2700.00"],
+    ["smartCard.count", "smartCard.count", 2],
+    ["smartCard.total", "smartCard.total", "600.00"],
+    ["halfMonths.count", "halfMonths", { count: 1, total: "0.00" }],
+    ["halfMonths.total", "halfMonths", { count: 0, total: "10.00" }],
+    ["noChargeMonths.count", "noChargeMonths", { count: 1 }],
+    ["deductions.teacherAdvances", "deductions.teacherAdvances", "5001.00"],
+    ["deductions.xenonExpenses", "deductions.xenonExpenses", "1201.00"],
+    ["deductions.total", "deductions.total", "6201.00"],
+    ["net", "net", "28901.00"],
+    ["course:1.amount", "courses.0.amount", "24501.00"],
+    ["course:1.paidFull", "courses.0.paidFull", 9],
+    ["course:1.paidHalf", "courses.0.paidHalf", 2],
+    ["course:1.paidQuarter", "courses.0.paidQuarter", 2],
+    ["course:1.free", "courses.0.free", 2],
   ];
-  for (const [key, mutate] of cases) {
+  for (const [key, path, value] of cases) {
     const live = JSON.parse(JSON.stringify(base));
-    mutate(live.report);
+    setPath(live.report, path, value);
     const keys = diffSummaries(base, live).map((d) => d.key);
     assert.ok(keys.includes(key), `${key} is noticed (got ${keys.join(", ")})`);
   }
   const live2 = JSON.parse(JSON.stringify(base));
-  live2.cancelled = { receipts: 1, total: "500.00" };
+  setPath(live2, "cancelled", { receipts: 1, total: "500.00" });
   assert.deepEqual(diffSummaries(base, live2).map((d) => d.key), ["cancelled.receipts", "cancelled.total"]);
 });
 
@@ -144,7 +145,7 @@ test("a course that appears only on one side with no money and no count is not a
 test("registered / not-paid counts are not compared (they are not on the paper and move with enrolments)", () => {
   const base = snapshotOf();
   const live = JSON.parse(JSON.stringify(base));
-  live.report.courses[0].registered = 99;
-  live.report.courses[0].notPaid = 80;
+  setPath(live.report, "courses.0.registered", 99);
+  setPath(live.report, "courses.0.notPaid", 80);
   assert.deepEqual(diffSummaries(base, live), []);
 });
