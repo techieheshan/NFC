@@ -82,7 +82,7 @@ export async function dayByDay(from: string, to: string): Promise<{ days: DayFig
     }),
     db.expense.findMany({
       where: { date: { gte: colomboDateValue(from), lt: colomboDateValue(colomboNextDay(to)) } },
-      select: { amount: true, date: true },
+      select: { amount: true, date: true, type: { select: { code: true } } },
     }),
   ]);
 
@@ -93,6 +93,9 @@ export async function dayByDay(from: string, to: string): Promise<{ days: DayFig
   }
   const deducted = new Map<string, number>();
   for (const e of expenses) {
+    // EXACTLY the types `dailySummary()` adds into its Deductions (it totals TEACHER_ADVANCE and XENON and nothing else),
+    // so a third expense type can never make a day's Net here differ from the summary above it.
+    if (e.type.code !== "TEACHER_ADVANCE" && e.type.code !== "XENON") continue;
     const day = e.date.toISOString().slice(0, 10);
     deducted.set(day, (deducted.get(day) ?? 0) + asCents(e.amount));
   }

@@ -90,6 +90,10 @@ describe("daily summary extras against a real database", { skip: dbSkip }, () =>
     await exp("2026-10-10", "XENON", "4500.00"); // a day with an expense and no payments: net is negative
     await exp("2026-10-12", "XENON", "0.05");
     await exp("2026-10-12", "TEACHER_ADVANCE", "0.10");
+    // a THIRD expense type: dailySummary() lists it but does not add it into Deductions, so day by day must not either
+    await db.expenseType.create({ data: { code: "CATERING", label: "Catering" } });
+    await exp("2026-10-12", "CATERING", "77.77");
+    await exp("2026-10-15", "CATERING", "1234.56"); // on a day with no other expense
     unfreezeClock();
   });
   after(async () => {
@@ -106,6 +110,20 @@ describe("daily summary extras against a real database", { skip: dbSkip }, () =>
       assert.equal(d.deductions, s.deductions.total, `${d.date} deductions`);
       assert.equal(d.net, s.net, `${d.date} net`);
     }
+  });
+
+  test("dayByDay uses the SAME expense filter as dailySummary(): a third expense type is in neither's Deductions", async () => {
+    const { days } = await x.dayByDay(FROM, TO);
+    const by = Object.fromEntries(days.map((d) => [d.date, d]));
+    const s12 = await dailySummary("2026-10-12", "2026-10-12");
+    assert.ok(s12.deductionLines.some((l) => l.amount === "77.77"), "the summary still LISTS the catering expense line");
+    assert.equal(s12.deductions.total, "0.15", "…but does not add it");
+    assert.equal(by["2026-10-12"].deductions, s12.deductions.total);
+    assert.equal(by["2026-10-15"].deductions, "0.00", "a day whose only expense is the third type has no deductions");
+    assert.equal(by["2026-10-15"].deductions, (await dailySummary("2026-10-15", "2026-10-15")).deductions.total);
+    for (const d of days) assert.equal(d.net, (await dailySummary(d.date, d.date)).net, `${d.date} net`);
+    const wholeRange = await dailySummary(FROM, TO);
+    assert.equal((await x.dayByDay(FROM, TO)).total.net, wholeRange.net);
   });
 
   test("dayByDay: the total row equals dailySummary(from, to), and the figures are not all zero", async () => {
