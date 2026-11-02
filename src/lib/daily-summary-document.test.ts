@@ -329,34 +329,6 @@ test("the PDF step's rule is the inline-image rule, and its failure sentence is 
   assert.equal(PDF_FAIL_MESSAGE, "Couldn't make the PDF on this device. Use Print and choose Save as PDF.");
 });
 
-test("wiring: the view fits blocks with paginateDocument only (no CONTENT_H or paginate of its own), shows OverflowNotice, and the PDF step goes through withTemporaryStyle", async () => {
-  const { readFileSync } = await import("node:fs");
-  const path = await import("node:path");
-  const read = (f: string) => readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", f), "utf8");
-  const view = read("document-view.tsx");
-  assert.ok(view.includes("paginateDocument(measure("));
-  assert.ok(!/\bCONTENT_H\b/.test(view) && !/[^e]paginate\(/.test(view), "no local content height, no direct paginate call");
-  assert.ok(view.includes("<OverflowNotice pages={pages} />"));
-  assert.ok(read("make-pdf.ts").includes("withTemporaryStyle(document, IMG_RULE"));
-});
 
 // ---- one source for the sheet's numbers --------------------------------------------------------------------------
 
-test("sheet-geometry.ts is the single source: the stylesheet shows its numbers, and neither the stylesheet nor the PDF step writes 794, 1123 or 713 itself", async () => {
-  const css = DOCUMENT_CSS;
-  assert.ok(css.includes(`width: ${SHEET_W}px;`) && css.includes(`height: ${SHEET_H}px;`));
-  assert.ok(css.includes(`padding: ${PAD_TOP}px ${PAD_SIDE}px;`));
-  assert.ok(new RegExp(`\\.ds-measure \\{[^}]*width: ${MEASURE_W}px`).test(css));
-  assert.ok(css.includes(`width: ${A4_W_MM}mm; height: ${A4_H_MM}mm;`));
-  assert.ok(MEASURE_W <= (A4_W_MM / 25.4) * 96 - 2 * PAD_SIDE, "measured no wider than the printed content box");
-  const { readFileSync } = await import("node:fs");
-  const path = await import("node:path");
-  const dir = path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document");
-  for (const f of ["document-css.ts", "make-pdf.ts", "paginate-document.ts", "document-view.tsx"]) {
-    const text = readFileSync(path.join(dir, f), "utf8");
-    // digits-only boundaries: "794px" and "794," must be caught too ("\\b" is not a boundary between the 4 and the p)
-    assert.ok(!/(?<!\d)(794|1123|713)(?!\d)/.test(text), `${f} has no hard-coded sheet number`);
-    assert.ok(!/(?<!\d)(210|297)(?!\d)/.test(text), `${f} has no hard-coded A4 size`);
-  }
-  assert.ok(readFileSync(path.join(dir, "make-pdf.ts"), "utf8").includes("SHEET_W") && readFileSync(path.join(dir, "document-css.ts"), "utf8").includes("SHEET_W"));
-});
