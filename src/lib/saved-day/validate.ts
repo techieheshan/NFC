@@ -103,6 +103,10 @@ export function parseSaveInput(raw: unknown): SaveParse {
     bank.push({ cents: amount.cents, time: b.time, slip: clean(b.slip, SLIP_MAX), note: clean(b.note, NOTE_MAX) });
   }
 
+  // A first save is version 0 -> 1; an edit or a re-save changes a version that exists.
+  if (r.mode === "save" && r.baseVersion !== 0) return fail("That could not be read. Reload the page and try again.", { baseVersion: "A first save starts from version 0." });
+  if (r.mode !== "save" && r.baseVersion < 1) return fail("That could not be read. Reload the page and try again.", { baseVersion: "An edit needs the saved version." });
+
   if (r.mode !== "edit" && !r.seen) return fail("The numbers you were shown are missing. Reload the page and try again.", { seen: "Missing." });
 
   return {

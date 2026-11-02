@@ -170,6 +170,13 @@ test("parseSaveInput: a good save is read into integer cents", () => {
   });
 });
 
+test("parseSaveInput: a first save must start from version 0, an edit and a re-save from a saved version", () => {
+  assert.equal(parseSaveInput(input({ mode: "save", baseVersion: 1 })).ok, false);
+  assert.equal(parseSaveInput(input({ mode: "edit", baseVersion: 0 })).ok, false);
+  assert.equal(parseSaveInput(input({ mode: "resave", baseVersion: 0 })).ok, false);
+  assert.equal(parseSaveInput(input({ mode: "resave", baseVersion: 3 })).ok, true);
+});
+
 test("parseSaveInput: an empty bring-forward is zero; an edit needs no 'seen'; a save and a re-save do", () => {
   const r = parseSaveInput(input({ bringForward: "", mode: "edit", baseVersion: 2, seen: undefined, bank: [] }));
   assert.ok(r.ok && r.value.bringForwardCents === 0 && r.value.seen === null);
