@@ -19,21 +19,20 @@
  * Scale 2 keeps text crisp (about 350 KB a page as JPEG); a device that cannot allocate that canvas is
  * retried at 1.5 and then 1. If all fail the caller says so and offers Print.
  */
+import { A4_H_MM, A4_W_MM, SHEET_H, SHEET_W } from "./sheet-geometry";
+import { withTemporaryStyle } from "./temporary-style";
+
 export const PDF_FAIL_MESSAGE = "Couldn't make the PDF on this device. Use Print and choose Save as PDF.";
 
-const W = 794;
-const H = 1123;
+/** html2canvas's text placement needs an INLINE <img>; Tailwind makes them blocks. Held on the page only while drawing. */
+export const IMG_RULE = "img { display: inline !important; vertical-align: baseline !important; max-width: none !important; }";
 
 export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Promise<void> {
   if (sheets.length === 0) throw new Error("no sheets");
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   await document.fonts.ready;
 
-  const fix = document.createElement("style");
-  fix.textContent = "img { display: inline !important; vertical-align: baseline !important; max-width: none !important; }";
-  document.head.appendChild(fix);
-
-  try {
+  await withTemporaryStyle(document, IMG_RULE, async () => {
     let lastError: unknown = null;
     for (const scale of [2, 1.5, 1]) {
       try {
@@ -41,8 +40,8 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
         for (let i = 0; i < sheets.length; i++) {
           const canvas = await html2canvas(sheets[i], {
             scale,
-            width: W,
-            height: H,
+            width: SHEET_W,
+            height: SHEET_H,
             backgroundColor: "#ffffff",
             useCORS: true,
             logging: false,
@@ -58,7 +57,7 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
           canvas.width = 0; // let the device have the memory back before the next sheet
           canvas.height = 0;
           if (i > 0) pdf.addPage("a4", "portrait");
-          pdf.addImage(image, "JPEG", 0, 0, 210, 297, undefined, "FAST");
+          pdf.addImage(image, "JPEG", 0, 0, A4_W_MM, A4_H_MM, undefined, "FAST");
         }
         pdf.save(filename);
         return;
@@ -67,8 +66,5 @@ export async function sheetsToPdf(sheets: HTMLElement[], filename: string): Prom
       }
     }
     throw lastError instanceof Error ? lastError : new Error("pdf failed");
-  } finally {
-    // Always, whichever way the capture ends: the rule changes every image in the app while it is on the page.
-    fix.remove();
-  }
+  });
 }

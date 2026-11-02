@@ -8,7 +8,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DOCUMENT_CSS } from "@/app/(app)/daily-summary/document/document-css";
-import { CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_TOP, SAFETY_MARGIN, SHEET_H } from "@/app/(app)/daily-summary/document/sheet-geometry";
+import { A4_H_MM, A4_W_MM, CONTENT_H, FOOTER_RESERVE, MEASURE_W, PAD_SIDE, PAD_TOP, SAFETY_MARGIN, SHEET_H, SHEET_W } from "@/app/(app)/daily-summary/document/sheet-geometry";
+import { IMG_RULE, PDF_FAIL_MESSAGE } from "@/app/(app)/daily-summary/document/make-pdf";
+import { OverflowNotice } from "@/app/(app)/daily-summary/document/overflow-notice";
+import { OVERFLOW_WARNING, overflowWarning, paginateDocument } from "@/app/(app)/daily-summary/document/paginate-document";
+import { withTemporaryStyle } from "@/app/(app)/daily-summary/document/temporary-style";
 import { makeBlocks } from "@/app/(app)/daily-summary/document/blocks";
 import { buildDocModel, plainName } from "@/app/(app)/daily-summary/document/model";
 import type { DailySummary } from "@/lib/reports";
@@ -233,16 +237,6 @@ test("document CSS: nothing newer than Chrome 102, hex colours only, nothing und
   assert.ok(css.includes("#xenon-print { display: none !important; }"));
 });
 
-test("the PDF step puts an inline-<img> rule on the page while it draws (html2canvas mis-places text under Tailwind's block images), and takes it off again", async () => {
-  const { readFileSync } = await import("node:fs");
-  const path = await import("node:path");
-  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "make-pdf.ts"), "utf8");
-  assert.ok(src.includes("img { display: inline !important;"));
-  assert.ok(src.includes("document.head.appendChild(fix)"));
-  assert.equal(src.split("fix.remove()").length - 1, 1, "removed in ONE place");
-  assert.ok(/\} finally \{[\s\S]*?fix\.remove\(\)/.test(src), "and that place is a finally block, so no ending of the capture can leave the rule on the page");
-  assert.ok(src.includes("PDF_FAIL_MESSAGE") && src.includes("Couldn't make the PDF on this device. Use Print and choose Save as PDF."));
-});
 
 test("print width: blocks are measured at 713 px and every table's columns add up to at most 713 (210 mm prints a 713.7 px content box)", () => {
   assert.equal(MEASURE_W, 713);
@@ -269,11 +263,100 @@ test("pages are filled 20 px short of the footer, on top of the rounding slack",
   assert.equal(SAFETY_MARGIN, 20);
 });
 
-test("the document view reads Page.overflow and shows a visible warning when any page reports it", async () => {
+
+// ---- behaviour (not source text) for the page margin, the overflow warning and the PDF step's temporary rule --------
+
+test("paginateDocument leaves the 20 px margin: a block that would just fit in the old height goes to the next sheet", () => {
+  const block = (id: string, height: number) => ({ id, height });
+  const old = SHEET_H - PAD_TOP - FOOTER_RESERVE - 4; // the content height before the margin existed
+  assert.equal(CONTENT_H, old - SAFETY_MARGIN);
+  // 985 + 30 = 1015 fits in the old height (1015) but not in this one (995)
+  assert.equal(paginateDocument([block("a", CONTENT_H - 10), block("b", 30)]).length, 2, "split across two sheets");
+  assert.equal(paginateDocument([block("a", CONTENT_H - 10), block("b", 10)]).length, 1, "exactly full still fits");
+  const full = paginateDocument([block("a", CONTENT_H)]);
+  assert.equal(full.length, 1);
+  assert.equal(full[0].overflow, false);
+  assert.equal(paginateDocument([block("a", CONTENT_H + 1)])[0].overflow, true, "one px more than a sheet holds is flagged");
+});
+
+test("the overflow warning: the sentence when any page overflows, nothing otherwise, and the notice renders it visibly but not on paper", () => {
+  const ok = { placements: [], used: 10, overflow: false };
+  const bad = { placements: [], used: 5000, overflow: true };
+  assert.equal(overflowWarning([ok, ok]), null);
+  assert.equal(overflowWarning([ok, bad]), OVERFLOW_WARNING);
+  assert.match(OVERFLOW_WARNING, /may be cut off/);
+  assert.equal(renderToStaticMarkup(createElement(OverflowNotice, { pages: [ok] })), "");
+  const shown = renderToStaticMarkup(createElement(OverflowNotice, { pages: [ok, bad] }));
+  assert.ok(shown.includes(OVERFLOW_WARNING) && shown.includes('role="alert"'), "visible and announced");
+  assert.ok(shown.includes("no-print"), "and kept off the paper");
+});
+
+test("withTemporaryStyle puts the rule on the page while it runs and takes it off however the run ends (returns, throws, rejects)", async () => {
+  const makeDoc = () => {
+    const attached = new Set<object>();
+    const doc = {
+      head: { appendChild: (n: object) => (attached.add(n), n) },
+      createElement: () => {
+        const el = { textContent: "", remove() { attached.delete(el); } };
+        return el;
+      },
+    };
+    return { doc: doc as unknown as Document, attached };
+  };
+  // returns
+  let h = makeDoc();
+  const value = await withTemporaryStyle(h.doc, "x{y:z}", async () => {
+    assert.equal(h.attached.size, 1, "on the page during the run");
+    assert.equal([...h.attached][0] && (([...h.attached][0] as { textContent: string }).textContent), "x{y:z}");
+    return 42;
+  });
+  assert.equal(value, 42);
+  assert.equal(h.attached.size, 0, "removed after a normal return");
+  // rejects
+  h = makeDoc();
+  await assert.rejects(() => withTemporaryStyle(h.doc, "x", async () => { throw new Error("capture failed"); }), /capture failed/);
+  assert.equal(h.attached.size, 0, "removed after a rejection");
+  // throws synchronously inside the callback
+  h = makeDoc();
+  await assert.rejects(() => withTemporaryStyle(h.doc, "x", (() => { throw new Error("sync"); }) as () => Promise<never>), /sync/);
+  assert.equal(h.attached.size, 0, "removed after a synchronous throw");
+  // many runs leave nothing behind
+  h = makeDoc();
+  for (let i = 0; i < 20; i++) await withTemporaryStyle(h.doc, "x", async () => i).catch(() => undefined);
+  assert.equal(h.attached.size, 0);
+});
+
+test("the PDF step's rule is the inline-image rule, and its failure sentence is the agreed one", () => {
+  assert.ok(IMG_RULE.includes("img { display: inline !important;"));
+  assert.ok(IMG_RULE.includes("vertical-align: baseline"));
+  assert.equal(PDF_FAIL_MESSAGE, "Couldn't make the PDF on this device. Use Print and choose Save as PDF.");
+});
+
+test("wiring: the view fits blocks with paginateDocument only (no CONTENT_H or paginate of its own), shows OverflowNotice, and the PDF step goes through withTemporaryStyle", async () => {
   const { readFileSync } = await import("node:fs");
   const path = await import("node:path");
-  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "document-view.tsx"), "utf8");
-  assert.ok(src.includes("hasOverflow(pages)") && src.includes("OVERFLOW_WARNING"));
-  assert.ok(src.includes("may be cut off"));
-  assert.ok(src.includes('role="alert"'));
+  const read = (f: string) => readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", f), "utf8");
+  const view = read("document-view.tsx");
+  assert.ok(view.includes("paginateDocument(measure("));
+  assert.ok(!/\bCONTENT_H\b/.test(view) && !/[^e]paginate\(/.test(view), "no local content height, no direct paginate call");
+  assert.ok(view.includes("<OverflowNotice pages={pages} />"));
+  assert.ok(read("make-pdf.ts").includes("withTemporaryStyle(document, IMG_RULE"));
+});
+
+// ---- one source for the sheet's numbers --------------------------------------------------------------------------
+
+test("sheet-geometry.ts is the single source: the stylesheet shows its numbers, and neither the stylesheet nor the PDF step writes 794, 1123 or 713 itself", async () => {
+  const css = DOCUMENT_CSS;
+  assert.ok(css.includes(`width: ${SHEET_W}px;`) && css.includes(`height: ${SHEET_H}px;`));
+  assert.ok(css.includes(`padding: ${PAD_TOP}px ${PAD_SIDE}px;`));
+  assert.ok(new RegExp(`\\.ds-measure \\{[^}]*width: ${MEASURE_W}px`).test(css));
+  assert.ok(css.includes(`width: ${A4_W_MM}mm; height: ${A4_H_MM}mm;`));
+  assert.ok(MEASURE_W <= (A4_W_MM / 25.4) * 96 - 2 * PAD_SIDE, "measured no wider than the printed content box");
+  const { readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  const dir = path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document");
+  for (const f of ["document-css.ts", "make-pdf.ts", "paginate-document.ts", "document-view.tsx"]) {
+    assert.ok(!/\b(794|1123|713)\b/.test(readFileSync(path.join(dir, f), "utf8")), `${f} has no hard-coded sheet number`);
+  }
+  assert.ok(readFileSync(path.join(dir, "make-pdf.ts"), "utf8").includes("SHEET_W") && readFileSync(path.join(dir, "document-css.ts"), "utf8").includes("SHEET_W"));
 });

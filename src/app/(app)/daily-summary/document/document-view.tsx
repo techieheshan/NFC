@@ -5,16 +5,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Download, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { hasOverflow, paginate, type Block, type Page } from "@/lib/paginate";
+import type { Block, Page } from "@/lib/paginate";
 
 import { makeBlocks, type DocBlockDef } from "./blocks";
-import { CONTENT_H } from "./sheet-geometry";
 import { DOCUMENT_CSS } from "./document-css";
 import type { DocModel } from "./model";
 import { PDF_FAIL_MESSAGE, sheetsToPdf } from "./make-pdf";
+import { OverflowNotice } from "./overflow-notice";
+import { paginateDocument } from "./paginate-document";
 
 
-export const OVERFLOW_WARNING = "Part of this document is taller than one page and may be cut off. Check the print preview before you print or download it.";
 const CONT_LABEL = 22; // the "(continued)" line above a repeated header
 
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
@@ -72,7 +72,7 @@ export function DocumentView({
       await document.fonts.ready;
       await frame();
       if (!live || !measureRef.current) return;
-      setPages(paginate(measure(measureRef.current, defs), CONTENT_H));
+      setPages(paginateDocument(measure(measureRef.current, defs)));
     })();
     return () => {
       live = false;
@@ -143,11 +143,7 @@ export function DocumentView({
             {pages ? `${total} A4 page${total === 1 ? "" : "s"}. The page scrolls sideways inside the grey box.` : "Preparing pages…"}
           </p>
           {error && <p role="alert" className="no-print text-destructive text-sm">{error}</p>}
-          {pages && hasOverflow(pages) && (
-            <p role="alert" className="no-print rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              {OVERFLOW_WARNING}
-            </p>
-          )}
+          {pages && <OverflowNotice pages={pages} />}
 
           {!pages && (
             <div ref={measureRef} className="ds-measure" aria-hidden>

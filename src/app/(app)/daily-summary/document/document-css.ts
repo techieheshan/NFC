@@ -1,4 +1,6 @@
 /** The A4 document's stylesheet, as a string rendered in a <style> tag (a .css import cannot be loaded by the test runner, and one tag keeps the sheet rules and the print rules together). Hex colours only; see the notes inside. */
+import { A4_H_MM, A4_W_MM, MEASURE_W, PAD_SIDE, PAD_TOP, SHEET_H, SHEET_W } from "./sheet-geometry";
+
 export const DOCUMENT_CSS = `/*
  * The Daily Summary A4 document. Plain CSS (not Tailwind utilities) with HEX colours only, on purpose:
  * the PDF is made by drawing these sheets, and the drawing library cannot read the colour notation the rest of
@@ -10,12 +12,12 @@ export const DOCUMENT_CSS = `/*
   color: #1d1530;
 }
 
-/* A fixed A4 sheet: 794 x 1123 CSS px at 96 dpi. */
+/* A fixed A4 sheet: ${SHEET_W} x ${SHEET_H} CSS px at 96 dpi. */
 .ds-sheet {
-  width: 794px;
-  height: 1123px;
+  width: ${SHEET_W}px;
+  height: ${SHEET_H}px;
   box-sizing: border-box;
-  padding: 40px;
+  padding: ${PAD_TOP}px ${PAD_SIDE}px;
   background: #ffffff;
   color: #1d1530;
   position: relative;
@@ -37,7 +39,7 @@ export const DOCUMENT_CSS = `/*
   position: absolute;
   left: -20000px;
   top: 0;
-  width: 713px; /* the PRINTED content width: 210 mm is 793.7 px, less 2 x 40 = 713.7; see sheet-geometry.ts */
+  width: ${MEASURE_W}px; /* the PRINTED content box (A4 width in px less both side paddings), rounded down: see sheet-geometry.ts */
   visibility: hidden;
   font-size: 13px;
   line-height: 1.35;
@@ -60,8 +62,8 @@ export const DOCUMENT_CSS = `/*
 
 .ds-foot {
   position: absolute;
-  left: 40px;
-  right: 40px;
+  left: ${PAD_SIDE}px;
+  right: ${PAD_SIDE}px;
   bottom: 22px;
   display: flex;
   justify-content: space-between;
@@ -135,8 +137,8 @@ export const DOCUMENT_CSS = `/*
   .ds-measure, .ds-measure * { display: none !important; }
   .ds-preview { position: absolute; left: 0; top: 0; max-width: none; overflow: visible; background: none; padding: 0; border-radius: 0; }
   .ds-pages { display: block; }
-  /* 297 mm, not 1123 px: 1123 px is a hair over an A4 page and would push an empty page after every sheet */
-  .ds-sheet { width: 210mm; height: 297mm; break-after: page; page-break-after: always; }
+  /* ${A4_H_MM} mm, not ${SHEET_H} px: ${SHEET_H} px is a hair over an A4 page and would push an empty page after every sheet */
+  .ds-sheet { width: ${A4_W_MM}mm; height: ${A4_H_MM}mm; break-after: page; page-break-after: always; }
   .ds-sheet:last-child { break-after: auto; page-break-after: auto; }
   .no-print { display: none !important; }
 }
