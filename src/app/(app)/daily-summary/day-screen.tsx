@@ -235,7 +235,7 @@ export function DayScreen({
           <label htmlFor="prepared" className="block text-sm font-medium">Prepared by <span className="text-destructive">*</span></label>
           <select id="prepared" className={`${SELECT} mt-1`} value={prepared?.id ?? ""} onChange={(e) => setPreparedId(e.target.value)}>
             <option value="">Select staff…</option>
-            {signers.prepared.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {signers.prepared.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role === "ADMIN" ? "Admin" : "Staff"})</option>)}
           </select>
         </div>
         <div>

@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { DOCUMENT_CSS } from "@/app/(app)/daily-summary/document/document-css";
 import { makeBlocks } from "@/app/(app)/daily-summary/document/blocks";
-import { buildDocModel } from "@/app/(app)/daily-summary/document/model";
+import { buildDocModel, plainName } from "@/app/(app)/daily-summary/document/model";
 import type { DailySummary } from "@/lib/reports";
 
 /*
@@ -130,6 +130,37 @@ test("the document says 'Smart card replacement (N)' and puts the Admission note
   const c = text.indexOf("Smart card replacement (3)");
   assert.ok(a > 0 && n > a && c > n, "Admission, then its note, then Smart card replacement");
   assert.ok(!text.includes("Smart card (3)"));
+});
+
+test("the document names people without a role hint ('Sadun', not 'Sadun (Staff)') in the grid, signatures, deductions, staff table and footer", () => {
+  const m = buildDocModel({
+    report: { ...base, deductionLines: [{ date: "2026-10-14", kind: "XENON", person: "Chathura (Staff)", reason: "salary advance", authorizedBy: "Ruwan (Admin)", isStaffAdvance: true, amount: "2500.00" }] },
+    cancelled: { receipts: 0, total: "0.00" }, generated, generatedBy: "Nadeesha (Administrator)",
+    day: { staff: [{ userId: "u", name: "Sadun (Staff)", receipts: 1, collected: "76375.00" }], bringForwardCents: 0, bank: [], preparedBy: "Sadun (Staff)", checkedBy: "Nadeesha (Admin)" },
+  });
+  assert.deepEqual([m.preparedBy, m.checkedBy, m.generatedBy], ["Sadun", "Nadeesha", "Nadeesha"]);
+  assert.equal(m.deductions[0].person, "Chathura");
+  assert.equal(m.deductions[0].authorizedBy, "Ruwan");
+  assert.equal(m.staff[0].name, "Sadun");
+  const text = html(m);
+  for (const hint of ["(Staff)", "(Admin)", "(Administrator)"]) assert.ok(!text.includes(hint), hint);
+  assert.equal(plainName("Mr. A. Gunawardena"), "Mr. A. Gunawardena");
+  assert.equal(plainName("Kumari (Maths)"), "Kumari (Maths)", "only a role hint is removed, not any bracket");
+  assert.equal(plainName("(Staff)"), "(Staff)", "a name that is only the hint is kept");
+});
+
+test("the info grid has three rows a side: Date, Prepared by, Checked by (admin) | Document no., Status, Generated", () => {
+  const text = makeBlocks(dayModel()).find((b) => b.id === "header")!.render();
+  const out = renderToStaticMarkup(createElement("div", null, text));
+  const mid = out.indexOf("<span>Document no.</span>");
+  const left = out.slice(out.indexOf('class="ds-info"'), mid);
+  const right = out.slice(mid);
+  const order = (s: string, labels: string[]) => labels.map((l) => s.indexOf(`<span>${l}</span>`));
+  const l = order(left, ["Date", "Prepared by", "Checked by (admin)"]);
+  const r = order(right, ["Document no.", "Status", "Generated"]);
+  assert.ok(l.every((i) => i >= 0) && l[0] < l[1] && l[1] < l[2], "left column order");
+  assert.ok(r.every((i) => i >= 0) && r[0] < r[1] && r[1] < r[2], "right column order");
+  assert.ok(!left.includes("<span>Status</span>") && !left.includes("<span>Generated</span>"));
 });
 
 test("a day document has the signature boxes and the info grid; the words 'Asia/Colombo' appear nowhere in it", () => {
