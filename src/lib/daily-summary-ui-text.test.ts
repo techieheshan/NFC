@@ -40,7 +40,7 @@ test("no file in the Daily Summary folders is named like a Next.js route file by
     });
   walk(root);
   assert.deepEqual(found, []);
-  const pages = [];
+  const pages: string[] = [];
   const walkPages = (d: string) => readdirSync(d, { withFileTypes: true }).forEach((e) => (e.isDirectory() ? walkPages(path.join(d, e.name)) : e.name === "page.tsx" ? pages.push(path.relative(root, path.join(d, e.name))) : null));
   walkPages(root);
   assert.deepEqual(pages.sort(), ["document/page.tsx", "page.tsx", "range/page.tsx"], "exactly the three routes");
