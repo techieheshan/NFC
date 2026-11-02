@@ -23,8 +23,10 @@ test("the bank sheet says 'Don't type account numbers.' right under the Note fie
 test("the money-flow lists keep only <li> directly inside <ol> (the vertical line lives on a wrapper), and the Left in drawer row can shrink and wrap", () => {
   const src = read("day-screen.tsx");
   assert.ok(!/<ol[^>]*>\s*<span/.test(src), "no <span> straight inside an <ol>");
-  const left = src.slice(src.indexOf("Left in drawer"), src.indexOf("{formatCents(flow.left)}"));
-  assert.ok(left.includes("min-w-0") && left.includes("break-words"), "the label shrinks and wraps");
+  const row = /<span className="([^"]*)">\s*<span className="([^"]*)">Left in drawer<\/span>/.exec(src);
+  assert.ok(row, "the Left in drawer label is inside a wrapper span");
+  assert.ok(row![1].includes("min-w-0"), "the wrapper can shrink below its longest word");
+  assert.ok(row![2].includes("break-words"), "and the label wraps");
   assert.ok(src.includes('shrink-0 text-2xl font-semibold tabular-nums">{formatCents(flow.left)}'), "the number stays whole");
 });
 

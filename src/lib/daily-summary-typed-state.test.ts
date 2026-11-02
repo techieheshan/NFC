@@ -53,6 +53,13 @@ test("no truncation before parsing: a value longer than 20 characters is refused
   const r = parse({ bf: "100000000000000000001" }); // 21 chars; the first 20 would have read as a big number
   assert.equal(r.bringForwardInvalid, true);
   assert.equal(r.bringForwardCents, 0);
+  // the decisive case: its FIRST 20 characters are a perfectly valid amount (5), so only a refusal of the whole value is right
+  const sneaky = "0".repeat(19) + "50"; // 21 characters, would truncate to "00000000000000000005" = 5.00
+  assert.equal(sneaky.length, 21);
+  assert.equal(sneaky.slice(0, 20), "0".repeat(19) + "5");
+  const q = parse({ bf: sneaky });
+  assert.equal(q.bringForwardInvalid, true);
+  assert.equal(q.bringForwardCents, 0, "never quietly read as 5.00 (or as 50.00)");
   const exactly20 = parse({ bf: "0.000000000000000001".padEnd(20, "0") });
   assert.equal(exactly20.bringForwardInvalid, true, "20 characters but 18 decimals is still not an amount");
 });
