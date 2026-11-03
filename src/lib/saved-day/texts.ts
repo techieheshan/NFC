@@ -5,6 +5,8 @@
 export const NOT_SAVED_CHIP = "Not saved";
 export const NOT_CHECKED_CHIP = "Not checked";
 export const UNREADABLE_DAY = "This saved day can't be read. Showing the live numbers.";
+/** The document route for an unreadable saved day: nothing is printed, and the way back to the day is the only thing on the page. */
+export const DOCUMENT_UNREADABLE = "This saved day can't be read.";
 /** Shown next to the disabled buttons of an unreadable saved day: nothing can be saved, edited, checked or printed from numbers that are not the saved ones. */
 export const UNREADABLE_BLOCK = "This saved day can't be read, so it can't be saved, edited, checked or printed here.";
 /** After a save, edit, check or re-save went through: the buttons wait until the screen shows the new version. */

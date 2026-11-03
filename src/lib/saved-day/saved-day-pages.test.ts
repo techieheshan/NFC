@@ -15,7 +15,7 @@ import { shiftDay } from "@/lib/daily-summary-dates";
 import { snapshotOf } from "./fixtures";
 import { overBankedBanner, overBankRefusal } from "./over-bank";
 import {
-  checkClearedChip, checkedChip, editedChip, HISTORY_NOTE, LIVE_DIFFERS, NAMES_DIFFER, NAMES_DIFFER_NOTE, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
+  checkClearedChip, checkedChip, editedChip, DOCUMENT_UNREADABLE, HISTORY_NOTE, LIVE_DIFFERS, NAMES_DIFFER, NAMES_DIFFER_NOTE, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
 } from "./texts";
 
 /*
@@ -295,6 +295,24 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.match(h, /Left in drawer<\/span>[\s\S]{0,160}?>777\.00</, "Left in drawer is the live 777.00");
     assert.match(h, /Total collected<\/span><span[^>]*>777\.00</, "Total collected is the live 777.00");
     assert.ok(!h.includes("15,000.00") && !h.includes("12,000.00"), "nothing of the other day");
+  });
+
+  test("the document route refuses an unreadable saved day (even with auto=print): the refusal and a link back, no sheets, no Print, no PDF, never the draft", async () => {
+    const date = await makeDay();
+    await save(date, w.admin.id);
+    as("STAFF", w.staff.id);
+    for (const auto of ["print", "pdf"]) {
+      const ok = plain(await html(docPage, { date, auto }));
+      assert.ok(ok.includes("Saved, version 1"), `control: a readable saved day builds its document (auto=${auto})`);
+    }
+    await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshotSchema" = 2 WHERE "dayId" = (SELECT id FROM "DailySummaryDay" WHERE date = '${date}')`);
+    for (const auto of ["print", "pdf", undefined]) {
+      const h = plain(await html(docPage, { date, ...(auto ? { auto } : {}) }));
+      assert.ok(h.includes(DOCUMENT_UNREADABLE), "the refusal");
+      assert.ok(h.includes(`href="/daily-summary?date=${date}"`) && h.includes("Back to the day"), "the way back to the day");
+      assert.ok(!h.includes("ds-sheet") && !h.includes("Draft, not saved") && !h.includes("Signature"), "no document, never the draft");
+      assert.ok(!/Print|Download PDF/.test(h), "no Print and no PDF button");
+    }
   });
 
   test("a purged or very old day simply shows as an unsaved day with live data (C5)", async () => {

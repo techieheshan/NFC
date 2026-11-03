@@ -13,6 +13,7 @@ import { parseTypedState, typedQuery } from "../typed-state";
 import { DocumentView } from "./document-view";
 import { sinhala } from "./fonts";
 import { buildDocModel } from "./model";
+import { UnreadableDay } from "./unreadable-day";
 
 export const metadata = { title: "Daily Summary" };
 
@@ -68,6 +69,9 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
   // The document prints what was saved (or the draft): it shows neither the live comparison nor the bring-forward hint, so it asks for neither.
   const read = await loadSavedDayAs(user, b.date, undefined, { compare: false, hint: false });
   const filename = `xenon-daily-summary-${b.date}_${b.date}.pdf`;
+
+  // A day that is saved but cannot be read is refused here: it must never fall through to the draft below (it would print "Draft, not saved").
+  if (read.unreadable) return <UnreadableDay date={b.date} />;
 
   if (read.saved) {
     // A saved day is printed from what was saved, never from the live data.
