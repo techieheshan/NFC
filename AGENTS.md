@@ -211,14 +211,19 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     **Frozen names, money, schema.** Every name on a saved day is TEXT frozen at write time
     (`doneByName`, `preparedByName`, `savedByName`, `checkedByName`, `markedByName`, and
     `recordedByName` on each deposit; a deposit carried into a new version keeps its recorder
-    and time). A rename in Setup never changes a saved day, and `diffSummaries` therefore
-    ignores names. Money columns are `Decimal(12,2)`, written from integer cents by integer
+    and time). A rename in Setup never changes a saved day. `diffSummaries` compares names too
+    (course, teacher, staff, a deduction's person and authoriser): the snapshot holds names
+    only, never ids, so a rename cannot be told from a reassignment; a names-only difference
+    is marked `nameOnly` (own banner text, own note in "See what changed"), and re-saving after
+    it counts as a money change, so it clears the check and an admin looks again. Money columns are `Decimal(12,2)`, written from integer cents by integer
     arithmetic (`lib/saved-day/money.ts`, never a float). `snapshotSchema` is a CONTRACT: a
     stored snapshot is read through `parseSnapshot(json, schema)`, which refuses an unknown
     schema or a wrong shape; never edit a stored snapshot, change the shape only with a NEW
     schema number and a reader for the old one. A saved day that cannot be read shows "This
     saved day can't be read. Showing the live numbers." with the live numbers, and Save day,
-    Edit, Admin check, Print and Download PDF OFF (and the reason beside them).
+    Edit, Admin check, Print and Download PDF OFF (and the reason beside them); the document
+    route refuses it too ("This saved day can't be read." with a link back, no sheets, no
+    Print, no PDF, never the draft).
 
     **Retention (lazy, no cron).** Saved days are kept 3 months after their DATE (cutoff =
     today in Colombo minus 3 calendar months, clamped to the month's end; the boundary day is
@@ -235,9 +240,12 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     document status "Saved, version N, not checked" / "checked"; "Not checked" is ONLY for a
     saved day nobody has checked; checked reads "Checked by <admin>, recorded by <tapper>"
     (the printed signature box shows only the admin); after a money change "Check cleared…".
-    "Live numbers differ" appears when the live figures moved after saving (e.g. a cancelled
-    receipt): the saved day never changes by itself; "See what changed" and "Re-save with live
-    numbers" are the two ways forward. After any write the screen's actions stay OFF until the
+    A yellow banner appears when the live data differs from what was saved (e.g. a cancelled
+    receipt): "The live numbers are different from the saved ones" when any number or flag
+    differs, or "Some names differ from the saved day" when ONLY printed names differ (a
+    rename in Setup, a deduction given to someone else, a corrected authoriser). The saved day
+    never changes by itself; "See what changed" and "Re-save with live numbers" are the two
+    ways forward. After any write the screen's actions stay OFF until the
     new version is on screen. **History** (`/daily-summary/history`, ADMIN + STAFF) is linked
     from the day screens (there is no second menu entry, rule 7); a range ("Several days",
     view only) has no cash book and no saved days.
@@ -588,7 +596,11 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   by equal time, slip and note, best pairs first, ties to the earlier old line). The data object, the
   golden masters and the whole PDF step are untouched by Release 2. Tests: `saved-day-*.test.ts` (the
   race file is run x20), `edit-session.test.ts`, `settle-after-save.test.ts` (structural: every write
-  settles the screen); each database test builds its own days and passes alone.
+  settles the screen); each database test builds its own days and passes alone. The release scripts
+  refuse `--dump-dir` on any host but the local throw-away one, and refuse a dump folder inside a git
+  work tree or readable by group or others (mode 700); `--dry-run` opens no connection and starts no
+  container (it makes and removes a temporary folder, and asks git for the checkout state with
+  `--no-optional-locks`).
 
 - **Routes.** `/daily-summary?date=` (the day screen; the old `?from=&to=` links still work: the same
   day opens the day screen, a real range redirects to the range screen), `/daily-summary/range`
@@ -697,7 +709,8 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
 - **Small pure units behind the day screen, so they can be tested without a browser.** What is typed on a draft (bring-forward,
   bank lines) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen
   only dispatches; its signer fields are unused since Release 2). One EDIT of a saved day (edit mode, what is typed, Done by) is
-  ONE reducer too (`edit-session.ts`; Cancel returns to the saved numbers with Done by empty), and the sentence beside a
+  ONE reducer too (`edit-session.ts`; Cancel returns to the saved numbers with Done by empty and clears the refusal; a refusal
+  that arrives after a Cancel carries an old epoch and is ignored; Cancel is off while a save is pending), and the sentence beside a
   disabled button comes from `block-reason.ts`. Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`
   (`lib/daily-summary-rows.ts`); `daily-summary-names-pure.test.ts` runs them on fake rows with no database and fails if any name
   gets a role hint. The "one source for the sheet's numbers" test reads the real imports with the TypeScript parser, so an alias
