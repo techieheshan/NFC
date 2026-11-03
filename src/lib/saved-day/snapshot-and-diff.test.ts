@@ -229,6 +229,7 @@ test("two deductions with IDENTICAL figures listed in a different order are not 
   const a = snapshotOf({ report: { deductionLines: [line("Person A", "paper"), line("Person B", "ink")] } });
   const swapped = snapshotOf({ report: { deductionLines: [line("Person B", "ink"), line("Person A", "paper")] } });
   assert.deepEqual(diffSummaries(a, swapped), [], "the same two lines in the other order");
+  assert.deepEqual(diffSummaries(swapped, a), [], "and the other way round (each side must be put in order, not only one)");
   const crossed = snapshotOf({ report: { deductionLines: [line("Person B", "paper"), line("Person A", "ink")] } });
   const d = diffSummaries(a, crossed);
   assert.ok(d.length === 1 && d[0].textOnly === true, JSON.stringify(d));

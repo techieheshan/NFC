@@ -264,6 +264,21 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(h.includes("Check cleared: the money changed after Ruwan Admin checked it. An admin must check again."));
   });
 
+  test("a re-save whose differences include a NUMBER as well as wording is a money change: the check-cleared wording says money, not names", async () => {
+    const date = await makeDay({ pays: ["5000.00"], spends: [["900.00", "repair: lock"]] });
+    await save(date, w.admin.id);
+    await check(date, 1, admin2.id);
+    as("STAFF", w.staff.id);
+    await db.expense.updateMany({ where: { date: colomboDateValue(date), reason: "repair: lock" }, data: { reason: "repair: front door lock" } }); // wording
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "300.00", takenById: w.staff.id, paidAt: new Date(`${date}T09:00:00Z`) } }); // and a number
+    const r = await A.saveDay({ date, mode: "resave", baseVersion: 1, doneById: w.staff.id, bringForward: "", bank: [], seen: await seen(date) });
+    assert.ok(r.ok, JSON.stringify(r));
+    const cleared = r.changes.find((c) => c.t === "check-cleared");
+    assert.ok(cleared && cleared.t === "check-cleared" && cleared.reason === undefined, "no reason: it is money");
+    const h = await dayHtml(date);
+    assert.ok(h.includes(checkClearedChip("Ruwan Admin", "money")) && !h.includes(checkClearedChip("Ruwan Admin", "names")));
+  });
+
   test("the See what changed sheet lets a long value wrap inside a 360 px sheet (min-w-0 and break-words on the saved and live values)", async () => {
     const { LiveDiffSheet } = await import("@/app/(app)/daily-summary/live-diff-sheet");
     const long = "Nadeesha" + "x".repeat(120);
