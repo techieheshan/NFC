@@ -91,7 +91,7 @@ function Header({ m }: { m: DocModel }) {
             <div>
               <div><span>Date</span><b>{m.dateText}</b></div>
               <div><span>Prepared by</span><b>{m.preparedBy ?? "—"}</b></div>
-              <div><span>Checked by (admin)</span><b>{m.checkedBy ?? "Not checked"}</b></div>
+              <div><span>Checked by (admin)</span><b>{m.checkedBy ?? (m.savedLine !== null ? "Not checked" : "—")}</b></div>
             </div>
             <div>
               <div><span>Document no.</span><b>{m.docNo}</b></div>

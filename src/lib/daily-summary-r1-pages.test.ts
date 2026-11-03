@@ -134,14 +134,16 @@ describe("daily summary R1 pages against a real database", { skip: dbSkip }, () 
     }
   });
 
-  test("the Release 1 prep and chk parameters are IGNORED: a staff id in chk changes nothing; the draft reads Not checked with empty signature boxes", async () => {
+  test("the Release 1 prep and chk parameters are IGNORED: neither signature box nor header line takes a name from the address; the draft shows dashes and empty boxes", async () => {
     asStaff();
     for (const q of [good(), good({ chk: staff2.id }), good({ prep: admin2.id, chk: w.admin.id }), good({ prep: "nobody", chk: ["../x"] })]) {
       const html = await page(doc as never, q);
       assert.ok(html.includes("Draft, not saved") && html.includes("Left in drawer"), "it always builds");
-      assert.ok(html.includes("Not checked"), "Checked by reads Not checked");
-      assert.ok(!html.includes("Ruwan Admin Staff"), "no signer name comes from the address");
-      assert.ok(/<div class="name"><\/div>/.test(html), "the signature boxes are empty");
+      assert.ok(html.includes("<span>Prepared by</span><b>—</b>") && html.includes("<span>Checked by (admin)</span><b>—</b>"), "both header lines are dashes");
+      assert.ok(!html.includes("Not checked"), "a draft is not 'Not checked'");
+      // each box on its own: a name taken from prep OR from chk would fill its box
+      assert.ok(html.includes('<div class="who">Prepared by</div><div class="name"></div>'), "Prepared by box is empty");
+      assert.ok(html.includes('<div class="who">Checked by (admin)</div><div class="name"></div>'), "Checked by box is empty");
     }
   });
 

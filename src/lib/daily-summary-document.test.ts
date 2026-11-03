@@ -173,7 +173,8 @@ test("the info grid (a draft): Date, Prepared by, Checked by (admin) | Document 
   assert.ok(l.every((i) => i >= 0) && l[0] < l[1] && l[1] < l[2], "left column order");
   assert.ok(r.every((i) => i >= 0) && r[0] < r[1], "right column order");
   assert.ok(!left.includes("<span>Status</span>") && !out.includes("<span>Generated</span>"));
-  assert.ok(out.includes("<b>Draft, not saved</b>") && out.includes("<b>Not checked</b>"));
+  assert.ok(out.includes("<b>Draft, not saved</b>"));
+  assert.ok(out.includes("<span>Prepared by</span><b>—</b>") && out.includes("<span>Checked by (admin)</span><b>—</b>") && !out.includes("Not checked"), "a draft shows a dash for both, never 'Not checked'");
 });
 
 test("the document carries the reconcile warning in the course note when some course does not reconcile, and not otherwise", () => {
