@@ -850,24 +850,45 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(day) } }), null, "the purge really committed");
   });
 
-  test("F9: a foreign-key failure while the day is still there is NOT reported as 'no longer saved'", async () => {
-    const date = await makeDay();
-    const doneBy = (await db.user.create({ data: { username: "ghost-staff", passwordHash: "x", role: "STAFF" } })).id;
-    staff();
-    // the Done by login vanishes after the lookup: simulate with a trigger that removes it just before the version row is written
-    const r = await withTrigger(
-      "ds_test_vanish_user",
-      "BEFORE INSERT",
-      "DailySummaryVersion",
-      `DELETE FROM "User" WHERE id = '${doneBy}'; RETURN NEW;`,
-      () => save(date, doneBy),
-    );
-    assert.ok(!r.ok, JSON.stringify(r));
-    if (!r.ok) {
-      assert.notEqual(r.reason, "conflict");
-      assert.ok(!r.message.includes("no longer saved"), r.message);
+  test("F9: a foreign-key failure while the day is still there says WHICH account is gone: the Done by or named admin ('no longer available, choose someone else'), the session user ('your sign-in'), never 'no longer saved'", async () => {
+    const mk = (username: string, role: UserRole) => db.user.create({ data: { username, passwordHash: "x", role } });
+    const vanish = (id: string) => `DELETE FROM "User" WHERE id = '${id}'; RETURN NEW;`;
+    const GONE = "This account is no longer available. Choose someone else.";
+    const SIGN_IN = "Your sign-in could not be checked. Sign out and in again.";
+    // 1. save: the Done by account vanishes after the lookup
+    {
+      const date = await makeDay();
+      const doneBy = (await mk("ghost-doneby", "STAFF")).id;
+      staff();
+      const r = await withTrigger("ds_test_vanish_user", "BEFORE INSERT", "DailySummaryVersion", vanish(doneBy), () => save(date, doneBy));
+      assert.ok(!r.ok && r.reason === "done-by" && r.message === GONE, JSON.stringify(r));
+      assert.equal(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(date) } }), null, "nothing was written");
     }
-    assert.equal(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(date) } }), null, "nothing was written");
+    // 2. save: the SESSION user vanishes after the lookup
+    {
+      const date = await makeDay();
+      const session = (await mk("ghost-session", "STAFF")).id;
+      as("STAFF", session);
+      const r = await withTrigger("ds_test_vanish_user", "BEFORE INSERT", "DailySummaryVersion", vanish(session), () => save(date, w.admin.id));
+      assert.ok(!r.ok && r.reason === "sign-in" && r.message === SIGN_IN, JSON.stringify(r));
+    }
+    // 3. check: the NAMED ADMIN vanishes
+    {
+      const day = await savedDay();
+      const named = (await mk("ghost-admin", "ADMIN")).id;
+      admin();
+      const r = await withTrigger("ds_test_vanish_user", "BEFORE INSERT", "DailySummaryCheck", vanish(named), () => check(day, 1, named));
+      assert.ok(!r.ok && r.reason === "not-admin" && r.message === GONE, JSON.stringify(r));
+      assert.equal(await db.dailySummaryCheck.count(), (await counts()).checks, "no check written");
+    }
+    // 4. check: the TAPPER (session user) vanishes
+    {
+      const day = await savedDay();
+      const tapper = (await mk("ghost-tapper", "STAFF")).id;
+      as("STAFF", tapper);
+      const r = await withTrigger("ds_test_vanish_user", "BEFORE INSERT", "DailySummaryCheck", vanish(tapper), () => check(day, 1, w.admin.id));
+      assert.ok(!r.ok && r.reason === "sign-in" && r.message === SIGN_IN, JSON.stringify(r));
+    }
   });
 
   test("F9: saving needs the signed-in user to exist and be active ADMIN or STAFF; the refusal says so and writes nothing", async () => {

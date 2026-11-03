@@ -94,6 +94,8 @@ const MESSAGE = {
   noDay: "This day is no longer saved (saved details are kept for 3 months). Nothing was changed.",
   expired: "This day's saved details are older than 3 months.",
   signIn: "Your sign-in could not be checked. Sign out and in again.",
+  accountGone: "This account is no longer available. Choose someone else.",
+  fkOther: "Something this day refers to is no longer available, so nothing was saved. Reload the page and try again.",
 } as const;
 
 // ---- small helpers ----
@@ -122,6 +124,17 @@ function isBusyError(e: unknown): boolean {
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 /** A foreign key failed: the day was deleted by the purge between our read and our write. */
 const isForeignKeyViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003";
+/** Which column's foreign key failed (`doneById`, `savedById`, `checkedById`…), read from the constraint name `DailySummary<Table>_<column>_fkey` that the error carries; null if it cannot be told. */
+function fkColumn(e: unknown): string | null {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return null;
+  let text = e.message;
+  try {
+    text += ` ${JSON.stringify(e.meta ?? {})}`;
+  } catch {
+    // meta that cannot be serialised must not replace the real error
+  }
+  return /DailySummary[A-Za-z]+_([A-Za-z]+)_fkey/.exec(text)?.[1] ?? null;
+}
 
 const versionInclude = { bankLines: { orderBy: { position: "asc" as const } }, check: true } satisfies Prisma.DailySummaryVersionInclude;
 type VersionRow = Prisma.DailySummaryVersionGetPayload<{ include: typeof versionInclude }>;
@@ -369,7 +382,12 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
       // "No longer saved" is only true when the day really is gone (purged between our read and our write). A first save has no day to lose;
       // any other foreign-key failure is a login that no longer exists, and the message says so.
       const gone = p.baseVersion > 0 && (await db.dailySummaryDay.findUnique({ where: { date: dateValue }, select: { id: true } })) === null;
-      return gone ? refuse("conflict", MESSAGE.noDay) : refuse("sign-in", MESSAGE.signIn);
+      if (gone) return refuse("conflict", MESSAGE.noDay);
+      // Otherwise say WHICH account is missing: the session user is the only case where the person's own sign-in is the problem.
+      const column = fkColumn(e);
+      if (column === "savedById") return refuse("sign-in", MESSAGE.signIn);
+      if (column === "doneById") return refuse("done-by", MESSAGE.accountGone);
+      return refuse("invalid", MESSAGE.fkOther);
     }
     throw e;
   }
@@ -436,7 +454,11 @@ export async function markCheckedAs(actor: Actor, raw: unknown): Promise<CheckOu
     if (isUniqueViolation(e)) return refuse("already-checked", "Already checked.");
     if (isForeignKeyViolation(e)) {
       const gone = (await db.dailySummaryDay.findUnique({ where: { date: dateValue }, select: { id: true } })) === null;
-      return gone ? refuse("not-saved", MESSAGE.noDay) : refuse("sign-in", MESSAGE.signIn);
+      if (gone) return refuse("not-saved", MESSAGE.noDay);
+      const column = fkColumn(e);
+      if (column === "markedById") return refuse("sign-in", MESSAGE.signIn);
+      if (column === "checkedById") return refuse("not-admin", MESSAGE.accountGone);
+      return refuse("invalid", MESSAGE.fkOther);
     }
     throw e;
   }
