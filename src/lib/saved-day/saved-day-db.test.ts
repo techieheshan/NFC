@@ -84,10 +84,10 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     }
   }
 
-  /** A fresh Colombo day with its own money in (and one expense out, when asked). Dates 11 Sep .. 1 Nov never repeat within a file. */
+  /** A fresh Colombo day with its own money in (and one expense out, when asked). Dates 27 Aug .. 1 Nov never repeat within a file (the explicit dates in the tests below stay clear of them). */
   let dayCounter = 0;
   async function makeDay(o: { pays?: string[]; spend?: string } = {}): Promise<string> {
-    const date = shiftDay("2026-09-11", dayCounter++);
+    const date = shiftDay("2026-08-27", dayCounter++);
     for (const [i, amount] of (o.pays ?? ["1300.00"]).entries()) {
       await db.payment.create({ data: { kind: "ADMISSION", studentId, amount, takenById: w.staff.id, paidAt: new Date(`${date}T0${4 + i}:00:00Z`) } });
     }

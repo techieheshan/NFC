@@ -58,9 +58,10 @@ test("the day screen's cash flow shows the sign on the LABEL and the number with
 test("the draft and the saved day screen run ALL their typed state through the pure reducer: they dispatch, and hold no copy of their own", () => {
   for (const file of ["day-screen.tsx", "saved-day-screen.tsx"]) {
     const src = read(file);
-    assert.ok(src.includes("useReducer(typedReducer"), `${file}: driven by the reducer`);
+    // the draft runs the typed reducer itself; the saved screen runs the edit-session reducer, which wraps it (edit-session.ts)
+    assert.ok(src.includes(file === "day-screen.tsx" ? "useReducer(typedReducer" : "useReducer(editSessionReducer"), `${file}: driven by the reducer`);
     for (const type of ["bf", "bankAdd", "bankRemove"]) assert.ok(src.includes(`dispatch({ type: "${type}"`), `${file} dispatches ${type}`);
-    for (const gone of ["setBfText", "setBank(", "setPreparedId", "setCheckedId", "setOpenNotices"]) assert.ok(!src.includes(gone), `${file}: ${gone} is gone: nothing sets that state outside the reducer`);
+    for (const gone of ["setBfText", "setBank(", "setPreparedId", "setCheckedId", "setOpenNotices", "setEditing(", "useState(\"\")"]) assert.ok(!src.includes(gone), `${file}: ${gone} is gone: nothing sets that state outside the reducer`);
     // Release 2: Prepared by / Checked by are no longer typed on the screen
     for (const type of ["prepared", "checked"]) assert.ok(!src.includes(`dispatch({ type: "${type}"`), `${file} no longer dispatches ${type}`);
   }
