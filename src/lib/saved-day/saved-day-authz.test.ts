@@ -10,6 +10,7 @@ import type { PrismaClient, UserRole } from "@prisma/client";
 import ts from "typescript";
 
 import { colomboDateValue } from "@/lib/colombo-time";
+import { shiftDay } from "@/lib/daily-summary-dates";
 
 /*
  * Who may call each saved-day action, replayed with ADMIN, STAFF, TEACHER and no session (rules 10, 29 and 30). The server action
@@ -19,7 +20,6 @@ import { colomboDateValue } from "@/lib/colombo-time";
  */
 
 const NOW = "2026-11-02T10:00:00Z";
-const DAY = "2026-10-26";
 
 type Actions = typeof import("@/app/(app)/daily-summary/saved-actions");
 let db: PrismaClient;
@@ -38,7 +38,6 @@ describe("saved-day authorisation replay", { skip: dbSkip }, () => {
     w = await seedWorld(db);
     teacherId = (await db.user.create({ data: { username: "teacher-x", passwordHash: "x", role: "TEACHER" } })).id;
     studentId = (await makeStudent(db)).id;
-    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-10-26T04:00:00Z") } });
   });
   after(async () => {
     unfreezeClock();
@@ -53,7 +52,14 @@ describe("saved-day authorisation replay", { skip: dbSkip }, () => {
     checks: await db.dailySummaryCheck.count(),
   });
   const SEEN = { collected: 130000, deductions: 0 };
-  const saveInput = (date = DAY) => ({ date, mode: "save", baseVersion: 0, doneById: w.staff.id, bringForward: "", bank: [], seen: SEEN });
+  /** A fresh day with 1,300.00 collected (every test builds its own, so each passes when run alone). */
+  let dayCounter = 0;
+  async function newDay(): Promise<string> {
+    const date = shiftDay("2026-10-01", dayCounter++);
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${date}T04:00:00Z`) } });
+    return date;
+  }
+  const saveInput = (date: string) => ({ date, mode: "save", baseVersion: 0, doneById: w.staff.id, bringForward: "", bank: [], seen: SEEN });
 
   type Who = { name: string; role: UserRole | null; id: string };
   const refused: Who[] = [
@@ -68,20 +74,19 @@ describe("saved-day authorisation replay", { skip: dbSkip }, () => {
 
   // ---- a first save, an edit and a re-save ----------------------------------------
   test("saveDay (first save, edit, re-save): ADMIN and STAFF are served; TEACHER and no session are refused and nothing is written", async () => {
+    const DAY = await newDay();
     for (const who of refused) {
       sign(who);
       const base = await rows();
-      for (const input of [saveInput(), { ...saveInput(), mode: "edit", baseVersion: 1 }, { ...saveInput(), mode: "resave", baseVersion: 1 }]) {
+      for (const input of [saveInput(DAY), { ...saveInput(DAY), mode: "edit", baseVersion: 1 }, { ...saveInput(DAY), mode: "resave", baseVersion: 1 }]) {
         await assert.rejects(() => A.saveDay(input), (e: Error) => e.message === "Not authorised", `${who.name} is refused`);
       }
       assert.deepEqual(await rows(), base, `${who.name}: nothing was written`);
     }
     // controls
-    let n = 0;
     for (const who of allowed) {
       sign(who);
-      const day = `2026-10-${27 + n++}`;
-      await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${day}T04:00:00Z`) } });
+      const day = await newDay();
       const first = await A.saveDay(saveInput(day));
       assert.ok(first.ok && first.version === 1, `${who.name} can save: ${JSON.stringify(first)}`);
       const ed = await A.saveDay({ ...saveInput(day), mode: "edit", baseVersion: 1, bringForward: "10.00" });
@@ -94,6 +99,7 @@ describe("saved-day authorisation replay", { skip: dbSkip }, () => {
 
   // ---- markChecked (C1) --------------------------------------------------------------
   test("markChecked: ADMIN and STAFF may tap it (C1); TEACHER and no session are refused and no check is written", async () => {
+    const DAY = await newDay();
     sign(allowed[0]);
     assert.ok((await A.saveDay(saveInput(DAY))).ok);
     const base = await rows();
@@ -110,43 +116,50 @@ describe("saved-day authorisation replay", { skip: dbSkip }, () => {
   });
 
   test("markChecked: a STAFF session cannot make a STAFF user the checker, and cannot reuse a TEACHER or unknown id; ADMIN control accepted", async () => {
+    const day = await newDay();
     sign(allowed[0]);
-    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-10-31T04:00:00Z") } });
-    assert.ok((await A.saveDay(saveInput("2026-10-31"))).ok);
+    assert.ok((await A.saveDay(saveInput(day))).ok);
     sign(allowed[1]);
     const base = await rows();
     for (const id of [w.staff.id, teacherId, "no-such-user"]) {
-      const r = await A.markChecked({ date: "2026-10-31", baseVersion: 1, checkedById: id });
+      const r = await A.markChecked({ date: day, baseVersion: 1, checkedById: id });
       assert.ok(!r.ok && r.reason === "not-admin", `${id} is refused as the checker`);
     }
     assert.deepEqual(await rows(), base);
     sign(allowed[0]);
-    assert.ok((await A.markChecked({ date: "2026-10-31", baseVersion: 1, checkedById: w.admin.id })).ok, "control: an ADMIN checker is accepted");
+    assert.ok((await A.markChecked({ date: day, baseVersion: 1, checkedById: w.admin.id })).ok, "control: an ADMIN checker is accepted");
   });
 
   // ---- reads ---------------------------------------------------------------------------
   test("loadSavedDay and loadHistory: ADMIN and STAFF get the data; TEACHER and no session get nothing but 'Not authorised'", async () => {
+    const DAY = await newDay();
+    sign(allowed[0]);
+    assert.ok((await A.saveDay(saveInput(DAY))).ok);
     for (const who of refused) {
       sign(who);
       await assert.rejects(() => A.loadSavedDay(DAY), (e: Error) => e.message === "Not authorised", who.name);
-      await assert.rejects(() => A.loadHistory("2026-10"), (e: Error) => e.message === "Not authorised", who.name);
+      await assert.rejects(() => A.loadHistory(DAY.slice(0, 7)), (e: Error) => e.message === "Not authorised", who.name);
     }
     for (const who of allowed) {
       sign(who);
       const d = await A.loadSavedDay(DAY);
       assert.ok(d.saved && d.saved.version === 1, `${who.name} sees the saved day`);
-      const h = await A.loadHistory("2026-10");
+      const h = await A.loadHistory(DAY.slice(0, 7));
       assert.ok(h.rows.some((r) => r.date === DAY), `${who.name} sees History`);
     }
   });
 
   test("a refused TEACHER call does not even read: the lazy purge does not run for them", async () => {
+    await db.dailySummaryDay.deleteMany();
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-05-20T04:00:00Z") } });
     // plant an expired day under an earlier clock; a TEACHER opening History must not trigger its deletion
     freezeClock("2026-08-05T06:00:00Z");
-    sign(allowed[1]);
-    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-05-20T04:00:00Z") } });
-    assert.ok((await A.saveDay({ ...saveInput("2026-05-20") })).ok);
-    freezeClock(NOW);
+    try {
+      sign(allowed[1]);
+      assert.ok((await A.saveDay({ ...saveInput("2026-05-20") })).ok);
+    } finally {
+      freezeClock(NOW);
+    }
     sign(refused[0]);
     await assert.rejects(() => A.loadHistory("2026-10"));
     assert.ok(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue("2026-05-20") } }), "the expired day is still there");

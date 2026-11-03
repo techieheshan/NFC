@@ -122,10 +122,13 @@ describe("saved-day races against a real database", { skip: dbSkip }, () => {
       assert.equal(dy.versions.length, 3, "both days completed all three versions");
     }
     // nothing leaked across days: every day has consecutive versions 1..3 and exactly one version-1 check
-    const days = await db.dailySummaryDay.findMany({ include: { versions: { orderBy: { version: "asc" } } } });
+    const days = await db.dailySummaryDay.findMany({
+      where: { date: { gte: colomboDateValue(FIRST_DAY), lt: colomboDateValue(shiftDay(FIRST_DAY, 2 * ROUNDS)) } },
+      include: { versions: { orderBy: { version: "asc" } } },
+    });
     assert.equal(days.length, ROUNDS * 2);
     for (const d of days) assert.deepEqual(d.versions.map((v) => v.version), [1, 2, 3]);
-    assert.equal(await db.dailySummaryCheck.count({ where: { version: { version: 3 } } }), 0);
+    assert.equal(await db.dailySummaryCheck.count({ where: { version: { version: 3, day: { date: { gte: colomboDateValue(FIRST_DAY), lt: colomboDateValue(shiftDay(FIRST_DAY, 2 * ROUNDS)) } } } } }), 0);
   });
 
   test("a save that cannot get the day's lock in time answers with a friendly refusal and writes nothing", async () => {

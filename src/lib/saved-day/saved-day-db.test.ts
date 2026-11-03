@@ -7,23 +7,30 @@ import assert from "node:assert/strict";
 import type { PrismaClient, UserRole } from "@prisma/client";
 
 import { colomboDateValue } from "@/lib/colombo-time";
+import { shiftDay } from "@/lib/daily-summary-dates";
 
+import { overBankedBanner, overBankRefusal } from "./over-bank";
+import { UNREADABLE_DAY } from "./texts";
 import { parseSnapshot } from "./snapshot";
 
 /*
- * Daily Summary Release 2, Phase 1: the saved-day actions against a real database (made-up data only). The clock is frozen at
- * 2 Nov 2026, 15:30 in Colombo, so "today" never moves under a test. The real server actions are called with a stubbed session.
+ * Daily Summary Release 2: the saved-day actions against a real database (made-up data only). The clock is frozen at 2 Nov 2026,
+ * 15:30 in Colombo. The real server actions are called with a stubbed session.
+ *
+ * EVERY TEST BUILDS ITS OWN DATA (its own day, its own money): none depends on what another test left behind, so each one passes
+ * when it is run alone (`--test-name-pattern`). Tests that move the clock restore it in a `finally`.
  */
 
 const NOW = "2026-11-02T10:00:00Z";
-const DAY = "2026-11-01";
 
 type Actions = typeof import("@/app/(app)/daily-summary/saved-actions");
+type Store = typeof import("@/lib/saved-day/store");
 
 let db: PrismaClient;
 let handle: TestDatabase;
 let w: World;
 let A: Actions;
+let ST: Store;
 let u: {
   admin2: { id: string; username: string };
   staff2: { id: string; username: string };
@@ -43,6 +50,7 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     freezeClock(NOW);
     ({ db } = await import("@/lib/db"));
     A = await import("@/app/(app)/daily-summary/saved-actions");
+    ST = await import("@/lib/saved-day/store");
     w = await seedWorld(db);
     const mk = (username: string, role: UserRole, active = true) => db.user.create({ data: { username, passwordHash: "x", role, active } });
     u = {
@@ -66,11 +74,26 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
   const admin = () => as("ADMIN", w.admin.id);
   const staff = () => as("STAFF", w.staff.id);
 
-  /** Money in on a Colombo day: one admission payment of `amount` at `paidAtUtc`. */
-  const pay = (paidAtUtc: string, amount = "1300.00") =>
-    db.payment.create({ data: { kind: "ADMISSION", studentId, amount, takenById: w.staff.id, paidAt: new Date(paidAtUtc) } });
-  const spend = (date: string, amount: string, reason = "Paper") =>
-    db.expense.create({ data: { expenseTypeId: xenonTypeId, amount, reason, date: colomboDateValue(date), recordedById: w.staff.id, authorizedById: w.admin.id } });
+  /** Runs `fn` with the clock somewhere else and ALWAYS puts it back. */
+  async function withClock<T>(iso: string, fn: () => Promise<T>): Promise<T> {
+    freezeClock(iso);
+    try {
+      return await fn();
+    } finally {
+      freezeClock(NOW);
+    }
+  }
+
+  /** A fresh Colombo day with its own money in (and one expense out, when asked). Dates 11 Sep .. 1 Nov never repeat within a file. */
+  let dayCounter = 0;
+  async function makeDay(o: { pays?: string[]; spend?: string } = {}): Promise<string> {
+    const date = shiftDay("2026-09-11", dayCounter++);
+    for (const [i, amount] of (o.pays ?? ["1300.00"]).entries()) {
+      await db.payment.create({ data: { kind: "ADMISSION", studentId, amount, takenById: w.staff.id, paidAt: new Date(`${date}T0${4 + i}:00:00Z`) } });
+    }
+    if (o.spend) await db.expense.create({ data: { expenseTypeId: xenonTypeId, amount: o.spend, reason: "Paper", date: colomboDateValue(date), recordedById: w.staff.id, authorizedById: w.admin.id } });
+    return date;
+  }
 
   const cents = (text: string) => Math.round(Number(text) * 100);
   const counts = async () => ({
@@ -98,30 +121,54 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
   }
   const edit = (date: string, base: number, doneById: string, over: Record<string, unknown> = {}) =>
     A.saveDay({ date, mode: "edit", baseVersion: base, doneById, bringForward: "", bank: [], ...over });
+  async function resave(date: string, base: number, doneById: string) {
+    return A.saveDay({ date, mode: "resave", baseVersion: base, doneById, bringForward: "", bank: [], seen: await seenFor(date) });
+  }
 
   const dayRow = (date: string) =>
     db.dailySummaryDay.findUniqueOrThrow({
       where: { date: colomboDateValue(date) },
       include: { versions: { orderBy: { version: "asc" }, include: { bankLines: { orderBy: { position: "asc" } }, check: true } } },
     });
+  const newest = async (date: string) => {
+    const d = await dayRow(date);
+    return d.versions[d.versions.length - 1];
+  };
+  const check = (date: string, base: number, checkedById: string) => A.markChecked({ date, baseVersion: base, checkedById });
 
-  // A day with some money in and one expense out. Collected 2,600.00 and deductions 1,200.00 on DAY.
-  before(async () => {
-    await pay("2026-11-01T04:00:00Z");
-    await pay("2026-11-01T05:00:00Z");
-    await spend(DAY, "1200.00");
-  });
+  /** A day saved by `staff()` (Done by: the admin), optionally checked by the admin. */
+  async function savedDay(o: { pays?: string[]; spend?: string; bf?: string; bank?: BankIn[]; checked?: boolean } = {}) {
+    const date = await makeDay(o);
+    staff();
+    const r = await save(date, w.admin.id, { bringForward: o.bf ?? "", bank: o.bank ?? [] });
+    assert.ok(r.ok, JSON.stringify(r));
+    if (o.checked) assert.ok((await check(date, 1, w.admin.id)).ok);
+    return date;
+  }
+
+  /** Makes a DELETE (or INSERT) on a table fail or misbehave inside the database, for the length of `fn`. */
+  async function withTrigger<T>(name: string, when: "BEFORE DELETE" | "BEFORE INSERT", table: string, body: string, fn: () => Promise<T>): Promise<T> {
+    await db.$executeRawUnsafe(`CREATE FUNCTION ${name}() RETURNS trigger AS $$ BEGIN ${body} END $$ LANGUAGE plpgsql`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER ${name} ${when} ON "${table}" FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+    try {
+      return await fn();
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER ${name} ON "${table}"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION ${name}()`);
+    }
+  }
 
   // ---- save v1 ----------------------------------------------------------------
   test("a first save writes the day, version 1, the cash book, the frozen snapshot and the bank deposits", async () => {
+    const day = await makeDay({ pays: ["1300.00", "1300.00"], spend: "1200.00" });
     staff();
-    const r = await save(DAY, w.admin.id, { bringForward: "5,000.00", bank: [line("1,500.00", "09:15", "SLIP-1", "Peoples"), line("500.00", "10:30")] });
+    const r = await save(day, w.admin.id, { bringForward: "5,000.00", bank: [line("1,500.00", "09:15", "SLIP-1", "Peoples"), line("500.00", "10:30")] });
     assert.ok(r.ok, JSON.stringify(r));
     assert.equal(r.version, 1);
     assert.equal(r.kind, "SAVE");
     assert.deepEqual(r.changes, [{ t: "saved", by: w.admin.username }]);
 
-    const d = await dayRow(DAY);
+    const d = await dayRow(day);
     assert.equal(d.currentVersion, 1);
     assert.equal(d.versions.length, 1);
     const v = d.versions[0];
@@ -148,47 +195,41 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
 
   // ---- edit v2, v1 untouched, prepared-by ----------------------------------------
   test("an edit writes version 2 and leaves version 1 exactly as it was; the numbers stay FROZEN even though the live data moved", async () => {
-    const before = await dayRow(DAY);
-    await pay("2026-11-01T06:00:00Z", "700.00"); // live collected is now 3,300.00 ...
+    const day = await savedDay({ pays: ["1300.00", "1300.00"], spend: "1200.00", bf: "5,000.00", bank: [line("1,500.00", "09:15", "SLIP-1", "Peoples"), line("500.00", "10:30")] });
+    const before = await dayRow(day);
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "700.00", takenById: w.staff.id, paidAt: new Date(`${day}T08:00:00Z`) } }); // live collected is now 3,300.00
     staff();
-    const r = await edit(DAY, 1, u.staff2.id, { bringForward: "6,500.00", bank: [line("1,500.00", "09:15", "SLIP-1", "Peoples"), line("500.00", "10:30")] });
+    const r = await edit(day, 1, u.staff2.id, { bringForward: "6,500.00", bank: [line("1,500.00", "09:15", "SLIP-1", "Peoples"), line("500.00", "10:30")] });
     assert.ok(r.ok, JSON.stringify(r));
     assert.equal(r.version, 2);
     assert.equal(r.kind, "EDIT");
 
-    const after = await dayRow(DAY);
+    const after = await dayRow(day);
     assert.equal(after.currentVersion, 2);
     assert.deepEqual(JSON.parse(JSON.stringify(after.versions[0])), JSON.parse(JSON.stringify(before.versions[0])), "version 1 is byte-for-byte what it was");
     const v2 = after.versions[1];
     assert.equal(v2.collected.toFixed(2), "2600.00", "... and the saved collected did not move");
     assert.equal(v2.bringForward.toFixed(2), "6500.00");
-    assert.equal(v2.leftInDrawer.toFixed(2), "5900.00");
+    assert.equal(cents(v2.leftInDrawer.toFixed(2)), 650000 + 260000 - 120000 - 200000);
     assert.deepEqual(v2.snapshot, before.versions[0].snapshot, "the snapshot is copied unchanged");
     assert.equal(v2.doneById, u.staff2.id);
     assert.equal(v2.doneByName, u.staff2.username);
     assert.equal(v2.preparedById, w.admin.id, "Prepared by is carried unchanged from version 1");
     assert.equal(v2.preparedByName, w.admin.username);
     assert.equal(v2.savedById, w.staff.id);
+    assert.equal(v2.snapshotSchema, before.versions[0].snapshotSchema);
     assert.deepEqual(r.changes.map((c) => c.t), ["edited-by", "bf"]);
     assert.deepEqual(r.changes[1], { t: "bf", from: 500000, to: 650000 });
-    await db.payment.deleteMany({ where: { amount: "700.00" } }); // put the day back
   });
 
   // ---- Done by rules --------------------------------------------------------------
   test("Done by is required and must be an ACTIVE ADMIN or STAFF user, at the first save, every edit and every re-save; refusals write nothing", async () => {
-    const day = "2026-10-20";
-    await pay("2026-10-20T04:00:00Z");
-    staff();
-    const first = await save(day, w.staff.id);
-    assert.ok(first.ok);
+    const day = await savedDay();
+    const other = await makeDay();
     const base = await counts();
     const bad = ["", "no-such-id", "x".repeat(65), u.inactiveStaff.id, u.inactiveAdmin.id, u.teacher.id];
     for (const doneById of bad) {
-      const attempts = [
-        await save("2026-10-21", doneById),
-        await edit(day, 1, doneById, { bringForward: "1.00" }),
-        await A.saveDay({ date: day, mode: "resave", baseVersion: 1, doneById, bringForward: "", bank: [], seen: await seenFor(day) }),
-      ];
+      const attempts = [await save(other, doneById), await edit(day, 1, doneById, { bringForward: "1.00" }), await resave(day, 1, doneById)];
       for (const r of attempts) {
         assert.equal(r.ok, false, `refused for Done by "${doneById.slice(0, 12)}"`);
         if (!r.ok) {
@@ -207,89 +248,90 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
 
   // ---- check only on the current version; C1 -------------------------------------
   test("a check attaches only to the version the person saw; ADMIN or STAFF may tap it; the admin named must be an active ADMIN; both are stored", async () => {
-    const day = "2026-10-22";
-    await pay("2026-10-22T04:00:00Z");
-    staff();
-    assert.ok((await save(day, w.staff.id, { bank: [line("100.00")] })).ok);
-
-    // the named person must be an ACTIVE ADMIN, looked up on the server
+    const day = await savedDay({ bank: [line("100.00")] });
     for (const id of [w.staff.id, u.staff2.id, u.inactiveAdmin.id, u.teacher.id, "no-such-id", ""]) {
-      const r = await A.markChecked({ date: day, baseVersion: 1, checkedById: id });
+      const r = await check(day, 1, id);
       assert.equal(r.ok, false);
       if (!r.ok) assert.ok(r.reason === "not-admin" || r.reason === "invalid", r.reason);
     }
     assert.equal(await db.dailySummaryCheck.count({ where: { version: { day: { date: colomboDateValue(day) } } } }), 0);
 
     staff(); // C1: STAFF may tap Mark as checked
-    const r = await A.markChecked({ date: day, baseVersion: 1, checkedById: u.admin2.id });
+    const r = await check(day, 1, u.admin2.id);
     assert.ok(r.ok, JSON.stringify(r));
     assert.equal(r.checkedByName, u.admin2.username);
     assert.equal(r.markedByName, w.staff.username);
     const c = (await dayRow(day)).versions[0].check!;
     assert.deepEqual([c.checkedById, c.checkedByName, c.markedById, c.markedByName, c.carriedFromVersion], [u.admin2.id, u.admin2.username, w.staff.id, w.staff.username, null]);
 
-    // a second check of the same version is refused
-    const again = await A.markChecked({ date: day, baseVersion: 1, checkedById: w.admin.id });
+    const again = await check(day, 1, w.admin.id);
     assert.ok(!again.ok && again.reason === "already-checked");
 
-    // a money change makes version 2 WITHOUT a check; version 1 keeps its own
     admin();
-    const e = await edit(day, 1, w.admin.id, { bank: [line("101.00")] });
-    assert.ok(e.ok);
+    assert.ok((await edit(day, 1, w.admin.id, { bank: [line("101.00")] })).ok);
     const d = await dayRow(day);
     assert.equal(d.versions[0].check?.checkedById, u.admin2.id, "version 1 keeps its check");
     assert.equal(d.versions[1].check, null);
-    // a check that names the old version is refused: it can never attach to numbers the person did not see
-    const stale = await A.markChecked({ date: day, baseVersion: 1, checkedById: w.admin.id });
+    const stale = await check(day, 1, w.admin.id);
     assert.ok(!stale.ok && stale.reason === "conflict");
     assert.equal(await db.dailySummaryCheck.count({ where: { version: { dayId: d.id } } }), 1);
   });
 
-  test("an admin may name themselves; a check on an unsaved day is refused", async () => {
+  test("a check on a day that was never saved is refused", async () => {
+    const day = await makeDay();
     admin();
-    const none = await A.markChecked({ date: "2026-10-05", baseVersion: 1, checkedById: w.admin.id });
+    const none = await check(day, 1, w.admin.id);
     assert.ok(!none.ok && none.reason === "not-saved");
   });
 
-  // ---- money change clears the check; slip / note / time keeps it -----------------
-  async function checkedDay(day: string, opts: { bf?: string; bank?: BankIn[] } = {}) {
-    await pay(`${day}T04:00:00Z`);
-    staff();
-    const r = await save(day, w.staff.id, { bringForward: opts.bf ?? "1,000.00", bank: opts.bank ?? [line("100.00", "09:00", "A", "x"), line("200.00", "10:00")] });
-    assert.ok(r.ok, JSON.stringify(r));
-    const c = await A.markChecked({ date: day, baseVersion: 1, checkedById: w.admin.id });
-    assert.ok(c.ok);
-  }
-  const newest = async (day: string) => {
-    const d = await dayRow(day);
-    return d.versions[d.versions.length - 1];
-  };
-
-  test("a MONEY change (bring-forward, a bank amount, the number of lines) gives a version with no check, and the log says it was cleared", async () => {
-    const cases: [string, Record<string, unknown>][] = [
-      ["2026-10-01", { bringForward: "1,001.00" }],
-      ["2026-10-02", { bank: [line("101.00", "09:00", "A", "x"), line("200.00", "10:00")] }],
-      ["2026-10-03", { bank: [line("100.00", "09:00", "A", "x"), line("200.00", "10:00"), line("5.00", "11:00")] }],
-      ["2026-10-04", { bank: [line("100.00", "09:00", "A", "x")] }],
+  // ---- A2: markChecked echoes the selected admin ------------------------------------
+  test("A2: every markChecked outcome, success or refusal, echoes the selected checkedById (rule 14)", async () => {
+    const day = await savedDay();
+    const unsaved = await makeDay();
+    admin();
+    const outcomes = [
+      await check(day, 1, "not-an-admin-id"), // not-admin
+      await check(day, 1, w.staff.id), // not-admin
+      await check(unsaved, 1, w.admin.id), // not-saved
+      await check(day, 9, w.admin.id), // conflict
+      await A.markChecked({ date: "garbage", baseVersion: 1, checkedById: u.admin2.id }), // invalid
+      await A.markChecked(null), // invalid, nothing to echo
+      await check(day, 1, w.admin.id), // ok
+      await check(day, 1, u.admin2.id), // already-checked
     ];
-    for (const [day, over] of cases) {
-      await checkedDay(day);
+    assert.deepEqual(outcomes.map((o) => o.ok), [false, false, false, false, false, false, true, false]);
+    assert.deepEqual(outcomes.map((o) => o.values.checkedById), ["not-an-admin-id", w.staff.id, w.admin.id, w.admin.id, u.admin2.id, "", w.admin.id, u.admin2.id]);
+    assert.deepEqual(outcomes.map((o) => (o.ok ? "ok" : o.reason)), ["not-admin", "not-admin", "not-saved", "conflict", "invalid", "invalid", "ok", "already-checked"]);
+    const long = await A.markChecked({ date: day, baseVersion: 1, checkedById: "z".repeat(200) });
+    assert.equal(long.values.checkedById.length, 64, "an overlong id is echoed cut to what the form can hold");
+  });
+
+  // ---- money change clears the check; slip / note / time keeps it -----------------
+  test("a MONEY change (bring-forward, a bank amount, the number of lines) gives a version with no check, and the log says it was cleared", async () => {
+    const base = [line("100.00", "09:00", "A", "x"), line("200.00", "10:00")];
+    const cases: [string, Record<string, unknown>][] = [
+      ["bring-forward", { bringForward: "1,001.00" }],
+      ["a bank amount", { bank: [line("101.00", "09:00", "A", "x"), line("200.00", "10:00")] }],
+      ["a new bank line", { bank: [...base, line("5.00", "11:00")] }],
+      ["a removed bank line", { bank: [line("100.00", "09:00", "A", "x")] }],
+    ];
+    for (const [what, over] of cases) {
+      const day = await savedDay({ pays: ["1300.00"], bf: "1,000.00", bank: base, checked: true });
       admin();
-      const r = await edit(day, 1, w.admin.id, { bringForward: "1,000.00", bank: [line("100.00", "09:00", "A", "x"), line("200.00", "10:00")], ...over });
-      assert.ok(r.ok, `${day}: ${JSON.stringify(r)}`);
-      assert.equal((await newest(day)).check, null, `${day}: no check on the new version`);
-      assert.ok(r.changes.some((c) => c.t === "check-cleared" && c.by === w.admin.username), `${day}: the log says the check was cleared`);
+      const r = await edit(day, 1, w.admin.id, { bringForward: "1,000.00", bank: base, ...over });
+      assert.ok(r.ok, `${what}: ${JSON.stringify(r)}`);
+      assert.equal((await newest(day)).check, null, `${what}: no check on the new version`);
+      assert.ok(r.changes.some((c) => c.t === "check-cleared" && c.by === w.admin.username), `${what}: the log says the check was cleared`);
     }
   });
 
   test("a re-save with new live numbers clears the check; with identical numbers it is refused", async () => {
-    const day = "2026-10-06";
-    await checkedDay(day);
+    const day = await savedDay({ bf: "1,000.00", bank: [line("100.00"), line("200.00", "10:00")], checked: true });
     admin();
-    const same = await A.saveDay({ date: day, mode: "resave", baseVersion: 1, doneById: w.admin.id, bringForward: "", bank: [], seen: await seenFor(day) });
+    const same = await resave(day, 1, w.admin.id);
     assert.ok(!same.ok && same.reason === "nothing-changed");
-    await pay(`${day}T07:00:00Z`, "450.00"); // a payment arrives after saving
-    const r = await A.saveDay({ date: day, mode: "resave", baseVersion: 1, doneById: u.staff2.id, bringForward: "", bank: [], seen: await seenFor(day) });
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "450.00", takenById: w.staff.id, paidAt: new Date(`${day}T07:00:00Z`) } });
+    const r = await resave(day, 1, u.staff2.id);
     assert.ok(r.ok, JSON.stringify(r));
     assert.equal(r.kind, "RESAVE_LIVE");
     const v = await newest(day);
@@ -298,17 +340,14 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal(v.bringForward.toFixed(2), "1000.00", "a re-save keeps what was typed");
     assert.equal(v.bankLines.length, 2);
     assert.deepEqual(r.changes.map((c) => c.t), ["resaved", "check-cleared"]);
-    assert.equal(v.preparedById, w.staff.id, "Prepared by is still version 1's Done by");
+    assert.equal(v.preparedById, w.admin.id, "Prepared by is still version 1's Done by");
   });
 
-  test("an edit of ONLY slip, note or time keeps the check: it is carried over with carriedFromVersion", async () => {
-    const day = "2026-10-07";
-    await checkedDay(day);
+  test("an edit of ONLY slip, note or time keeps the check: it is carried over with carriedFromVersion and its own time", async () => {
+    const day = await savedDay({ bf: "1,000.00", bank: [line("100.00", "09:00", "A", "x"), line("200.00", "10:00")], checked: true });
     const original = (await newest(day)).check!;
     admin();
-    freezeClock("2026-11-02T12:00:00Z"); // two hours after the check was recorded
-    const r = await edit(day, 1, u.staff2.id, { bringForward: "1,000.00", bank: [line("100.00", "09:30", "B", "y"), line("200.00", "10:00")] });
-    freezeClock(NOW);
+    const r = await withClock("2026-11-02T12:00:00Z", () => edit(day, 1, u.staff2.id, { bringForward: "1,000.00", bank: [line("100.00", "09:30", "B", "y"), line("200.00", "10:00")] }));
     assert.ok(r.ok, JSON.stringify(r));
     const v2 = await newest(day);
     assert.ok(v2.check, "the check is kept");
@@ -318,22 +357,19 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     );
     assert.equal(v2.check.checkedAt.toISOString(), original.checkedAt.toISOString(), "the time of the check is the original");
     assert.deepEqual(r.changes.map((c) => c.t), ["edited-by", "bank~", "check-kept"]);
-    // a second slip-only edit carries it on, from version 2
     const r3 = await edit(day, 2, w.admin.id, { bringForward: "1,000.00", bank: [line("100.00", "09:30", "C", "y"), line("200.00", "10:00")] });
     assert.ok(r3.ok);
     assert.equal((await newest(day)).check?.carriedFromVersion, 2);
-    // reordering the lines is a change but not a money change
     const r4 = await edit(day, 3, w.admin.id, { bringForward: "1,000.00", bank: [line("200.00", "10:00"), line("100.00", "09:30", "C", "y")] });
     assert.ok(r4.ok);
     assert.ok((await newest(day)).check, "a reorder keeps the check");
   });
 
   test("a save that changes nothing at all is refused; Done by alone is not a change; nothing is written", async () => {
-    const day = "2026-10-08";
-    await checkedDay(day);
+    const same = { bringForward: "1,000.00", bank: [line("100.00", "09:00", "A", "x"), line("200.00", "10:00")] };
+    const day = await savedDay({ bf: same.bringForward, bank: same.bank, checked: true });
     const base = await counts();
     admin();
-    const same = { bringForward: "1,000.00", bank: [line("100.00", "09:00", "A", "x"), line("200.00", "10:00")] };
     for (const doneById of [w.admin.id, u.staff2.id]) {
       const r = await edit(day, 1, doneById, same);
       assert.ok(!r.ok && r.reason === "nothing-changed" && r.message === "Nothing changed.", JSON.stringify(r));
@@ -341,17 +377,14 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.deepEqual(await counts(), base);
   });
 
-  // ---- bank recordedBy ------------------------------------------------------------
+  // ---- bank recordedBy (A8) ---------------------------------------------------------
   test("a bank deposit is recorded by the Done by of the version that ADDED it; a kept or edited line keeps its recorder and time", async () => {
-    const day = "2026-10-09";
-    await pay(`${day}T04:00:00Z`);
+    const day = await makeDay();
     staff();
     assert.ok((await save(day, w.admin.id, { bank: [line("100.00", "09:00", "A"), line("200.00", "10:00", "B")] })).ok);
     const t1 = (await newest(day)).bankLines[0].recordedAt.toISOString();
-    freezeClock("2026-11-02T11:00:00Z"); // an hour later
     admin();
-    const r = await edit(day, 1, u.staff2.id, { bank: [line("100.00", "09:00", "A"), line("200.00", "10:45", "B2"), line("300.00", "11:00", "C")] });
-    freezeClock(NOW);
+    const r = await withClock("2026-11-02T11:00:00Z", () => edit(day, 1, u.staff2.id, { bank: [line("100.00", "09:00", "A"), line("200.00", "10:45", "B2"), line("300.00", "11:00", "C")] }));
     assert.ok(r.ok, JSON.stringify(r));
     const lines = (await newest(day)).bankLines;
     assert.deepEqual(lines.map((l) => [l.amount.toFixed(2), l.recordedById]), [["100.00", w.admin.id], ["200.00", w.admin.id], ["300.00", u.staff2.id]]);
@@ -360,13 +393,25 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal(lines[2].recordedAt.toISOString(), "2026-11-02T11:00:00.000Z", "a new line gets this version's time");
   });
 
+  test("A8: two deposits of the same amount keep their own recorders when the slips are swapped", async () => {
+    const day = await makeDay({ pays: ["5000.00"] });
+    staff();
+    assert.ok((await save(day, w.admin.id, { bank: [line("100.00", "09:00", "A")] })).ok); // recorded by the admin
+    admin();
+    assert.ok((await edit(day, 1, u.staff2.id, { bank: [line("100.00", "09:00", "A"), line("100.00", "09:00", "B")] })).ok); // B recorded by staff-two
+    const swap = await edit(day, 2, w.staff.id, { bank: [line("100.00", "09:00", "B"), line("100.00", "09:00", "A")] }); // order swapped
+    assert.ok(swap.ok, JSON.stringify(swap));
+    assert.deepEqual((await newest(day)).bankLines.map((l) => [l.slip, l.recordedById]), [["B", u.staff2.id], ["A", w.admin.id]], "each slip still belongs to the person who recorded it");
+    const retitle = await edit(day, 3, w.staff.id, { bank: [line("100.00", "09:00", "B"), line("100.00", "09:00", "A2")] }); // the admin's line gets a new slip
+    assert.ok(retitle.ok);
+    assert.deepEqual((await newest(day)).bankLines.map((l) => [l.slip, l.recordedById]), [["B", u.staff2.id], ["A2", w.admin.id]]);
+  });
+
   // ---- one day per date -----------------------------------------------------------
   test("one saved day per date: a second first-save is a conflict that names who saved first, and the database refuses a duplicate", async () => {
-    const day = "2026-10-10";
-    await pay(`${day}T04:00:00Z`);
-    staff();
-    assert.ok((await save(day, w.admin.id)).ok);
+    const day = await savedDay();
     const base = await counts();
+    staff();
     const second = await save(day, u.staff2.id);
     assert.ok(!second.ok && second.reason === "conflict");
     if (!second.ok) {
@@ -379,10 +424,8 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
   });
 
   test("a stale version number is a conflict: the second person's edit is not saved and sees who changed the day", async () => {
-    const day = "2026-10-11";
-    await pay(`${day}T04:00:00Z`);
-    staff();
-    assert.ok((await save(day, w.admin.id)).ok);
+    const day = await savedDay();
+    admin();
     assert.ok((await edit(day, 1, w.admin.id, { bringForward: "10.00" })).ok);
     const base = await counts();
     const late = await edit(day, 1, u.staff2.id, { bringForward: "99.00", bank: [line("5.00")] });
@@ -397,11 +440,10 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
 
   // ---- refusals ---------------------------------------------------------------
   test("a stale 'seen' is refused with the figures as they are now; a payment arriving after the sheet opened is caught; nothing is written", async () => {
-    const day = "2026-10-12";
-    await pay(`${day}T04:00:00Z`);
+    const day = await makeDay();
     staff();
     const seen = await seenFor(day);
-    await pay(`${day}T05:00:00Z`); // arrives while the sheet is open
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${day}T10:00:00Z`) } });
     const base = await counts();
     const r = await A.saveDay({ date: day, mode: "save", baseVersion: 0, doneById: w.admin.id, bringForward: "", bank: [], seen });
     assert.ok(!r.ok && r.reason === "numbers-moved");
@@ -411,8 +453,7 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
   });
 
   test("a save or re-save without 'seen' is refused; the client's numbers are never what is stored", async () => {
-    const day = "2026-10-13";
-    await pay(`${day}T04:00:00Z`);
+    const day = await makeDay();
     staff();
     const base = await counts();
     const r = await A.saveDay({ date: day, mode: "save", baseVersion: 0, doneById: w.admin.id, bringForward: "", bank: [] });
@@ -425,27 +466,76 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal((await newest(day)).collected.toFixed(2), "1300.00", "stored from the server's own read, whatever else the request carried");
   });
 
-  test("banking more than the drawer holds is refused; a negative Left with nothing banked is saved", async () => {
+  // ---- A1: over-banking ---------------------------------------------------------------
+  test("A1: a FIRST save that banks more than the drawer holds is refused, and the message names the amount; nothing is written", async () => {
+    const day = await makeDay({ pays: ["1300.00", "1300.00"] }); // 2,600.00 in the drawer
     staff();
     const base = await counts();
-    const over = await save("2026-10-14", w.admin.id, { bank: [line("99,999.00")] });
-    assert.ok(!over.ok && over.reason === "over-bank");
+    const r = await save(day, w.admin.id, { bank: [line("3,000.00")] });
+    assert.ok(!r.ok && r.reason === "over-bank");
+    if (!r.ok) assert.equal(r.message, overBankRefusal(40000));
+    assert.equal(overBankRefusal(40000), "The money taken to the bank is 400.00 more than the drawer should hold.");
     assert.deepEqual(await counts(), base);
-    await spend("2026-10-15", "5000.00", "Big spend"); // deductions with no money in
-    const neg = await save("2026-10-15", w.admin.id);
-    assert.ok(neg.ok);
-    assert.equal((await newest("2026-10-15")).leftInDrawer.toFixed(2), "-5000.00");
   });
 
-  test("an edit that would leave the bank over the drawer is refused too (frozen numbers)", async () => {
-    const day = "2026-10-16";
-    await pay(`${day}T04:00:00Z`);
-    staff();
-    assert.ok((await save(day, w.admin.id)).ok);
+  test("A1: an EDIT that would bank more than the drawer holds is refused with the amount; a negative Left with nothing banked is saved", async () => {
+    const day = await savedDay({ pays: ["1300.00", "1300.00"] });
+    admin();
     const base = await counts();
     const r = await edit(day, 1, w.admin.id, { bank: [line("5,000.00")] });
     assert.ok(!r.ok && r.reason === "over-bank");
+    if (!r.ok) assert.equal(r.message, overBankRefusal(240000));
     assert.deepEqual(await counts(), base);
+    const spendOnly = await makeDay({ pays: [], spend: "5000.00" }); // deductions with no money in
+    staff();
+    assert.ok((await save(spendOnly, w.admin.id)).ok);
+    assert.equal((await newest(spendOnly)).leftInDrawer.toFixed(2), "-5000.00");
+    const view = await A.loadSavedDay(spendOnly);
+    assert.equal(view.saved?.overBankedBy, null, "a negative Left with nothing banked is NOT over-banked");
+  });
+
+  test("A1: a RE-SAVE is always allowed; after a receipt is cancelled the day is saved FLAGGED over-banked, cannot be checked, and an edit must put it right", async () => {
+    // 10,000 collected (two receipts) and 10,000 banked: Left is exactly 0, a valid save
+    const day = await makeDay({ pays: ["5000.00", "5000.00"] });
+    staff();
+    assert.ok((await save(day, w.admin.id, { bank: [line("10,000.00", "09:00", "S1", "n")] })).ok);
+    const cancel = await db.payment.findFirstOrThrow({ where: { paidAt: new Date(`${day}T04:00:00Z`) } });
+    await db.payment.update({ where: { id: cancel.id }, data: { cancelled: true, cancelledById: w.admin.id, cancelledAt: new Date(NOW), cancelReason: "test" } });
+
+    const r = await resave(day, 1, w.admin.id); // live collected is now 5,000.00
+    assert.ok(r.ok, `a re-save is always allowed: ${JSON.stringify(r)}`);
+    const v2 = await newest(day);
+    assert.deepEqual([v2.collected.toFixed(2), v2.bankTotal.toFixed(2), v2.leftInDrawer.toFixed(2)], ["5000.00", "10000.00", "-5000.00"]);
+    const view = await A.loadSavedDay(day);
+    assert.equal(view.saved?.overBankedBy, 500000, "the saved day says it is over-banked, by how much");
+
+    // a check is refused with that reason while the day is over-banked
+    const c = await check(day, 2, w.admin.id);
+    assert.ok(!c.ok && c.reason === "over-banked");
+    if (!c.ok) {
+      assert.equal(c.message, overBankedBanner(500000));
+      assert.equal(c.message, "Bank deposits are 5,000.00 more than the drawer should hold. Edit the bank lines or the bring-forward.");
+    }
+    assert.equal(await db.dailySummaryCheck.count({ where: { version: { dayId: (await dayRow(day)).id } } }), 0);
+
+    // an edit that leaves it over-banked (only the slip changes) is still refused, and names the amount
+    const still = await edit(day, 2, w.admin.id, { bank: [line("10,000.00", "09:00", "S2", "n")] });
+    assert.ok(!still.ok && still.reason === "over-bank");
+    if (!still.ok) assert.equal(still.message, overBankRefusal(500000));
+
+    // putting the bank lines right makes it a normal day again, and then it can be checked
+    const fixed = await edit(day, 2, w.admin.id, { bank: [line("5,000.00", "09:00", "S1", "n")] });
+    assert.ok(fixed.ok, JSON.stringify(fixed));
+    assert.equal((await A.loadSavedDay(day)).saved?.overBankedBy, null);
+    assert.ok((await check(day, 3, w.admin.id)).ok);
+  });
+
+  test("A1: a re-save that does not over-bank carries no flag", async () => {
+    const day = await savedDay({ pays: ["5000.00"], bank: [line("1,000.00")] });
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "100.00", takenById: w.staff.id, paidAt: new Date(`${day}T09:00:00Z`) } });
+    admin();
+    assert.ok((await resave(day, 1, w.admin.id)).ok);
+    assert.equal((await A.loadSavedDay(day)).saved?.overBankedBy, null);
   });
 
   test("a future day, an impossible date and junk input are refused and write nothing", async () => {
@@ -456,7 +546,7 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
       assert.equal(r.ok, false, date);
       if (!r.ok) assert.ok(r.reason === "date" || r.reason === "invalid");
     }
-    for (const junk of [null, undefined, 5, "x", [], {}, { date: DAY }]) {
+    for (const junk of [null, undefined, 5, "x", [], {}, { date: "2026-10-01" }]) {
       const r = await A.saveDay(junk);
       assert.equal(r.ok, false);
       if (!r.ok) assert.equal(typeof r.values.date, "string");
@@ -464,53 +554,113 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.deepEqual(await counts(), base, "none of them wrote anything");
   });
 
+  test("a day already older than 3 months cannot be saved (it would be purged a moment later)", async () => {
+    staff();
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-07-31T04:00:00Z") } });
+    const base = await counts();
+    const r = await save("2026-07-31", w.admin.id);
+    assert.ok(!r.ok && r.reason === "date");
+    if (!r.ok) assert.match(r.message, /kept for 3 months/);
+    assert.deepEqual(await counts(), base);
+  });
+
+  // ---- A7: slip and note limits ------------------------------------------------------
+  test("A7: a slip over 30 or a note over 80 characters is refused through the action, naming the field, echoing the values; nothing is cut or written", async () => {
+    const day = await makeDay();
+    staff();
+    const base = await counts();
+    const long = await save(day, w.admin.id, { bank: [line("10.00", "09:00", "s".repeat(31), "")] });
+    assert.ok(!long.ok && long.reason === "invalid");
+    if (!long.ok) {
+      assert.ok("bank.0.slip" in (long.fieldErrors ?? {}));
+      assert.equal(long.values.bank[0].amount, "10.00");
+    }
+    const note = await save(day, w.admin.id, { bank: [line("10.00", "09:00", "", "n".repeat(81))] });
+    assert.ok(!note.ok && "bank.0.note" in (note.fieldErrors ?? {}));
+    assert.deepEqual(await counts(), base);
+    const edge = await save(day, w.admin.id, { bank: [line("10.00", "09:00", "s".repeat(30), "n".repeat(80))] });
+    assert.ok(edge.ok);
+    const stored = (await newest(day)).bankLines[0];
+    assert.deepEqual([stored.slip.length, stored.note.length], [30, 80], "exactly what was typed is stored");
+  });
+
   // ---- Colombo edges ----------------------------------------------------------
   test("Colombo-day edges: 23:59:59 belongs to its day and 00:00:00 to the next, in the saved day and in the comparison", async () => {
-    const day = "2026-09-10";
-    await pay("2026-09-10T18:29:59Z"); // 23:59:59 on 10 Sep in Colombo
-    await pay("2026-09-10T18:30:00Z"); // 00:00:00 on 11 Sep
+    const day = "2026-08-25"; // dates outside the makeDay range, so nothing else touches them
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-08-25T18:29:59Z") } }); // 23:59:59 on the 25th in Colombo
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-08-25T18:30:00Z") } }); // 00:00:00 on the 26th
     staff();
     const r = await save(day, w.admin.id);
     assert.ok(r.ok);
-    assert.equal((await newest(day)).collected.toFixed(2), "1300.00", "only the 23:59:59 payment is on the 10th");
+    assert.equal((await newest(day)).collected.toFixed(2), "1300.00", "only the 23:59:59 payment is on the 25th");
     const view = await A.loadSavedDay(day);
-    assert.deepEqual(view.liveDiffs, [], "the 00:00:00 payment is not a difference on the 10th");
-    await pay("2026-09-10T18:29:59Z", "100.00");
+    assert.deepEqual(view.liveDiffs, [], "the 00:00:00 payment is not a difference on the 25th");
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "100.00", takenById: w.staff.id, paidAt: new Date("2026-08-25T18:29:59Z") } });
     const after = await A.loadSavedDay(day);
-    assert.ok(after.liveDiffs.some((d) => d.key === "totalCollected"));
-    // the 11th is its own day with its own 00:00:00 payment
-    assert.equal((await A.loadSavedDay("2026-09-11")).saved, null);
+    assert.ok(after.liveDiffs.some((d) => d.key === "totalCollected"), "a payment at 23:59:59 on the 25th IS a difference");
+    assert.equal((await A.loadSavedDay("2026-08-26")).saved, null, "the 26th is its own, unsaved day");
+    assert.equal((await seenFor("2026-08-26")).collected, 130000, "and it holds exactly the 00:00:00 payment");
   });
 
   // ---- reads ------------------------------------------------------------------
-  test("loadSavedDay: the saved day with its log, bank deposits (with recorders) and the check; an unsaved day is null", async () => {
-    const day = "2026-10-17";
-    await pay(`${day}T04:00:00Z`);
+  test("loadSavedDay: the saved day with its log, bank deposits (with recorders), the check state and the over-bank flag; an unsaved day is null", async () => {
+    const day = await savedDay({ bf: "50.00", bank: [line("10.00", "08:00", "S", "n")], checked: true });
     staff();
-    assert.ok((await save(day, w.admin.id, { bringForward: "50.00", bank: [line("10.00", "08:00", "S", "n")] })).ok);
-    assert.ok((await A.markChecked({ date: day, baseVersion: 1, checkedById: u.admin2.id })).ok);
     assert.ok((await edit(day, 1, u.staff2.id, { bringForward: "60.00", bank: [line("10.00", "08:00", "S", "n")] })).ok);
     const v = await A.loadSavedDay(day);
     assert.ok(v.saved);
+    assert.equal(v.unreadable, false);
     assert.equal(v.saved.version, 2);
     assert.equal(v.saved.cash.bringForward, 6000);
     assert.equal(v.saved.check, null, "the money changed: version 2 is not checked");
+    assert.deepEqual(v.saved.checkCleared, { by: w.admin.username });
+    assert.equal(v.saved.overBankedBy, null);
     assert.deepEqual(v.saved.log.map((l) => [l.version, l.kind, l.doneByName]), [[1, "SAVE", w.admin.username], [2, "EDIT", u.staff2.username]]);
     assert.deepEqual(v.saved.bank.map((b) => [b.cents, b.recordedByName]), [[1000, w.admin.username]]);
     assert.equal(v.saved.preparedBy.name, w.admin.username);
     assert.equal(v.saved.doneBy.name, u.staff2.username);
     assert.equal(v.saved.savedByName, w.staff.username);
     assert.deepEqual(v.liveDiffs, []);
-    assert.equal((await A.loadSavedDay("2026-10-18")).saved, null);
+    assert.equal((await A.loadSavedDay(await makeDay())).saved, null);
     assert.equal((await A.loadSavedDay("garbage")).date, "2026-11-02", "an unusable date reads as today (a read never throws)");
   });
 
+  test("'Check cleared' is derived from the log: shown after a money change cleared a check, gone once the day is checked again, never for a day that was never checked", async () => {
+    const never = await savedDay();
+    assert.equal((await A.loadSavedDay(never)).saved?.checkCleared, null);
+    const day = await savedDay({ bf: "10.00", checked: true });
+    assert.equal((await A.loadSavedDay(day)).saved?.checkCleared, null, "checked: not cleared");
+    admin();
+    assert.ok((await edit(day, 1, w.admin.id, { bringForward: "20.00" })).ok);
+    assert.deepEqual((await A.loadSavedDay(day)).saved?.checkCleared, { by: w.admin.username });
+    assert.ok((await edit(day, 2, w.admin.id, { bringForward: "20.00", bank: [line("1.00", "09:00", "a")] })).ok, "another money edit: still cleared");
+    assert.deepEqual((await A.loadSavedDay(day)).saved?.checkCleared, { by: w.admin.username });
+    assert.ok((await check(day, 3, u.admin2.id)).ok);
+    assert.equal((await A.loadSavedDay(day)).saved?.checkCleared, null, "checked again");
+  });
+
+  // ---- A3: the live numbers are handed in --------------------------------------------
+  test("A3: with the page's live numbers handed in, loadSavedDay compares with THOSE (it does not read them again); null means 'could not be read'", async () => {
+    const day = await savedDay({ pays: ["1300.00", "1300.00"] });
+    const saved = parseSnapshot((await newest(day)).snapshot, 1);
+    const fakeLive = JSON.parse(JSON.stringify(saved));
+    fakeLive.report.totalCollected = "1.00"; // not what the database holds
+    const actor = { id: w.staff.id, role: "STAFF" };
+    const handed = await ST.loadSavedDayAs(actor, day, fakeLive);
+    assert.deepEqual(handed.liveDiffs.map((d) => [d.key, d.saved, d.live]), [["totalCollected", "2,600.00", "1.00"]], "the difference is against the handed-in numbers, not the database");
+    const same = await ST.loadSavedDayAs(actor, day, saved);
+    assert.deepEqual(same.liveDiffs, [], "handing in the saved numbers themselves: nothing differs, although the database is the same either way");
+    const none = await ST.loadSavedDayAs(actor, day, null);
+    assert.deepEqual([none.liveDiffs, none.liveUnreadable], [[], true]);
+    const own = await ST.loadSavedDayAs(actor, day); // no live given: it reads them itself (what the server action does)
+    assert.deepEqual([own.liveDiffs, own.liveUnreadable], [[], false]);
+  });
+
   test("a receipt cancelled after saving shows up as a difference with saved and live figures", async () => {
-    const day = "2026-10-19";
-    const p = await pay(`${day}T04:00:00Z`);
-    await pay(`${day}T05:00:00Z`);
+    const day = await makeDay({ pays: ["1300.00", "1300.00"] });
     staff();
     assert.ok((await save(day, w.admin.id)).ok);
+    const p = await db.payment.findFirstOrThrow({ where: { paidAt: new Date(`${day}T04:00:00Z`) } });
     await db.payment.update({ where: { id: p.id }, data: { cancelled: true, cancelledById: w.admin.id, cancelledAt: new Date(NOW), cancelReason: "test" } });
     const v = await A.loadSavedDay(day);
     const total = v.liveDiffs.find((d) => d.key === "totalCollected");
@@ -519,54 +669,185 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal((await newest(day)).collected.toFixed(2), "2600.00", "the saved version never changes");
   });
 
+  // ---- A4 / A5: errors become refusals, not crashes --------------------------------------
+  test("A4: live numbers that do not fit the snapshot shape are a refusal path (null), never a crash", async () => {
+    const day = await makeDay();
+    const bad = { dailySummary: async () => ({ from: day, to: day }) as never, cancelledReceipts: async () => ({ receipts: 0, total: "0.00" }), collectedByStaff: async () => [] };
+    assert.equal(await ST.liveOrNull(day, bad), null);
+    assert.ok(await ST.liveOrNull(day), "the real loaders fit");
+  });
+
+  test("A5: a saved snapshot that cannot be read (unknown schema, corrupt) does not crash the screen: the day is 'unreadable' and the live view stands", async () => {
+    const unknownSchema = await savedDay();
+    await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshotSchema" = 2 WHERE "dayId" = ${(await dayRow(unknownSchema)).id}`);
+    const a = await A.loadSavedDay(unknownSchema);
+    assert.deepEqual([a.saved, a.unreadable, a.liveDiffs, a.liveUnreadable], [null, true, [], false]);
+    assert.equal(UNREADABLE_DAY, "This saved day can't be read. Showing the live numbers.");
+
+    const corrupt = await savedDay();
+    await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshot" = '{"x":1}'::jsonb WHERE "dayId" = ${(await dayRow(corrupt)).id}`);
+    const b = await A.loadSavedDay(corrupt);
+    assert.deepEqual([b.saved, b.unreadable], [null, true]);
+
+    // an edit of such a day is a refusal, not a crash, and writes nothing
+    const base = await counts();
+    admin();
+    const r = await edit(corrupt, 1, w.admin.id, { bringForward: "5.00" });
+    assert.ok(!r.ok && r.reason === "corrupt");
+    assert.deepEqual(await counts(), base);
+
+    // a day with no versions at all (nothing to read) is simply unsaved
+    const empty = await makeDay();
+    await db.dailySummaryDay.create({ data: { date: colomboDateValue(empty), currentVersion: 1 } });
+    assert.deepEqual([(await A.loadSavedDay(empty)).saved, (await A.loadSavedDay(empty)).unreadable], [null, false]);
+  });
+
+  test("A4: a check on a day older than 3 months is refused before anything is written", async () => {
+    const day = "2026-05-14";
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${day}T04:00:00Z`) } });
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save(day, w.admin.id)).ok);
+    });
+    const base = await counts();
+    admin();
+    const r = await check(day, 1, w.admin.id);
+    assert.ok(!r.ok && r.reason === "expired");
+    if (!r.ok) assert.equal(r.message, "This day's saved details are older than 3 months.");
+    assert.deepEqual(await counts(), base);
+    await db.dailySummaryDay.deleteMany({ where: { date: colomboDateValue(day) } });
+  });
+
+  test("A4: a day the purge deletes between our read and our write is a friendly refusal ('no longer saved'), not a thrown foreign-key error", async () => {
+    const day = await savedDay();
+    admin();
+    const r = await withTrigger(
+      "ds_test_purge_race",
+      "BEFORE INSERT",
+      "DailySummaryCheck",
+      `DELETE FROM "DailySummaryDay" WHERE id = (SELECT "dayId" FROM "DailySummaryVersion" WHERE id = NEW."versionId"); RETURN NEW;`,
+      () => check(day, 1, w.admin.id),
+    );
+    assert.ok(!r.ok && r.reason === "not-saved", JSON.stringify(r));
+    if (!r.ok) assert.equal(r.message, "This day is no longer saved (saved details are kept for 3 months). Nothing was changed.");
+    assert.equal(r.values.checkedById, w.admin.id);
+  });
+
+  test("A6: when the signed-in user's row is missing or deactivated, markChecked refuses; the tapper is never stored as 'unknown'", async () => {
+    const day = await savedDay();
+    const base = await counts();
+    as("STAFF", "a-user-that-does-not-exist");
+    const gone = await check(day, 1, w.admin.id);
+    assert.ok(!gone.ok && gone.reason === "sign-in");
+    as("STAFF", u.inactiveStaff.id);
+    const off = await check(day, 1, w.admin.id);
+    assert.ok(!off.ok && off.reason === "sign-in");
+    assert.deepEqual(await counts(), base);
+    assert.equal(await db.dailySummaryCheck.count({ where: { markedByName: "unknown" } }), 0);
+  });
+
+  test("A11: the store checks the role itself: a TEACHER or unknown role cannot reach any write or read, whoever calls", async () => {
+    const day = await savedDay();
+    const base = await counts();
+    for (const role of ["TEACHER", "", "ADMINISTRATOR"]) {
+      const actor = { id: w.admin.id, role };
+      await assert.rejects(() => ST.markCheckedAs(actor, { date: day, baseVersion: 1, checkedById: w.admin.id }), /Not authorised/);
+      await assert.rejects(() => ST.saveDayAs(actor, { date: day, mode: "edit", baseVersion: 1, doneById: w.admin.id, bringForward: "1.00", bank: [] }), /Not authorised/);
+      await assert.rejects(() => ST.loadSavedDayAs(actor, day), /Not authorised/);
+      await assert.rejects(() => ST.loadHistoryAs(actor, "2026-10"), /Not authorised/);
+    }
+    assert.deepEqual(await counts(), base);
+  });
+
+  // ---- hint ------------------------------------------------------------------------
   test("the bring-forward hint: yesterday's saved Left in drawer, or the newest saved day within 7 days with its date; none when too old, unsaved, or already typed", async () => {
     const src = "2026-08-10";
-    await pay(`${src}T04:00:00Z`);
-    staff();
-    assert.ok((await save(src, w.admin.id, { bank: [line("300.00")] })).ok); // collected 1,300.00, banked 300.00: Left 1,000.00
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${src}T04:00:00Z`) } });
+    await withClock("2026-08-12T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save(src, w.admin.id, { bank: [line("300.00")] })).ok); // collected 1,300.00, banked 300.00: Left 1,000.00
+    });
     const next = (await A.loadSavedDay("2026-08-11")).hint;
     assert.deepEqual(next && [next.date, next.leftCents, next.checked, next.daysAgo], [src, 100000, false, 1]);
-    assert.ok((await A.markChecked({ date: src, baseVersion: 1, checkedById: w.admin.id })).ok);
+    admin();
+    assert.ok((await check(src, 1, w.admin.id)).ok);
     assert.equal((await A.loadSavedDay("2026-08-11")).hint?.checked, true);
-    const gap = (await A.loadSavedDay("2026-08-14")).hint; // an older saved day, named by its own date
+    const gap = (await A.loadSavedDay("2026-08-14")).hint;
     assert.deepEqual(gap && [gap.date, gap.daysAgo], [src, 4]);
     assert.equal((await A.loadSavedDay("2026-08-17")).hint?.daysAgo, 7, "exactly 7 days back is still offered");
     assert.equal((await A.loadSavedDay("2026-08-18")).hint, null, "8 days is too old");
     assert.equal((await A.loadSavedDay(src)).hint, null, "a day never hints itself");
-    // a saved day that already has a bring-forward gets no hint, even with a saved day just before it (31 Oct)
-    await pay("2026-10-31T04:00:00Z");
-    assert.ok((await save("2026-10-31", w.admin.id)).ok);
-    assert.equal((await A.loadSavedDay(DAY)).saved?.cash.bringForward, 650000);
-    assert.equal((await A.loadSavedDay(DAY)).hint, null);
+    // a saved day that already has a bring-forward gets no hint, even with a saved day just before it
+    const before = await makeDay({ pays: ["10.00"] });
+    const withBf = await makeDay(); // the very next day
+    assert.equal(shiftDay(before, 1), withBf);
+    staff();
+    assert.ok((await save(before, w.admin.id)).ok);
+    assert.ok((await save(withBf, w.admin.id, { bringForward: "50.00" })).ok);
+    assert.equal((await A.loadSavedDay(withBf)).hint, null, "bring-forward typed: no hint");
   });
 
+  // ---- History ----------------------------------------------------------------------
   test("loadHistory: one month, newest first, with Collected, Net, version, who and the check; junk months mean the current month", async () => {
-    staff();
-    const h = await A.loadHistory("2026-10");
-    assert.equal(h.month, "2026-10");
+    const one = await savedDay({ pays: ["1300.00"], checked: true });
+    const two = await savedDay({ pays: ["1300.00"] });
+    admin();
+    assert.ok((await edit(two, 1, u.staff2.id, { bringForward: "10.00" })).ok);
+    const month = one.slice(0, 7);
+    const h = await A.loadHistory(month);
+    assert.equal(h.month, month);
     const dates = h.rows.map((r) => r.date);
     assert.deepEqual(dates, [...dates].sort().reverse(), "newest first");
-    assert.ok(dates.every((d) => d.startsWith("2026-10")), "no other month");
-    const row = h.rows.find((r) => r.date === "2026-10-22")!;
-    assert.deepEqual([row.version, row.doneByName, row.collected, row.net, row.checked], [2, w.admin.username, 130000, 130000, false]);
+    assert.ok(dates.every((d) => d.startsWith(month)), "no other month");
+    const r1 = h.rows.find((r) => r.date === one)!;
+    assert.deepEqual([r1.version, r1.preparedByName, r1.doneByName, r1.collected, r1.net, r1.checked], [1, w.admin.username, w.admin.username, 130000, 130000, true]);
+    const r2 = h.rows.find((r) => r.date === two)!;
+    assert.deepEqual([r2.version, r2.preparedByName, r2.doneByName, r2.checked], [2, w.admin.username, u.staff2.username, false], "saved by one person, last edited by another");
     for (const junk of ["", "2026-13", "9999-01", "1999-12", "x", null, undefined, 5, "2026-1"]) assert.equal((await A.loadHistory(junk)).month, "2026-11", `junk ${String(junk)}`);
+  });
+
+  test("A10: History purges FIRST and the query itself never returns an expired day, even when the purge fails", async () => {
+    await db.dailySummaryDay.deleteMany();
+    const old = "2026-07-20";
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${old}T04:00:00Z`) } });
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save(old, w.admin.id)).ok);
+    });
+    staff();
+    // the purge is made to FAIL: the page must still not list the expired day
+    const errors: unknown[] = [];
+    const logged = mock.method(console, "error", (...a: unknown[]) => void errors.push(a));
+    try {
+      const failed = await withTrigger("ds_test_fail_delete", "BEFORE DELETE", "DailySummaryDay", `RAISE EXCEPTION 'purge exploded';`, () => A.loadHistory("2026-07"));
+      assert.equal(failed.purged, 0);
+      assert.deepEqual(failed.rows, [], "the expired day is not listed although it is still in the table");
+      assert.equal(errors.length, 1, "the failure was logged");
+    } finally {
+      logged.mock.restore();
+    }
+    assert.ok(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(old) } }), "it is still there: nothing was half-deleted");
+    const ok = await A.loadHistory("2026-07");
+    assert.equal(ok.purged, 1, "the next History open purges it first");
+    assert.deepEqual(ok.rows, []);
   });
 
   // ---- retention ---------------------------------------------------------------
   test("retention: after a save and when History opens, days older than 3 months are deleted with their versions, deposits and checks; the boundary day and everything else stay", async () => {
-    freezeClock("2026-08-05T06:00:00Z"); // saved 'back then'; the cutoff then is 5 May
-    staff();
-    for (const day of ["2026-08-01", "2026-08-02", "2026-07-15"]) {
-      await pay(`${day}T04:00:00Z`);
-      const r = await save(day, w.admin.id, { bank: [line("100.00")] });
-      assert.ok(r.ok, `${day}: ${JSON.stringify(r)}`);
-      assert.ok((await A.markChecked({ date: day, baseVersion: 1, checkedById: w.admin.id })).ok);
-    }
-    freezeClock(NOW); // today is 2 Nov: the cutoff is 2 Aug
+    await db.dailySummaryDay.deleteMany(); // this test counts, so it starts from nothing
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      for (const day of ["2026-08-01", "2026-08-02", "2026-07-15"]) {
+        await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${day}T04:00:00Z`) } });
+        const r = await save(day, w.admin.id, { bank: [line("100.00")] });
+        assert.ok(r.ok, `${day}: ${JSON.stringify(r)}`);
+        assert.ok((await check(day, 1, w.admin.id)).ok);
+      }
+    });
     const before = { ...(await world()), ...(await counts()) };
     const h = await A.loadHistory("2026-11");
-    assert.equal(h.purged, 2, "1 Aug and 15 Jul are older than the cutoff");
-    const left = await db.dailySummaryDay.findMany({ where: { date: { gte: colomboDateValue("2026-07-01"), lt: colomboDateValue("2026-08-05") } }, select: { date: true } });
+    assert.equal(h.purged, 2, "1 Aug and 15 Jul are older than the cutoff (2 Aug)");
+    const left = await db.dailySummaryDay.findMany({ select: { date: true } });
     assert.deepEqual(left.map((d) => d.date.toISOString().slice(0, 10)), ["2026-08-02"], "exactly three months old is kept");
     const after = { ...(await world()), ...(await counts()) };
     assert.equal(after.days, before.days - 2);
@@ -574,76 +855,59 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal(after.lines, before.lines - 2, "... and their bank deposits");
     assert.equal(after.checks, before.checks - 2, "... and their checks");
     assert.deepEqual([after.payments, after.expenses, after.users, after.students], [before.payments, before.expenses, before.users, before.students], "payments, expenses, users and students are untouched");
-    // the live Daily Summary of an expired day is still there (it is computed from payments), and the day reads as unsaved
-    assert.equal((await A.loadSavedDay("2026-08-01")).saved, null);
-    // a second run has nothing to do
-    assert.equal((await A.loadHistory("2026-11")).purged, 0);
+    assert.equal((await A.loadSavedDay("2026-08-01")).saved, null, "the expired day reads as unsaved (its live summary is still computed from payments)");
+    assert.equal((await A.loadHistory("2026-11")).purged, 0, "a second run has nothing to do");
   });
 
   test("a save purges too, as a separate statement after it committed", async () => {
-    freezeClock("2026-08-05T06:00:00Z"); // then the cutoff is 5 May: a day from 10 May is fine
+    await db.dailySummaryDay.deleteMany();
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-05-10T04:00:00Z") } });
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save("2026-05-10", w.admin.id)).ok); // the cutoff then was 5 May: fine
+    });
+    const today = await makeDay();
     staff();
-    await pay("2026-05-10T04:00:00Z");
-    assert.ok((await save("2026-05-10", w.admin.id)).ok);
-    freezeClock(NOW); // now the cutoff is 2 Aug: that day is expired
-    await pay("2026-11-02T04:00:00Z");
-    const before = await db.dailySummaryDay.count();
-    const r = await save("2026-11-02", w.admin.id, { doneById: w.staff.id });
-    assert.ok(r.ok, `saving TODAY is allowed: ${JSON.stringify(r)}`);
-    assert.equal(r.date, "2026-11-02");
+    const r = await save(today, w.admin.id);
+    assert.ok(r.ok, JSON.stringify(r));
     assert.equal(r.purged, 1, "the save removed the one expired day");
-    assert.equal(await db.dailySummaryDay.count(), before, "one added, one removed");
     assert.equal((await A.loadSavedDay("2026-05-10")).saved, null);
-  });
-
-  test("a day already older than 3 months cannot be saved (it would be purged a moment later)", async () => {
-    staff();
-    await pay("2026-07-31T04:00:00Z");
-    const base = await counts();
-    const r = await save("2026-07-31", w.admin.id);
-    assert.ok(!r.ok && r.reason === "date");
-    if (!r.ok) assert.match(r.message, /kept for 3 months/);
-    assert.deepEqual(await counts(), base);
+    assert.ok((await A.loadSavedDay(today)).saved, "and the day just saved is there");
   });
 
   test("a purge that FAILS never breaks the save or the page: it is logged, ignored and retried next time", async () => {
-    // plant an expired day (saved 'back then'), then make deleting a day fail inside the database
-    freezeClock("2026-08-05T06:00:00Z");
-    staff();
-    await pay("2026-05-12T04:00:00Z");
-    assert.ok((await save("2026-05-12", w.admin.id)).ok);
-    freezeClock(NOW);
-    await db.$executeRawUnsafe(`CREATE FUNCTION ds_test_fail() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'purge exploded'; END $$ LANGUAGE plpgsql`);
-    await db.$executeRawUnsafe(`CREATE TRIGGER ds_test_fail BEFORE DELETE ON "DailySummaryDay" FOR EACH ROW EXECUTE FUNCTION ds_test_fail()`);
+    await db.dailySummaryDay.deleteMany();
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date("2026-05-12T04:00:00Z") } });
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save("2026-05-12", w.admin.id)).ok);
+    });
     const errors: unknown[] = [];
-    const logged = mock.method(console, "error", (...a: unknown[]) => { errors.push(a); });
+    const logged = mock.method(console, "error", (...a: unknown[]) => void errors.push(a));
     try {
-      const day = "2026-10-23";
-      await pay(`${day}T04:00:00Z`);
-      const r = await save(day, w.admin.id);
-      assert.ok(r.ok, "the save itself succeeded");
-      assert.equal(r.purged, 0);
-      const h = await A.loadHistory("2026-10");
-      assert.ok(h.rows.some((x) => x.date === day), "the page loads");
-      assert.equal(h.purged, 0);
-      assert.equal(errors.length, 2, "both failures were logged");
-      assert.ok((await A.loadSavedDay("2026-05-12")).saved, "the expired day is still there: nothing was half-deleted");
+      await withTrigger("ds_test_fail", "BEFORE DELETE", "DailySummaryDay", `RAISE EXCEPTION 'purge exploded';`, async () => {
+        const day = await makeDay();
+        staff();
+        const r = await save(day, w.admin.id);
+        assert.ok(r.ok, "the save itself succeeded");
+        assert.equal(r.purged, 0);
+        const h = await A.loadHistory(day.slice(0, 7));
+        assert.ok(h.rows.some((x) => x.date === day), "the page loads");
+        assert.equal(h.purged, 0);
+        assert.equal(errors.length, 2, "both failures were logged");
+        assert.ok((await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue("2026-05-12") } })), "the expired day is still there");
+      });
     } finally {
       logged.mock.restore();
-      await db.$executeRawUnsafe(`DROP TRIGGER ds_test_fail ON "DailySummaryDay"`);
-      await db.$executeRawUnsafe(`DROP FUNCTION ds_test_fail()`);
     }
     assert.equal((await A.loadHistory("2026-10")).purged, 1, "the next History open retries and succeeds");
-    assert.equal((await A.loadSavedDay("2026-05-12")).saved, null);
   });
 
-  // ---- the version of a day is immutable -------------------------------------------
+  // ---- immutability -------------------------------------------------------------------
   test("every save leaves older versions exactly as they were (immutability across a long history)", async () => {
-    const day = "2026-10-24";
-    await pay(`${day}T04:00:00Z`);
-    staff();
-    assert.ok((await save(day, w.admin.id)).ok);
+    const day = await savedDay();
     const snapshots: string[] = [];
+    admin();
     for (let i = 1; i <= 4; i++) {
       snapshots.push(JSON.stringify((await dayRow(day)).versions));
       const r = await edit(day, i, w.admin.id, { bringForward: `${i}00.00` });
@@ -655,9 +919,7 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
   });
 
   test("the cash book columns always agree with the frozen snapshot and the deposits (Decimal(12,2), integer cents)", async () => {
-    const day = "2026-10-25";
-    await pay(`${day}T04:00:00Z`, "99999999.99");
-    await spend(day, "0.01");
+    const day = await makeDay({ pays: ["99999999.99"], spend: "0.01" });
     staff();
     const r = await save(day, w.admin.id, { bringForward: "99,999,999.99", bank: [line("12,345.67"), line("0.01")] });
     assert.ok(r.ok, JSON.stringify(r));
