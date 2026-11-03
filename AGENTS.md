@@ -215,7 +215,9 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     (course, teacher, staff, a deduction's person and authoriser): the snapshot holds names
     only, never ids, so a rename cannot be told from a reassignment; a names-only difference
     is marked `textOnly` (own banner text, own note in "See what changed"), and re-saving after
-    it counts as a money change, so it clears the check and an admin looks again. Money columns are `Decimal(12,2)`, written from integer cents by integer
+    it counts as a money change, so it clears the check and an admin looks again; the
+    check-cleared change item carries an optional `reason` (`names`; absent means money) so the
+    chip and the change log say "names were corrected" instead of "the money changed". Money columns are `Decimal(12,2)`, written from integer cents by integer
     arithmetic (`lib/saved-day/money.ts`, never a float). `snapshotSchema` is a CONTRACT: a
     stored snapshot is read through `parseSnapshot(json, schema)`, which refuses an unknown
     schema or a wrong shape; never edit a stored snapshot, change the shape only with a NEW
@@ -242,8 +244,9 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     (the printed signature box shows only the admin); after a money change "Check cleared…".
     A yellow banner appears when the live data differs from what was saved (e.g. a cancelled
     receipt): "The live numbers are different from the saved ones" when any number or flag
-    differs, or "Some names differ from the saved day" when ONLY printed names differ (a
-    rename in Setup, a deduction given to someone else, a corrected authoriser). The saved day
+    differs, or "Some names or wording differ from the saved day" when ONLY printed text
+    differs (a rename in Setup, a deduction given to someone else, a corrected authoriser, a
+    reworded deduction reason: the reason is free text, so it is wording, never a figure). The saved day
     never changes by itself; "See what changed" and "Re-save with live numbers" are the two
     ways forward. After any write the screen's actions stay OFF until the
     new version is on screen. **History** (`/daily-summary/history`, ADMIN + STAFF) is linked
@@ -597,10 +600,15 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   golden masters and the whole PDF step are untouched by Release 2. Tests: `saved-day-*.test.ts` (the
   race file is run x20), `edit-session.test.ts`, `settle-after-save.test.ts` (structural: every write
   settles the screen); each database test builds its own days and passes alone. The release scripts
-  refuse `--dump-dir` on any host but the local throw-away one, and refuse a dump folder inside a git
-  work tree or readable by group or others (mode 700); `--dry-run` opens no connection and starts no
-  container (it makes and removes a temporary folder, and asks git for the checkout state with
-  `--no-optional-locks`).
+  refuse `--dump-dir` on any host but the local throw-away one. ONLY `r2-prod-backup-dump.sh` checks the
+  dump folder (default `~/xenon-secrets`): it refuses one inside a git work tree or readable by group or
+  others (mode 700), and the check FAILS CLOSED (git or find unable to answer is a refusal; `GIT_*` in the
+  shell is dropped); `r2-prod-migrate.sh` only looks for a verified dump marker in the folder and does not
+  check its mode. Both scripts have two modes: no flag is PRODUCTION (the env file's host must be the
+  production host in `~/xenon-release/r2-hosts`, never the demo host) and `--rehearsal <full host>` is
+  REHEARSAL (the demo host in that file, or a local throw-away host, never the production host).
+  `--dry-run` opens no connection and starts no container (it makes and removes a temporary folder, and
+  asks git for the checkout state with `--no-optional-locks`).
 
 - **Routes.** `/daily-summary?date=` (the day screen; the old `?from=&to=` links still work: the same
   day opens the day screen, a real range redirects to the range screen), `/daily-summary/range`
