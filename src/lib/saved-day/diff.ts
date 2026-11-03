@@ -7,10 +7,14 @@ import type { Snapshot } from "./snapshot";
  *
  * Both sides come from the SAME function over the same half-open Colombo window, so a day edge cannot make them disagree by itself;
  * only a real change (a receipt cancelled, an expense added) does. Money is compared in INTEGER CENTS (so "76375" and "76375.00" are
- * equal), counts as integers, names and reasons as text. An absent optional figure counts as zero. It compares EVERYTHING the A4
- * document prints (including the reconcile flag of a course, course, teacher and staff names, and whether a deduction is a staff advance);
- * the registered and not-paid counts are not on the paper and are not compared. Rows that exist on one side only
- * and carry no money and no count are not a difference (a course created after the day was saved).
+ * equal), counts as integers. An absent optional figure counts as zero. Rows that exist on one side only and carry no money and no
+ * count are not a difference (a course created after the day was saved).
+ *
+ * It compares every figure and flag the document prints (including a course's reconcile flag and whether a deduction is a staff
+ * advance) but NOT NAMES: the snapshot prints the names as they were when the day was saved, on purpose, so renaming a course, a
+ * teacher or a staff member in Setup must not flag every saved day. (A deduction line is matched by date, kind, reason, staff-advance
+ * flag and amount: who it was for and who authorised it are names too.) The registered and not-paid counts are not on the paper and
+ * are not compared.
  */
 
 export type FigureDiff = { key: string; label: string; saved: string; live: string };
@@ -53,9 +57,7 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
     const b = lc.get(id);
     const name = `${(b ?? a)!.course} (${(b ?? a)!.teacher})`;
     if (a && b) {
-      // everything the document prints about a course that exists on both sides
-      if (a.course !== b.course) out.push({ key: `course:${id}.name`, label: "Course name", saved: a.course, live: b.course });
-      if (a.teacher !== b.teacher) out.push({ key: `course:${id}.teacher`, label: `${b.course}: teacher`, saved: a.teacher, live: b.teacher });
+      // the reconcile flag is printed as a warning; names are NOT compared (see the header)
       if (a.reconciles !== b.reconciles) out.push({ key: `course:${id}.reconciles`, label: `${name}: reconciles`, saved: a.reconciles ? "yes" : "no", live: b.reconciles ? "yes" : "no" });
     }
     money(`course:${id}.amount`, `${name}: amount`, a?.amount, b?.amount);
@@ -67,7 +69,7 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
 
   // deduction lines as a multiset
   const lineKey = (d: Snapshot["report"]["deductionLines"][number]) =>
-    JSON.stringify([d.date, d.kind, d.person, d.reason, d.authorizedBy, d.isStaffAdvance, cents(d.amount)]);
+    JSON.stringify([d.date, d.kind, d.reason, d.isStaffAdvance, cents(d.amount)]);
   const tally = (rows: Snapshot["report"]["deductionLines"]) => {
     const m = new Map<string, { n: number; d: Snapshot["report"]["deductionLines"][number] }>();
     for (const d of rows) m.set(lineKey(d), { n: (m.get(lineKey(d))?.n ?? 0) + 1, d });
@@ -95,7 +97,6 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
   for (const id of [...new Set([...sr.keys(), ...lr.keys()])].sort()) {
     const a = sr.get(id);
     const b = lr.get(id);
-    if (a && b && a.name !== b.name) out.push({ key: `staff:${id}.name`, label: "Staff name", saved: a.name, live: b.name });
     const name = (b ?? a)!.name;
     num(`staff:${id}.receipts`, `${name}: receipts`, a?.receipts, b?.receipts);
     money(`staff:${id}.collected`, `${name}: collected`, a?.collected, b?.collected);

@@ -151,24 +151,36 @@ test("registered / not-paid counts are not compared (they are not on the paper a
 });
 
 // ---- A9: everything the document prints ----
-test("a course's reconcile flag, course name and teacher name are compared (they are printed)", () => {
+test("a course's reconcile flag is compared (it prints a warning); a course or teacher NAME is not (F8: a Setup rename must not flag every saved day)", () => {
   const base = snapshotOf();
   const flipped = JSON.parse(JSON.stringify(base));
   setPath(flipped.report, "courses.0.reconciles", false);
-  const d = diffSummaries(base, flipped);
-  assert.deepEqual(d.map((x) => [x.key, x.saved, x.live]), [["course:1.reconciles", "yes", "no"]]);
+  assert.deepEqual(diffSummaries(base, flipped).map((x) => [x.key, x.saved, x.live]), [["course:1.reconciles", "yes", "no"]]);
   const renamed = JSON.parse(JSON.stringify(base));
   setPath(renamed.report, "courses.0.course", "Physics 2028");
-  assert.ok(diffSummaries(base, renamed).some((x) => x.key === "course:1.name" && x.saved === "Physics 2027" && x.live === "Physics 2028"));
-  const retaught = JSON.parse(JSON.stringify(base));
-  setPath(retaught.report, "courses.0.teacher", "Mr Z");
-  assert.ok(diffSummaries(base, retaught).some((x) => x.key === "course:1.teacher" && x.saved === "Mr A" && x.live === "Mr Z"));
+  setPath(renamed.report, "courses.0.teacher", "Mr Z");
+  assert.deepEqual(diffSummaries(base, renamed), [], "names only: no difference");
+  // a rename together with a real figure change reports ONLY the figure
+  setPath(renamed.report, "courses.0.paidFull", 99);
+  const d = diffSummaries(base, renamed);
+  assert.ok(d.length > 0 && d.every((x) => !/name|teacher/i.test(x.key)), JSON.stringify(d));
 });
 
-test("a staff member's name is compared (it is printed in Collected by staff)", () => {
+test("a staff member's NAME is not compared; their receipts and money are", () => {
   const base = snapshotOf();
   const renamed = snapshotOf({ staff: [{ userId: "u1", name: "Sadun P.", receipts: 6, collected: "20100.00" }, { userId: "u2", name: "Thilini", receipts: 4, collected: "15000.00" }] });
-  assert.deepEqual(diffSummaries(base, renamed).map((x) => [x.key, x.saved, x.live]), [["staff:u1.name", "Sadun", "Sadun P."]]);
+  assert.deepEqual(diffSummaries(base, renamed), []);
+  const moved = snapshotOf({ staff: [{ userId: "u1", name: "Sadun P.", receipts: 7, collected: "20100.00" }, { userId: "u2", name: "Thilini", receipts: 4, collected: "15000.00" }] });
+  assert.ok(diffSummaries(base, moved).some((x) => x.key.startsWith("staff:u1")), "a changed receipt count is still a difference");
+});
+
+test("a deduction's person and authoriser names are names: renaming them is not a difference, changing its amount is", () => {
+  const base = snapshotOf();
+  const lines = base.report.deductionLines;
+  const renamed = snapshotOf({ report: { deductionLines: [{ ...lines[0], person: "Someone Else", authorizedBy: "Another Admin" }, lines[1]] } });
+  assert.deepEqual(diffSummaries(base, renamed), []);
+  const amount = snapshotOf({ report: { deductionLines: [{ ...lines[0], amount: "1.00" }, lines[1]] } });
+  assert.ok(diffSummaries(base, amount).some((x) => x.key.startsWith("deduction:")));
 });
 
 test("whether a deduction is a staff advance is compared (it changes the printed kind)", () => {
