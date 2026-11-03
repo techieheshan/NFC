@@ -11,6 +11,9 @@ export const NO_ADMIN = "No active admin account. Ask an owner to activate one."
 export const SAVE_FROZEN = "These numbers are frozen as of now.";
 export const NOTHING_CHANGED = "Nothing changed.";
 
+/** What the Admin check sheet says for a refusal: the day moving on has its own sentence, everything else is the server's own words. */
+export const checkRefusalMessage = (r: { reason: string; message: string }): string => (r.reason === "conflict" ? CHECK_CONFLICT : r.message);
+
 export const HISTORY_NOTE =
   "Days with no saved summary are not listed. Details are kept for 3 months after the date. A PDF is made from the saved details whenever you print or download.";
 

@@ -320,13 +320,18 @@ describe("Release 2 screens and document, rendered against a real database", { s
     const date = await makeDay({ pays: ["5000.00"] });
     await save(date, w.admin.id, { bringForward: "100.00", bank: [line("100.00", "09:00", "S1", "n")] });
     await check(date, 1, admin2.id);
-    await edit(date, 1, w.staff.id, { bringForward: "200.00", bank: [line("100.00", "09:00", "S1", "n")] });
-    await edit(date, 2, staff2.id, { bringForward: "200.00", bank: [line("100.00", "09:30", "S2", "n")] });
+    freezeClock("2026-11-01T17:00:00Z"); // an hour and a half after version 1 (22:30 in Colombo)
+    try {
+      await edit(date, 1, w.staff.id, { bringForward: "200.00", bank: [line("100.00", "09:00", "S1", "n")] });
+      await edit(date, 2, staff2.id, { bringForward: "200.00", bank: [line("100.00", "09:30", "S2", "n")] });
+    } finally {
+      freezeClock(NOW);
+    }
     as("STAFF", w.staff.id);
     const h = await docHtml(date);
     assert.ok(h.includes("<span>Status</span><b>Saved, version 3, not checked</b>"));
     assert.ok(h.includes("<span>Saved</span><b>1 Nov 2026, 9:18 PM by Nadeesha Admin</b>"), "version 1's time and Done by");
-    assert.ok(h.includes("<span>Last edited</span><b>1 Nov 2026, 9:18 PM by තිලිණි පෙරේරා</b>"), "the latest version's Done by");
+    assert.ok(h.includes("<span>Last edited</span><b>1 Nov 2026, 10:30 PM by තිලිණි පෙරේරා</b>"), "the LATEST version's time and Done by");
     assert.ok(h.includes("<span>Prepared by</span><b>Nadeesha Admin</b>"), "Prepared by stays version 1's Done by");
     const log = h.slice(h.indexOf("8 Change log"));
     assert.ok(log.includes("<th>Version</th>") && log.includes("<th>When</th>") && log.includes("<th>By</th>") && log.includes("<th>What changed</th>"));

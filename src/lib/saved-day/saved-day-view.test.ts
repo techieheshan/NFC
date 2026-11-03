@@ -13,7 +13,9 @@ import { savedByText } from "./history-text";
 import { liveFromBundle } from "./live";
 import { changeLogNewestFirst, changeLogRows, formatClock, formatWhen } from "./log-rows";
 import type { LogEntry } from "./store";
-import { checkClearedChip, checkedChip, conflictText, editedChip, hintLabel, saveTitle, savedChip } from "./texts";
+import { checkClearedChip, checkedChip, checkRefusalMessage, conflictText, editedChip, HISTORY_NOTE, hintLabel, saveTitle, savedChip } from "./texts";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 /*
  * Daily Summary R2, Phase 2: the pure pieces behind the screens and the document — change-log rows, the document model's saved-day
@@ -73,6 +75,28 @@ test("the screens' exact sentences", () => {
   assert.equal(hintLabel("Sat 10 Oct", "12,000.00", false), "Sat 10 Oct closed with 12,000.00 (not checked yet). Use this");
   assert.equal(saveTitle("Wed 14 Oct 2026"), "Save Wed 14 Oct 2026?");
   assert.equal(conflictText("Nadeesha", "4:32 PM", 2), "Nadeesha saved this day at 4:32 PM (version 2) while you were working. Your changes were NOT saved.");
+});
+
+test("History's note and the check sheet's refusal wording are exactly these sentences (literals, not the constants under test)", () => {
+  assert.equal(HISTORY_NOTE, "Days with no saved summary are not listed. Details are kept for 3 months after the date. A PDF is made from the saved details whenever you print or download.");
+  assert.equal(checkRefusalMessage({ reason: "conflict", message: "The server's long sentence about the day." }), "The day changed after you opened it. Look at the new numbers and check again.");
+  assert.equal(checkRefusalMessage({ reason: "not-admin", message: "Choose an active admin from the list." }), "Choose an active admin from the list.");
+  assert.equal(checkRefusalMessage({ reason: "over-banked", message: "Bank deposits are 5,000.00 more than the drawer should hold. Edit the bank lines or the bring-forward." }), "Bank deposits are 5,000.00 more than the drawer should hold. Edit the bank lines or the bring-forward.");
+});
+
+test("the document's footer (built in the browser after measuring) reads 'Generated <when> by <who> · <document no.> · <status>' from the model, with no 'Draft' typed into it", () => {
+  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "document", "document-view.tsx"), "utf8");
+  assert.ok(src.includes("Generated {model.generatedText} by {model.generatedBy} · {model.docNo} · {model.footerStatus}"));
+  assert.ok(!/·\s*Draft/.test(src), "the word Draft is the model's, not the view's");
+});
+
+test("changeLogRows orders by TIME even if the versions arrive out of order (a stable sort: equal times keep their order)", () => {
+  const rows = changeLogRows([
+    v(2, T(9), "Second", [{ t: "edited-by", name: "Second" }]),
+    v(1, T(4), "First", [{ t: "saved", by: "First" }]),
+    v(3, T(9), "Third", [{ t: "edited-by", name: "Third" }]),
+  ]);
+  assert.deepEqual(rows.map((r) => r.by), ["First", "Second", "Third"]);
 });
 
 test("savedByText: 'Saved by X' for a day never edited, 'Saved by X · edited by Y' after that", () => {

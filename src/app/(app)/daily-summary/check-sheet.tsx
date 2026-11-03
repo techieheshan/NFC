@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { formatCents } from "@/lib/cents";
-import { CHECK_CONFLICT, NO_ADMIN } from "@/lib/saved-day/texts";
+import { checkRefusalMessage, NO_ADMIN } from "@/lib/saved-day/texts";
 import type { CheckOutcome } from "@/lib/saved-day/store";
 
 import { markChecked } from "./saved-actions";
@@ -73,7 +73,7 @@ export function CheckSheet({
 
       {refusal && (
         <div role="alert" className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p>{refusal.reason === "conflict" ? CHECK_CONFLICT : refusal.message}</p>
+          <p>{checkRefusalMessage(refusal)}</p>
           {(refusal.reason === "conflict" || refusal.reason === "already-checked" || refusal.reason === "not-saved" || refusal.reason === "expired") && (
             <button type="button" onClick={() => { router.refresh(); onClose(); }} className="bg-primary text-primary-foreground mt-2 h-11 w-full rounded-md text-base font-medium">Show the day as saved</button>
           )}
