@@ -485,8 +485,9 @@ export type SavedDayRead = {
  *
  * `live` is what the DAY PAGE already loaded for its own screen, handed in so the numbers are read once: `undefined` means "read them
  * here" (the server action does that); `null` means the caller could not build them. It is only ever passed by server code, never taken from a client.
+ * `want` lets a caller that prints the saved day (the A4 document) skip the comparison with the live numbers and the hint query it never shows.
  */
-export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snapshot | null): Promise<SavedDayRead> {
+export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snapshot | null, want: { compare: boolean; hint: boolean } = { compare: true, hint: true }): Promise<SavedDayRead> {
   assertOperational(actor);
   const today = colomboNow().date;
   const date = resolveDay(rawDate, today);
@@ -570,15 +571,17 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
           check: x.check && { checkedByName: x.check.checkedByName, markedByName: x.check.markedByName, checkedAt: x.check.checkedAt.toISOString(), carriedFromVersion: x.check.carriedFromVersion },
         })),
       };
-      const liveSnap: Snapshot | null = live === undefined ? await liveOrNull(date) : live;
-      if (liveSnap === null) liveUnreadable = true;
-      else liveDiffs = diffSummaries(snapshot, liveSnap);
+      if (want.compare) {
+        const liveSnap: Snapshot | null = live === undefined ? await liveOrNull(date) : live;
+        if (liveSnap === null) liveUnreadable = true;
+        else liveDiffs = diffSummaries(snapshot, liveSnap);
+      }
     }
   }
 
   // The hint belongs to an UNSAVED day only (a saved day has its own bring-forward, and an unreadable one shows no hint).
   let hint: Hint | null = null;
-  if (saved === null && !unreadable) hint = await findHint(date);
+  if (saved === null && !unreadable && want.hint) hint = await findHint(date);
   return { date, saved, unreadable, liveDiffs, liveUnreadable, hint };
 }
 

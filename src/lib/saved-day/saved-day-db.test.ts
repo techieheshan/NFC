@@ -680,6 +680,28 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     }
   });
 
+  test("F10: a caller that only prints (the A4 document) can skip the live comparison and the hint: nothing is read for them", async () => {
+    const saved = await savedDay();
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "77.00", takenById: w.staff.id, paidAt: new Date(`${saved}T06:00:00Z`) } }); // live moved
+    const unsaved = await makeDay();
+    const actor = { id: w.staff.id, role: "STAFF" };
+    const full = await ST.loadSavedDayAs(actor, saved);
+    assert.ok(full.liveDiffs.length > 0, "by default the comparison is made");
+    const delegate = db.dailySummaryDay as unknown as Record<string, (...a: unknown[]) => unknown>;
+    const realFind = delegate.findMany;
+    let hintQueries = 0;
+    delegate.findMany = function (this: unknown, ...a: unknown[]) { hintQueries++; return realFind.apply(this, a); };
+    try {
+      const lean = await ST.loadSavedDayAs(actor, saved, undefined, { compare: false, hint: false });
+      assert.deepEqual([lean.saved?.version, lean.liveDiffs, lean.liveUnreadable], [1, [], false], "the saved day is there, the comparison is not made");
+      const draft = await ST.loadSavedDayAs(actor, unsaved, undefined, { compare: false, hint: false });
+      assert.deepEqual([draft.saved, draft.hint], [null, null]);
+      assert.equal(hintQueries, 0, "no hint query for the document");
+    } finally {
+      delegate.findMany = realFind;
+    }
+  });
+
   test("'Check cleared' is derived from the log: shown after a money change cleared a check, gone once the day is checked again, never for a day that was never checked", async () => {
     const never = await savedDay();
     assert.equal((await A.loadSavedDay(never)).saved?.checkCleared, null);

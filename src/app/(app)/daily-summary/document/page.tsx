@@ -5,7 +5,6 @@ import { computeCashFlow } from "@/lib/cash-flow";
 import { decimalToCents } from "@/lib/cents";
 import { colomboNow } from "@/lib/colombo-time";
 import { resolveRange } from "@/lib/daily-summary-dates";
-import { liveFromBundle } from "@/lib/saved-day/live";
 import { loadSavedDayAs } from "@/lib/saved-day/store";
 
 import { loadDayBundle, loadRangeBundle } from "../bundle";
@@ -66,7 +65,8 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
   }
 
   const b = await loadDayBundle(first(q.date) ?? range?.from);
-  const read = await loadSavedDayAs(user, b.date, liveFromBundle(b));
+  // The document prints what was saved (or the draft): it shows neither the live comparison nor the bring-forward hint, so it asks for neither.
+  const read = await loadSavedDayAs(user, b.date, undefined, { compare: false, hint: false });
   const filename = `xenon-daily-summary-${b.date}_${b.date}.pdf`;
 
   if (read.saved) {
