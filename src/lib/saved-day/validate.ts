@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { MAX_BANK_LINES, isClockTime, type BankLine } from "@/lib/cash-flow";
 import { MAX_CENTS, parseTypedAmount } from "@/lib/cents";
+import { NOTE_MAX, SLIP_MAX } from "@/lib/bank-limits";
 import { parseRealDate } from "@/lib/daily-summary-dates";
 
 /**
@@ -11,8 +12,7 @@ import { parseRealDate } from "@/lib/daily-summary-dates";
  * cents. On a refusal it returns the sanitised `values` it was given so the form can show them again (rule 14).
  */
 
-export const SLIP_MAX = 30;
-export const NOTE_MAX = 80;
+export { NOTE_MAX, SLIP_MAX };
 
 const clean = (s: string, max: number) => s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
