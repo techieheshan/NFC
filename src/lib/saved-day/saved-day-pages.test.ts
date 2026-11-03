@@ -15,7 +15,7 @@ import { shiftDay } from "@/lib/daily-summary-dates";
 import { snapshotOf } from "./fixtures";
 import { overBankedBanner, overBankRefusal } from "./over-bank";
 import {
-  checkClearedChip, checkedChip, editedChip, DOCUMENT_UNREADABLE, HISTORY_NOTE, LIVE_DIFFERS, NAMES_DIFFER, NAMES_DIFFER_NOTE, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
+  checkClearedChip, checkedChip, editedChip, DOCUMENT_UNREADABLE, HISTORY_NOTE, LIVE_DIFFERS, TEXT_DIFFER, TEXT_DIFFER_NOTE, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
 } from "./texts";
 
 /*
@@ -207,23 +207,23 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(!h.includes("2,800.00"), "the live figure is not shown as the day's number (it is only in the closed 'What changed' sheet)");
   });
 
-  test("a names-only difference has its own banner ('Some names differ from the saved day') with the same two buttons; a number difference keeps the numbers banner; re-saving clears the check", async () => {
+  test("a text-only difference has its own banner ('Some names or wording differ from the saved day') with the same two buttons; a number difference keeps the numbers banner; re-saving clears the check", async () => {
     const date = await makeDay({ pays: ["5000.00"], spends: [["900.00", "repair: lock"]] });
     await save(date, w.admin.id);
     await check(date, 1, admin2.id);
     as("STAFF", w.staff.id);
-    assert.ok(!(await dayHtml(date)).includes(NAMES_DIFFER), "nothing differs yet");
+    assert.ok(!(await dayHtml(date)).includes(TEXT_DIFFER), "nothing differs yet");
     // the expense is corrected to another authoriser: a NAME differs, no number does
     await db.expense.updateMany({ where: { date: colomboDateValue(date), reason: "repair: lock" }, data: { authorizedById: w.admin.id } });
     let h = await dayHtml(date);
-    assert.ok(h.includes(NAMES_DIFFER), "the names-only banner");
+    assert.ok(h.includes(TEXT_DIFFER), "the names-only banner");
     assert.ok(!h.includes(LIVE_DIFFERS), "not the numbers banner");
     assert.ok(h.includes("See what changed") && h.includes("Re-save with live numbers"), "the same two buttons");
     assert.ok(h.includes("Authorised by Ruwan Admin") && !h.includes("Authorised by Nadeesha Admin"), "the saved screen still shows the FROZEN authoriser");
     // a real number moves as well: the numbers banner wins
     await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "300.00", takenById: w.staff.id, paidAt: new Date(`${date}T09:00:00Z`) } });
     h = await dayHtml(date);
-    assert.ok(h.includes(LIVE_DIFFERS) && !h.includes(NAMES_DIFFER));
+    assert.ok(h.includes(LIVE_DIFFERS) && !h.includes(TEXT_DIFFER));
     await db.payment.deleteMany({ where: { paidAt: new Date(`${date}T09:00:00Z`) } });
     // re-saving after a names-only difference is a money change: the check is cleared (an admin looks again), and the difference is gone
     as("STAFF", w.staff.id);
@@ -231,18 +231,45 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(r.ok, JSON.stringify(r));
     h = await dayHtml(date);
     assert.ok(h.includes("Authorised by Nadeesha Admin") && !h.includes("Authorised by Ruwan Admin"), "the new names are frozen into version 2");
-    assert.ok(!h.includes(NAMES_DIFFER) && !h.includes(LIVE_DIFFERS), "nothing differs now");
-    assert.ok(h.includes(checkClearedChip("Ruwan Admin")) && !h.includes("bg-green-100"), "the check was cleared by the re-save");
+    assert.ok(!h.includes(TEXT_DIFFER) && !h.includes(LIVE_DIFFERS), "nothing differs now");
+    assert.ok(h.includes(checkClearedChip("Ruwan Admin", "names")) && !h.includes(checkClearedChip("Ruwan Admin", "money")) && !h.includes("bg-green-100"), "the check was cleared by the re-save, and the chip says names were corrected");
+    const cleared = r.changes.find((c) => c.t === "check-cleared");
+    assert.ok(cleared && cleared.t === "check-cleared" && cleared.reason === "names", "the change log item carries the reason");
     const again = await A.saveDay({ date, mode: "resave", baseVersion: 2, doneById: w.staff.id, bringForward: "", bank: [], seen: await seen(date) });
     assert.ok(!again.ok && again.reason === "nothing-changed");
   });
 
+  test("a reworded deduction reason is a wording difference (text banner, not the numbers banner); re-saving clears the check with the names wording; a money re-save keeps the money wording", async () => {
+    const date = await makeDay({ pays: ["5000.00"], spends: [["900.00", "repair: lock"]] });
+    await save(date, w.admin.id);
+    await check(date, 1, admin2.id);
+    as("STAFF", w.staff.id);
+    await db.expense.updateMany({ where: { date: colomboDateValue(date), reason: "repair: lock" }, data: { reason: "repair: front door lock" } });
+    let h = await dayHtml(date);
+    assert.ok(h.includes("Some names or wording differ from the saved day"), "the text banner");
+    assert.ok(!h.includes("The live numbers are different from the saved ones"), "not the numbers banner");
+    assert.ok(h.includes("repair: lock") && !h.includes("repair: front door lock"), "the saved screen still shows the FROZEN reason");
+    const r = await A.saveDay({ date, mode: "resave", baseVersion: 1, doneById: w.staff.id, bringForward: "", bank: [], seen: await seen(date) });
+    assert.ok(r.ok, JSON.stringify(r));
+    h = await dayHtml(date);
+    assert.ok(h.includes("repair: front door lock"), "the new wording is frozen into version 2");
+    assert.ok(h.includes("Check cleared: names were corrected after Ruwan Admin checked it. An admin must check again."));
+    // the same day, now a real money difference and a re-save: the money wording
+    await check(date, 2, admin2.id);
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "300.00", takenById: w.staff.id, paidAt: new Date(`${date}T09:00:00Z`) } });
+    as("STAFF", w.staff.id);
+    const m = await A.saveDay({ date, mode: "resave", baseVersion: 2, doneById: w.staff.id, bringForward: "", bank: [], seen: await seen(date) });
+    assert.ok(m.ok, JSON.stringify(m));
+    h = await dayHtml(date);
+    assert.ok(h.includes("Check cleared: the money changed after Ruwan Admin checked it. An admin must check again."));
+  });
+
   test("the See what changed sheet says so when only names differ", async () => {
     const { LiveDiffSheet } = await import("@/app/(app)/daily-summary/live-diff-sheet");
-    const names = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", nameOnly: true }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));
-    assert.ok(names.includes(NAMES_DIFFER_NOTE));
-    const mixed = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", nameOnly: true }, { key: "n", label: "Net", saved: "1", live: "2" }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));
-    assert.ok(!mixed.includes(NAMES_DIFFER_NOTE));
+    const names = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", textOnly: true }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));
+    assert.ok(names.includes(TEXT_DIFFER_NOTE));
+    const mixed = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", textOnly: true }, { key: "n", label: "Net", saved: "1", live: "2" }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));
+    assert.ok(!mixed.includes(TEXT_DIFFER_NOTE));
   });
 
   test("over-banked (after a cancelled receipt and a re-save): the red banner with the amount; Admin check refuses with the same words", async () => {

@@ -613,7 +613,7 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal(v.saved.version, 2);
     assert.equal(v.saved.cash.bringForward, 6000);
     assert.equal(v.saved.check, null, "the money changed: version 2 is not checked");
-    assert.deepEqual(v.saved.checkCleared, { by: w.admin.username });
+    assert.deepEqual(v.saved.checkCleared, { by: w.admin.username, reason: "money" });
     assert.equal(v.saved.overBankedBy, null);
     assert.deepEqual(v.saved.log.map((l) => [l.version, l.kind, l.doneByName]), [[1, "SAVE", w.admin.username], [2, "EDIT", u.staff2.username]]);
     assert.deepEqual(v.saved.bank.map((b) => [b.cents, b.recordedByName]), [[1000, w.admin.username]]);
@@ -725,9 +725,9 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal((await A.loadSavedDay(day)).saved?.checkCleared, null, "checked: not cleared");
     admin();
     assert.ok((await edit(day, 1, w.admin.id, { bringForward: "20.00" })).ok);
-    assert.deepEqual((await A.loadSavedDay(day)).saved?.checkCleared, { by: w.admin.username });
+    assert.deepEqual((await A.loadSavedDay(day)).saved?.checkCleared, { by: w.admin.username, reason: "money" });
     assert.ok((await edit(day, 2, w.admin.id, { bringForward: "20.00", bank: [line("1.00", "09:00", "a")] })).ok, "another money edit: still cleared");
-    assert.deepEqual((await A.loadSavedDay(day)).saved?.checkCleared, { by: w.admin.username });
+    assert.deepEqual((await A.loadSavedDay(day)).saved?.checkCleared, { by: w.admin.username, reason: "money" });
     assert.ok((await check(day, 3, u.admin2.id)).ok);
     assert.equal((await A.loadSavedDay(day)).saved?.checkCleared, null, "checked again");
   });

@@ -318,7 +318,9 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
             snapshotJson = snapshot as unknown as Prisma.InputJsonValue;
             bringForwardCents = prevShape.bringForwardCents; // a re-save refreshes the numbers only; it keeps what was typed
             lines = prevLines;
-            items = changesForResave({ by: doneBy.name, diffs, cleared: check && d.checkCleared ? { by: check.checkedByName, at: check.checkedAt.toISOString() } : undefined });
+            // a re-save whose differences are ALL text (names or wording) says so; anything with a number in it is a money change (the default)
+            const reason = diffs.every((x) => x.textOnly === true) ? ({ reason: "names" } as const) : {};
+            items = changesForResave({ by: doneBy.name, diffs, cleared: check && d.checkCleared ? { by: check.checkedByName, at: check.checkedAt.toISOString(), ...reason } : undefined });
           }
         }
 
@@ -485,7 +487,7 @@ export type SavedDayView = {
   /** Cents the bank lines exceed the drawer by; null when this version is not over-banked (a re-save can leave it so). */
   overBankedBy: number | null;
   /** This day was checked once and a later money change cleared it; null when it is checked, or was never checked. */
-  checkCleared: null | { by: string };
+  checkCleared: null | { by: string; reason: "money" | "names" };
   /** Every version, oldest first. */
   log: LogEntry[];
 };
@@ -564,7 +566,7 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
         if (x.check) break;
         const cleared = parseChanges(x.changes).find((c) => c.t === "check-cleared");
         if (cleared && cleared.t === "check-cleared") {
-          checkCleared = { by: cleared.by };
+          checkCleared = { by: cleared.by, reason: cleared.reason === "names" ? "names" : "money" };
           break;
         }
       }

@@ -70,6 +70,8 @@ test("the screens' exact sentences", () => {
   assert.equal(savedChip(2, "Sadun", "4:32 PM"), "Saved · version 2 · Sadun · 4:32 PM");
   assert.equal(editedChip(3), "Edited · version 3");
   assert.equal(checkedChip("Nadeesha", "Sadun"), "Checked by Nadeesha, recorded by Sadun");
+  assert.equal(checkClearedChip("Nadeesha", "names"), "Check cleared: names were corrected after Nadeesha checked it. An admin must check again.");
+  assert.equal(checkClearedChip("Nadeesha", "money"), checkClearedChip("Nadeesha"), "money is the default");
   assert.equal(checkClearedChip("Nadeesha"), "Check cleared: the money changed after Nadeesha checked it. An admin must check again.");
   assert.equal(hintLabel("Yesterday", "12,000.00", true), "Yesterday closed with 12,000.00. Use this");
   assert.equal(hintLabel("Sat 10 Oct", "12,000.00", false), "Sat 10 Oct closed with 12,000.00 (not checked yet). Use this");

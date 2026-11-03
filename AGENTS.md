@@ -214,7 +214,7 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     and time). A rename in Setup never changes a saved day. `diffSummaries` compares names too
     (course, teacher, staff, a deduction's person and authoriser): the snapshot holds names
     only, never ids, so a rename cannot be told from a reassignment; a names-only difference
-    is marked `nameOnly` (own banner text, own note in "See what changed"), and re-saving after
+    is marked `textOnly` (own banner text, own note in "See what changed"), and re-saving after
     it counts as a money change, so it clears the check and an admin looks again. Money columns are `Decimal(12,2)`, written from integer cents by integer
     arithmetic (`lib/saved-day/money.ts`, never a float). `snapshotSchema` is a CONTRACT: a
     stored snapshot is read through `parseSnapshot(json, schema)`, which refuses an unknown

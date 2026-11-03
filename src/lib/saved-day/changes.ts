@@ -24,7 +24,8 @@ export type ChangeItem =
   | { t: "bank-"; line: LineJson }
   | { t: "bank~"; from: LineJson; to: LineJson }
   | { t: "resaved"; by: string; diffs: { label: string; saved: string; live: string }[] }
-  | { t: "check-cleared"; by: string; at: string }
+  /** `reason` absent means "money" (every item written before the field existed). */
+  | { t: "check-cleared"; by: string; at: string; reason?: string }
   | { t: "check-kept"; by: string }
   /** An item written by a newer release than this code knows. Shown as such, never dropped silently. */
   | { t: "unknown" };
@@ -38,7 +39,7 @@ const item = z.discriminatedUnion("t", [
   z.object({ t: z.literal("bank-"), line: lineJson }),
   z.object({ t: z.literal("bank~"), from: lineJson, to: lineJson }),
   z.object({ t: z.literal("resaved"), by: z.string(), diffs: z.array(z.object({ label: z.string(), saved: z.string(), live: z.string() })) }),
-  z.object({ t: z.literal("check-cleared"), by: z.string(), at: z.string() }),
+  z.object({ t: z.literal("check-cleared"), by: z.string(), at: z.string(), reason: z.string().optional() }),
   z.object({ t: z.literal("check-kept"), by: z.string() }),
 ]);
 
@@ -75,9 +76,9 @@ export function changesForEdit(a: {
   return out;
 }
 
-export function changesForResave(a: { by: string; diffs: readonly FigureDiff[]; cleared?: { by: string; at: string } }): ChangeItem[] {
+export function changesForResave(a: { by: string; diffs: readonly FigureDiff[]; cleared?: { by: string; at: string; reason?: "names" } }): ChangeItem[] {
   const out: ChangeItem[] = [{ t: "resaved", by: a.by, diffs: a.diffs.map((d) => ({ label: d.label, saved: d.saved, live: d.live })) }];
-  if (a.cleared) out.push({ t: "check-cleared", by: a.cleared.by, at: a.cleared.at });
+  if (a.cleared) out.push({ t: "check-cleared", by: a.cleared.by, at: a.cleared.at, ...(a.cleared.reason ? { reason: a.cleared.reason } : {}) });
   return out;
 }
 
@@ -107,7 +108,9 @@ export function describeChange(c: ChangeItem): string {
       return `Re-saved with live numbers by ${c.by}${shown.length ? `: ${shown.join("; ")}${more}` : ""}`;
     }
     case "check-cleared":
-      return `Check cleared: the money changed after ${c.by} checked it`;
+      return c.reason === "names"
+        ? `Check cleared: names were corrected after ${c.by} checked it. An admin must check again.`
+        : `Check cleared: the money changed after ${c.by} checked it`;
     case "check-kept":
       return `The check by ${c.by} was kept: only a slip, note or time changed`;
     case "unknown":

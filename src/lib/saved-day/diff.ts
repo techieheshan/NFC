@@ -13,11 +13,12 @@ import type { Snapshot } from "./snapshot";
  * It compares every figure and flag the document prints AND the names it prints (course, teacher, staff, a deduction's person and
  * authoriser). The snapshot holds names only, never ids, so a pure RENAME in Setup cannot be told from a REASSIGNMENT (a deduction
  * moved from teacher A to teacher B, or a corrected authoriser); both are listed. A difference that is ONLY names is marked
- * `nameOnly`, so the screen can say "Some names differ from the saved day" instead of "The live numbers are different". The
+ * `textOnly`, so the screen can say "Some names or wording differ from the saved day" instead of "The live numbers are different". A deduction's
+ * free-text REASON is wording, not a figure: it is compared with the names and never makes a numbers difference. The
  * registered and not-paid counts are not on the paper and are not compared.
  */
 
-export type FigureDiff = { key: string; label: string; saved: string; live: string; /** The difference is in a printed NAME only, not in a number or a flag. */ nameOnly?: true };
+export type FigureDiff = { key: string; label: string; saved: string; live: string; /** The difference is in a printed NAME only, not in a number or a flag. */ textOnly?: true };
 
 const cents = (v: string | undefined) => decimalToCents(v ?? "0");
 
@@ -58,8 +59,8 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
     const name = `${(b ?? a)!.course} (${(b ?? a)!.teacher})`;
     if (a && b) {
       // names are printed too: a course or teacher name that changed is listed (as names only)
-      if (a.course !== b.course) out.push({ key: `course:${id}.name`, label: "Course name", saved: a.course, live: b.course, nameOnly: true });
-      if (a.teacher !== b.teacher) out.push({ key: `course:${id}.teacher`, label: `${b.course}: teacher`, saved: a.teacher, live: b.teacher, nameOnly: true });
+      if (a.course !== b.course) out.push({ key: `course:${id}.name`, label: "Course name", saved: a.course, live: b.course, textOnly: true });
+      if (a.teacher !== b.teacher) out.push({ key: `course:${id}.teacher`, label: `${b.course}: teacher`, saved: a.teacher, live: b.teacher, textOnly: true });
       // the reconcile flag is printed as a warning
       if (a.reconciles !== b.reconciles) out.push({ key: `course:${id}.reconciles`, label: `${name}: reconciles`, saved: a.reconciles ? "yes" : "no", live: b.reconciles ? "yes" : "no" });
     }
@@ -70,17 +71,18 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
     num(`course:${id}.free`, `${name}: free`, a?.free, b?.free);
   }
 
-  // deduction lines as a multiset of FIGURES (date, kind, reason, staff-advance flag, amount); who it was for and who authorised it is compared next
+  // deduction lines as a multiset of FIGURES (date, kind, staff-advance flag, amount). The REASON is free text and counts as wording, like who it
+  // was for and who authorised it: those are compared next, and a difference there is text-only (never a numbers difference)
   type Line = Snapshot["report"]["deductionLines"][number];
-  const lineKey = (d: Line) => JSON.stringify([d.date, d.kind, d.reason, d.isStaffAdvance, cents(d.amount)]);
-  const who = (d: Line) => `${d.person ?? "—"}, authorised by ${d.authorizedBy}`;
+  const lineKey = (d: Line) => JSON.stringify([d.date, d.kind, d.isStaffAdvance, cents(d.amount)]);
+  const wording = (d: Line) => `${d.reason} — ${d.person ?? "—"}, authorised by ${d.authorizedBy}`;
   const tally = (rows: readonly Line[]) => {
     const m = new Map<string, { n: number; d: Line; who: string[] }>();
     for (const d of rows) {
       const k = lineKey(d);
       const cur = m.get(k) ?? { n: 0, d, who: [] };
       cur.n += 1;
-      cur.who.push(who(d));
+      cur.who.push(wording(d));
       m.set(k, cur);
     }
     return m;
@@ -102,7 +104,7 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
     } else if (a && b) {
       const sw = [...a.who].sort().join("; ");
       const lw = [...b.who].sort().join("; ");
-      if (sw !== lw) out.push({ key: `deduction-names:${k}`, label: `Deduction: ${d.reason}: who`, saved: sw, live: lw, nameOnly: true });
+      if (sw !== lw) out.push({ key: `deduction-names:${k}`, label: `Deduction of ${formatCents(cents(d.amount))} on ${d.date}: wording or names`, saved: sw, live: lw, textOnly: true });
     }
   }
 
@@ -113,7 +115,7 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
     const a = sr.get(id);
     const b = lr.get(id);
     const name = (b ?? a)!.name;
-    if (a && b && a.name !== b.name) out.push({ key: `staff:${id}.name`, label: "Staff name", saved: a.name, live: b.name, nameOnly: true });
+    if (a && b && a.name !== b.name) out.push({ key: `staff:${id}.name`, label: "Staff name", saved: a.name, live: b.name, textOnly: true });
     num(`staff:${id}.receipts`, `${name}: receipts`, a?.receipts, b?.receipts);
     money(`staff:${id}.collected`, `${name}: collected`, a?.collected, b?.collected);
   }

@@ -142,7 +142,7 @@ export function SavedDayScreen({
             <p className="text-muted-foreground text-xs">{formatWhen(saved.check.checkedAt)}</p>
           </>
         ) : saved.checkCleared ? (
-          <Chip tone="amber">{checkClearedChip(saved.checkCleared.by)}</Chip>
+          <Chip tone="amber">{checkClearedChip(saved.checkCleared.by, saved.checkCleared.reason)}</Chip>
         ) : (
           <Chip tone="amber">{NOT_CHECKED_CHIP}</Chip>
         )}

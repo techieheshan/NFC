@@ -122,6 +122,22 @@ test("describeChange: every item in plain words, money formatted from integer ce
   );
 });
 
+test("the check-cleared item may carry a reason: 'names' reads as a names correction; no reason (every item written before the field) and any other value read as money; the JSON round-trips", () => {
+  const at = "2026-11-02T10:00:00.000Z";
+  assert.equal(describeChange({ t: "check-cleared", by: "Nadeesha", at, reason: "names" }), "Check cleared: names were corrected after Nadeesha checked it. An admin must check again.");
+  assert.equal(describeChange({ t: "check-cleared", by: "Nadeesha", at }), "Check cleared: the money changed after Nadeesha checked it");
+  assert.equal(describeChange({ t: "check-cleared", by: "Nadeesha", at, reason: "money" }), "Check cleared: the money changed after Nadeesha checked it");
+  assert.equal(describeChange({ t: "check-cleared", by: "Nadeesha", at, reason: "something newer" }), "Check cleared: the money changed after Nadeesha checked it");
+  // stored JSON: an OLD item without the field still parses (and says money); one with the field keeps it
+  const parsed = parseChanges([{ t: "check-cleared", by: "N", at }, { t: "check-cleared", by: "N", at, reason: "names" }]);
+  assert.deepEqual(parsed, [{ t: "check-cleared", by: "N", at }, { t: "check-cleared", by: "N", at, reason: "names" }]);
+  // a re-save writes the reason only for names: the money case leaves the field out of the JSON entirely
+  const money = changesForResave({ by: "S", diffs: [], cleared: { by: "N", at } });
+  assert.ok(!("reason" in money[1]), "no reason key for money");
+  const names = changesForResave({ by: "S", diffs: [], cleared: { by: "N", at, reason: "names" } });
+  assert.deepEqual(names[1], { t: "check-cleared", by: "N", at, reason: "names" });
+});
+
 test("describeChange: a long re-save list is cut to five and says how many more", () => {
   const diffs = Array.from({ length: 8 }, (_, i) => ({ label: `Figure ${i}`, saved: "1.00", live: "2.00" }));
   const text = describeChange({ t: "resaved", by: "Sadun", diffs });

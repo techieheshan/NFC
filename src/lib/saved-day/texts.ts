@@ -13,14 +13,14 @@ export const UNREADABLE_BLOCK = "This saved day can't be read, so it can't be sa
 export const UPDATING_SCREEN = "Saved. Updating this screen…";
 export const RELOAD_BUTTON = "Reload";
 export const LIVE_DIFFERS = "The live numbers are different from the saved ones";
-/** The banner when the ONLY differences are printed names (a rename, or a reassigned deduction): there is nothing to re-add up, but a person should look. */
-export const NAMES_DIFFER = "Some names differ from the saved day";
-/** Shown in "See what changed" when only names differ. */
-export const NAMES_DIFFER_NOTE = "Only names are different (a rename in Setup, or an expense given to someone else). Re-saving takes the new names and asks an admin to check the day again.";
+/** The banner when the ONLY differences are printed TEXT, names or wording (a rename, a reassigned deduction, a reworded reason): there is nothing to re-add up, but a person should look. */
+export const TEXT_DIFFER = "Some names or wording differ from the saved day";
+/** Shown in "See what changed" when only names or wording differ. */
+export const TEXT_DIFFER_NOTE = "Only names or wording are different (a rename in Setup, an expense given to someone else, or a reworded reason). Re-saving takes the new text and asks an admin to check the day again.";
 /** The banner text for a saved day's differences from the live data: null when there are none. Any difference in a number or a flag keeps the numbers wording. */
-export function liveDiffBanner(diffs: readonly { nameOnly?: boolean }[]): string | null {
+export function liveDiffBanner(diffs: readonly { textOnly?: boolean }[]): string | null {
   if (diffs.length === 0) return null;
-  return diffs.every((d) => d.nameOnly === true) ? NAMES_DIFFER : LIVE_DIFFERS;
+  return diffs.every((d) => d.textOnly === true) ? TEXT_DIFFER : LIVE_DIFFERS;
 }
 export const CHECK_CONFLICT = "The day changed after you opened it. Look at the new numbers and check again.";
 export const NO_ADMIN = "No active admin account. Ask an owner to activate one.";
@@ -39,8 +39,13 @@ export const savedChip = (version: number, doneBy: string, time: string) => `Sav
 export const editedChip = (version: number) => `Edited · version ${version}`;
 /** "Checked by Nadeesha, recorded by Sadun" */
 export const checkedChip = (checkedBy: string, recordedBy: string) => `Checked by ${checkedBy}, recorded by ${recordedBy}`;
-/** "Check cleared: the money changed after Nadeesha checked it. An admin must check again." */
-export const checkClearedChip = (by: string) => `Check cleared: the money changed after ${by} checked it. An admin must check again.`;
+/** Why a check was cleared: the money changed (the default, and what an item without a reason means), or only names or wording were corrected. */
+export type ClearedReason = "money" | "names";
+/** "Check cleared: the money changed after Nadeesha checked it. An admin must check again." or, for a names or wording correction, "Check cleared: names were corrected after Nadeesha checked it. An admin must check again." */
+export const checkClearedChip = (by: string, reason: ClearedReason = "money") =>
+  reason === "names"
+    ? `Check cleared: names were corrected after ${by} checked it. An admin must check again.`
+    : `Check cleared: the money changed after ${by} checked it. An admin must check again.`;
 /** "Yesterday closed with 12,000.00. Use this" or "Sat 10 Oct closed with 12,000.00. Use this" (+ " (not checked yet)") */
 export const hintLabel = (when: string, amount: string, checked: boolean) => `${when} closed with ${amount}${checked ? "" : " (not checked yet)"}. Use this`;
 /** "Save Wed 14 Oct 2026?" */
