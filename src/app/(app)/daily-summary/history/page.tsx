@@ -15,7 +15,6 @@ import { Chip } from "../day-parts";
 export const metadata = { title: "Daily Summary history" };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const MAX_ROWS = 31;
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
@@ -39,7 +38,7 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
   // the months that can hold saved days (this one and the three before it), plus the one being looked at
   const months = [current, shiftMonth(current, -1), shiftMonth(current, -2), shiftMonth(current, -3)].filter((m) => m >= oldest);
   if (!months.includes(h.month)) months.push(h.month);
-  const rows = h.rows.slice(0, MAX_ROWS);
+  const rows = h.rows;
 
   return (
     <div className="mx-auto w-full max-w-[720px] space-y-4 pb-8">

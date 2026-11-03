@@ -51,7 +51,8 @@ export type RefusalReason =
   | "numbers-moved"
   | "busy"
   | "snapshot"
-  | "corrupt";
+  | "corrupt"
+  | "sign-in";
 
 export type SaveOutcome =
   | { ok: true; date: string; version: number; kind: SaveKind; changes: ChangeItem[]; purged: number }
@@ -126,7 +127,7 @@ const versionInclude = { bankLines: { orderBy: { position: "asc" as const } }, c
 type VersionRow = Prisma.DailySummaryVersionGetPayload<{ include: typeof versionInclude }>;
 
 const storedLines = (v: VersionRow): StoredBankLine[] =>
-  v.bankLines.map((b) => ({ cents: columnToCents(b.amount), time: b.time, slip: b.slip, note: b.note, recordedById: b.recordedById, recordedAt: b.recordedAt }));
+  v.bankLines.map((b) => ({ cents: columnToCents(b.amount), time: b.time, slip: b.slip, note: b.note, recordedById: b.recordedById, recordedByName: b.recordedByName, recordedAt: b.recordedAt }));
 
 const conflictInfo = (v: VersionRow): ConflictInfo => ({
   version: v.version,
@@ -158,8 +159,13 @@ const figures = (s: Snapshot) => ({ collected: decimalToCents(s.report.totalColl
 
 /** An ACTIVE ADMIN or STAFF user, looked up on the server. A client-supplied id is only ever a key into this. */
 async function findDoneBy(id: string): Promise<DoneBy | null> {
-  const u = await db.user.findFirst({ where: { id, active: true, role: { in: ["ADMIN", "STAFF"] } }, select: userSelect });
+  const u = await findOperationalUser(id);
   return u ? { id: u.id, name: nameOf(u) } : null;
+}
+
+/** The signed-in person, looked up on the server: an ACTIVE account that still holds a role that may use this screen. */
+async function findOperationalUser(id: string) {
+  return db.user.findFirst({ where: { id, active: true, role: { in: ["ADMIN", "STAFF"] } }, select: userSelect });
 }
 
 // ---- retention (lazy) ----
@@ -200,6 +206,10 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
 
   const doneBy = await findDoneBy(p.doneById);
   if (!doneBy) return refuse("done-by", MESSAGE.doneBy);
+  // The login that taps Save is looked up too (as markChecked does): it is stored by name, and never under a made-up one.
+  const saver = await findOperationalUser(actor.id);
+  if (!saver) return refuse("sign-in", MESSAGE.signIn);
+  const savedByName = nameOf(saver);
 
   // The server's own numbers, read before the transaction. The sheet's figures are only compared with them.
   let fresh: Snapshot | null = null;
@@ -250,7 +260,7 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
           snapshot = fresh!;
           snapshotJson = snapshot as unknown as Prisma.InputJsonValue;
           bringForwardCents = p.bringForwardCents;
-          lines = matchBankLines([], p.bank, doneBy.id, now).lines;
+          lines = matchBankLines([], p.bank, doneBy, now).lines;
           items = changesForSave(doneBy.name);
           preparedBy = doneBy;
         } else {
@@ -276,7 +286,7 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
             snapshotJson = current.snapshot as Prisma.InputJsonValue;
             snapshotSchema = current.snapshotSchema; // a copy keeps the schema number of the row it was copied from
             bringForwardCents = p.bringForwardCents;
-            const match = matchBankLines(prevLines, p.bank, doneBy.id, now);
+            const match = matchBankLines(prevLines, p.bank, doneBy, now);
             lines = match.lines;
             items = changesForEdit({
               by: doneBy.name,
@@ -329,6 +339,7 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
             preparedById: preparedBy.id,
             preparedByName: preparedBy.name,
             savedById: actor.id,
+            savedByName,
             bankLines: {
               create: lines.map((l, i) => ({
                 position: i + 1,
@@ -337,6 +348,7 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
                 slip: l.slip,
                 note: l.note,
                 recordedById: l.recordedById,
+                recordedByName: l.recordedByName,
                 recordedAt: l.recordedAt,
               })),
             },
@@ -353,7 +365,12 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
   } catch (e) {
     if (isBusyError(e)) return refuse("busy", MESSAGE.busy);
     if (isUniqueViolation(e)) return refuse("conflict", "Someone saved this day while you were working. Reload it and try again.");
-    if (isForeignKeyViolation(e)) return refuse("conflict", MESSAGE.noDay); // the day was purged between our read and our write
+    if (isForeignKeyViolation(e)) {
+      // "No longer saved" is only true when the day really is gone (purged between our read and our write). A first save has no day to lose;
+      // any other foreign-key failure is a login that no longer exists, and the message says so.
+      const gone = p.baseVersion > 0 && (await db.dailySummaryDay.findUnique({ where: { date: dateValue }, select: { id: true } })) === null;
+      return gone ? refuse("conflict", MESSAGE.noDay) : refuse("sign-in", MESSAGE.signIn);
+    }
     throw e;
   }
 }
@@ -380,7 +397,7 @@ export async function markCheckedAs(actor: Actor, raw: unknown): Promise<CheckOu
   // the tapper is never stored under a made-up name.
   const admin = await db.user.findFirst({ where: { id: adminId, active: true, role: "ADMIN" }, select: userSelect });
   if (!admin) return refuse("not-admin", "Choose an active admin from the list.");
-  const marker = await db.user.findFirst({ where: { id: actor.id, active: true }, select: userSelect });
+  const marker = await findOperationalUser(actor.id);
   if (!marker) return refuse("sign-in", MESSAGE.signIn);
   const markedByName = nameOf(marker);
   const checkedByName = nameOf(admin);
@@ -417,7 +434,10 @@ export async function markCheckedAs(actor: Actor, raw: unknown): Promise<CheckOu
   } catch (e) {
     if (isBusyError(e)) return refuse("busy", MESSAGE.checkBusy);
     if (isUniqueViolation(e)) return refuse("already-checked", "Already checked.");
-    if (isForeignKeyViolation(e)) return refuse("not-saved", MESSAGE.noDay); // purged between our read and our write
+    if (isForeignKeyViolation(e)) {
+      const gone = (await db.dailySummaryDay.findUnique({ where: { date: dateValue }, select: { id: true } })) === null;
+      return gone ? refuse("not-saved", MESSAGE.noDay) : refuse("sign-in", MESSAGE.signIn);
+    }
     throw e;
   }
 }
@@ -468,7 +488,10 @@ export type SavedDayRead = {
  */
 export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snapshot | null): Promise<SavedDayRead> {
   assertOperational(actor);
-  const date = resolveDay(rawDate, colomboNow().date);
+  const today = colomboNow().date;
+  const date = resolveDay(rawDate, today);
+  // Older than the retention window: the same rule as History. It opens as an unsaved day (live numbers), whatever a delayed purge has not removed yet.
+  if (isExpired(date, today)) return { date, saved: null, unreadable: false, liveDiffs: [], liveUnreadable: false, hint: null };
   const day = await db.dailySummaryDay.findUnique({
     where: { date: colomboDateValue(date) },
     select: {
@@ -479,8 +502,8 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
         select: {
           id: true, version: true, kind: true, savedAt: true, bringForward: true, collected: true, deductions: true, shouldBeInDrawer: true, bankTotal: true,
           leftInDrawer: true, net: true, changes: true, snapshotSchema: true, doneById: true, doneByName: true, preparedById: true, preparedByName: true,
-          savedBy: { select: userSelect },
-          bankLines: { orderBy: { position: "asc" }, select: { position: true, time: true, amount: true, slip: true, note: true, recordedById: true, recordedAt: true, recordedBy: { select: userSelect } } },
+          savedByName: true,
+          bankLines: { orderBy: { position: "asc" }, select: { position: true, time: true, amount: true, slip: true, note: true, recordedById: true, recordedByName: true, recordedAt: true } },
           check: true,
         },
       },
@@ -531,11 +554,11 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
         snapshot,
         bank: v.bankLines.map((b) => ({
           position: b.position, time: b.time, cents: columnToCents(b.amount), slip: b.slip, note: b.note,
-          recordedById: b.recordedById, recordedByName: nameOf(b.recordedBy), recordedAt: b.recordedAt.toISOString(),
+          recordedById: b.recordedById, recordedByName: b.recordedByName, recordedAt: b.recordedAt.toISOString(),
         })),
         preparedBy: { id: v.preparedById, name: v.preparedByName },
         doneBy: { id: v.doneById, name: v.doneByName },
-        savedByName: nameOf(v.savedBy),
+        savedByName: v.savedByName,
         check: v.check && {
           checkedById: v.check.checkedById, checkedByName: v.check.checkedByName, markedById: v.check.markedById, markedByName: v.check.markedByName,
           checkedAt: v.check.checkedAt.toISOString(), carriedFromVersion: v.check.carriedFromVersion,
@@ -543,7 +566,7 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
         overBankedBy: over > 0 ? over : null,
         checkCleared,
         log: day.versions.map((x) => ({
-          version: x.version, kind: x.kind, savedAt: x.savedAt.toISOString(), doneByName: x.doneByName, savedByName: nameOf(x.savedBy), items: parseChanges(x.changes),
+          version: x.version, kind: x.kind, savedAt: x.savedAt.toISOString(), doneByName: x.doneByName, savedByName: x.savedByName, items: parseChanges(x.changes),
           check: x.check && { checkedByName: x.check.checkedByName, markedByName: x.check.markedByName, checkedAt: x.check.checkedAt.toISOString(), carriedFromVersion: x.check.carriedFromVersion },
         })),
       };
@@ -553,9 +576,9 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
     }
   }
 
-  // The hint is only useful while the bring-forward is still empty: an unsaved day, or a saved one with no bring-forward.
+  // The hint belongs to an UNSAVED day only (a saved day has its own bring-forward, and an unreadable one shows no hint).
   let hint: Hint | null = null;
-  if (saved === null || saved.cash.bringForward === 0) hint = await findHint(date);
+  if (saved === null && !unreadable) hint = await findHint(date);
   return { date, saved, unreadable, liveDiffs, liveUnreadable, hint };
 }
 
@@ -580,6 +603,9 @@ async function findHint(date: string): Promise<Hint | null> {
   );
 }
 
+/** A month holds at most 31 days and a day has one saved row, so this cap never bites today; it is the stated limit, and testable with a lower one. */
+export const HISTORY_MAX_ROWS = 31;
+
 export type HistoryRow = { date: string; version: number; preparedByName: string; doneByName: string; savedAt: string; collected: number; net: number; checked: boolean };
 export type HistoryRead = { month: string; rows: HistoryRow[]; purged: number };
 
@@ -593,7 +619,7 @@ export function resolveMonth(raw: unknown, todayYmd: string): string {
 }
 
 /** Purge first, then read: the page never lists a day the same request deletes, and the query itself never returns an expired day. */
-export async function loadHistoryAs(actor: Actor, rawMonth: unknown): Promise<HistoryRead> {
+export async function loadHistoryAs(actor: Actor, rawMonth: unknown, maxRows: number = HISTORY_MAX_ROWS): Promise<HistoryRead> {
   assertOperational(actor);
   const today = colomboNow().date;
   const purged = await tryPurge(); // a failure is logged and ignored; the query below still filters expired days
@@ -619,5 +645,5 @@ export async function loadHistoryAs(actor: Actor, rawMonth: unknown): Promise<Hi
     if (!v || isExpired(date, today)) return [];
     return [{ date, version: v.version, preparedByName: v.preparedByName, doneByName: v.doneByName, savedAt: v.savedAt.toISOString(), collected: columnToCents(v.collected), net: columnToCents(v.net), checked: v.check !== null }];
   });
-  return { month, rows, purged };
+  return { month, rows: rows.slice(0, maxRows), purged };
 }

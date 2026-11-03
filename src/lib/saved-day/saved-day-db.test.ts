@@ -625,6 +625,61 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.equal((await A.loadSavedDay("garbage")).date, "2026-11-02", "an unusable date reads as today (a read never throws)");
   });
 
+  test("F6: names are FROZEN: a saved day, its log and its deposits print the names as they were when written, whatever the accounts are called later", async () => {
+    const who = await db.user.create({ data: { username: "frozen-before", passwordHash: "x", role: "STAFF" } });
+    const date = await makeDay();
+    as("STAFF", who.id);
+    assert.ok((await save(date, who.id, { bank: [line("10.00", "08:00", "S", "n")] })).ok);
+    const v = (await newest(date));
+    assert.equal(v.savedByName, "frozen-before", "stored on the version");
+    assert.deepEqual(v.bankLines.map((b) => b.recordedByName), ["frozen-before"], "stored on the deposit");
+    await db.user.update({ where: { id: who.id }, data: { username: "renamed-later" } });
+    staff();
+    const view = await A.loadSavedDay(date);
+    assert.equal(view.saved?.savedByName, "frozen-before");
+    assert.deepEqual(view.saved?.bank.map((b) => b.recordedByName), ["frozen-before"]);
+    assert.deepEqual(view.saved?.log.map((l) => l.savedByName), ["frozen-before"]);
+    // an edit by someone else carries the ORIGINAL frozen recorder name, and its own version is frozen as well
+    assert.ok((await edit(date, 1, w.admin.id, { bringForward: "1.00", bank: [line("10.00", "08:00", "S", "n")] })).ok);
+    const v2 = await newest(date);
+    assert.equal(v2.savedByName, w.staff.username);
+    assert.deepEqual(v2.bankLines.map((b) => b.recordedByName), ["frozen-before"], "a kept line keeps its frozen recorder name");
+  });
+
+  test("F10: a saved day older than the 3-month cutoff opens as an UNSAVED day (live data), whatever a delayed purge has not removed yet", async () => {
+    await db.dailySummaryDay.deleteMany();
+    const old = "2026-07-20"; // today is 2 Nov: the cutoff is 2 Aug
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${old}T04:00:00Z`) } });
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save(old, w.admin.id)).ok);
+    });
+    staff();
+    // the purge has not run: the row is still in the table, and the read must not show it
+    assert.ok(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(old) } }));
+    const read = await A.loadSavedDay(old);
+    assert.deepEqual([read.saved, read.unreadable, read.hint, read.liveDiffs], [null, false, null, []]);
+    await db.dailySummaryDay.deleteMany();
+  });
+
+  test("F10: the bring-forward hint is looked up for an UNSAVED day only (a saved or unreadable day costs no hint query)", async () => {
+    const saved = await savedDay();
+    const unsaved = await makeDay();
+    const delegate = db.dailySummaryDay as unknown as Record<string, (...a: unknown[]) => unknown>;
+    const realFind = delegate.findMany;
+    let calls = 0;
+    delegate.findMany = function (this: unknown, ...a: unknown[]) { calls++; return realFind.apply(this, a); };
+    try {
+      staff();
+      await A.loadSavedDay(saved);
+      assert.equal(calls, 0, "a saved day: no hint query");
+      await A.loadSavedDay(unsaved);
+      assert.equal(calls, 1, "an unsaved day: one hint query");
+    } finally {
+      delegate.findMany = realFind;
+    }
+  });
+
   test("'Check cleared' is derived from the log: shown after a money change cleared a check, gone once the day is checked again, never for a day that was never checked", async () => {
     const never = await savedDay();
     assert.equal((await A.loadSavedDay(never)).saved?.checkCleared, null);
@@ -728,19 +783,74 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     await db.dailySummaryDay.deleteMany({ where: { date: colomboDateValue(day) } });
   });
 
-  test("A4: a day the purge deletes between our read and our write is a friendly refusal ('no longer saved'), not a thrown foreign-key error", async () => {
+  /**
+   * A purge that COMMITS in the middle of a request: a trigger on the insert deletes the day through a second connection (dblink), so the
+   * deletion is committed before this transaction's own foreign-key check, exactly like a purge running beside it. (A delete inside the same
+   * transaction would be rolled back with it, and the day would still be there afterwards.) Skipped, with the reason, where dblink is missing.
+   */
+  async function withCommittedPurge<T>(table: "DailySummaryCheck", fn: () => Promise<T>, t: { skip: (m: string) => void }): Promise<T | null> {
+    try {
+      await db.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS dblink`);
+    } catch (e) {
+      t.skip(`dblink is not available on this test server: ${(e as Error).message}`);
+      return null;
+    }
+    // Only the check can lose its day this way: a save or edit holds the day's row (and its advisory lock), so a purge cannot delete the day under it
+    // (that case is a version-count conflict, not a foreign-key failure).
+    const body = `PERFORM dblink_exec('dbname=' || current_database() || ' user=' || current_user, format('DELETE FROM "DailySummaryDay" WHERE id = (SELECT "dayId" FROM "DailySummaryVersion" WHERE id = %s)', NEW."versionId")); RETURN NEW;`;
+    return withTrigger("ds_test_purge_race", "BEFORE INSERT", table, body, fn);
+  }
+
+  test("A4: a day the purge deletes between our read and our write is a friendly refusal ('no longer saved'), not a thrown foreign-key error", async (t) => {
     const day = await savedDay();
     admin();
-    const r = await withTrigger(
-      "ds_test_purge_race",
-      "BEFORE INSERT",
-      "DailySummaryCheck",
-      `DELETE FROM "DailySummaryDay" WHERE id = (SELECT "dayId" FROM "DailySummaryVersion" WHERE id = NEW."versionId"); RETURN NEW;`,
-      () => check(day, 1, w.admin.id),
-    );
+    const r = await withCommittedPurge("DailySummaryCheck", () => check(day, 1, w.admin.id), t);
+    if (r === null) return;
     assert.ok(!r.ok && r.reason === "not-saved", JSON.stringify(r));
     if (!r.ok) assert.equal(r.message, "This day is no longer saved (saved details are kept for 3 months). Nothing was changed.");
     assert.equal(r.values.checkedById, w.admin.id);
+    assert.equal(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(day) } }), null, "the purge really committed");
+  });
+
+  test("F9: a foreign-key failure while the day is still there is NOT reported as 'no longer saved'", async () => {
+    const date = await makeDay();
+    const doneBy = (await db.user.create({ data: { username: "ghost-staff", passwordHash: "x", role: "STAFF" } })).id;
+    staff();
+    // the Done by login vanishes after the lookup: simulate with a trigger that removes it just before the version row is written
+    const r = await withTrigger(
+      "ds_test_vanish_user",
+      "BEFORE INSERT",
+      "DailySummaryVersion",
+      `DELETE FROM "User" WHERE id = '${doneBy}'; RETURN NEW;`,
+      () => save(date, doneBy),
+    );
+    assert.ok(!r.ok, JSON.stringify(r));
+    if (!r.ok) {
+      assert.notEqual(r.reason, "conflict");
+      assert.ok(!r.message.includes("no longer saved"), r.message);
+    }
+    assert.equal(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(date) } }), null, "nothing was written");
+  });
+
+  test("F9: saving needs the signed-in user to exist and be active ADMIN or STAFF; the refusal says so and writes nothing", async () => {
+    const date = await makeDay();
+    const base = await counts();
+    for (const [role, id] of [["STAFF", "a-user-that-does-not-exist"], ["STAFF", u.inactiveStaff.id], ["ADMIN", u.inactiveAdmin.id], ["STAFF", u.teacher.id]] as const) {
+      as(role, id);
+      const r = await save(date, w.admin.id);
+      assert.ok(!r.ok && r.reason === "sign-in", `${role} ${id}: ${JSON.stringify(r)}`);
+      if (!r.ok) assert.match(r.message, /sign-in/);
+    }
+    assert.deepEqual(await counts(), base);
+  });
+
+  test("F9: the person who taps Check must still hold a role that may use this screen (a TEACHER login that was once staff is refused)", async () => {
+    const day = await savedDay();
+    const base = await counts();
+    as("STAFF", u.teacher.id); // the session says STAFF, the account row says TEACHER
+    const r = await check(day, 1, w.admin.id);
+    assert.ok(!r.ok && r.reason === "sign-in", JSON.stringify(r));
+    assert.deepEqual(await counts(), base);
   });
 
   test("A6: when the signed-in user's row is missing or deactivated, markChecked refuses; the tapper is never stored as 'unknown'", async () => {
@@ -816,7 +926,49 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     for (const junk of ["", "2026-13", "9999-01", "1999-12", "x", null, undefined, 5, "2026-1"]) assert.equal((await A.loadHistory(junk)).month, "2026-11", `junk ${String(junk)}`);
   });
 
-  test("A10: History purges FIRST and the query itself never returns an expired day, even when the purge fails", async () => {
+  test("History cap: only the newest rows up to the limit are returned (the cap is testable with a lower limit)", async () => {
+    await db.dailySummaryDay.deleteMany();
+    const days = ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"];
+    for (const d of days) {
+      await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${d}T04:00:00Z`) } });
+      staff();
+      assert.ok((await save(d, w.admin.id)).ok);
+    }
+    staff();
+    const all = await ST.loadHistoryAs({ id: w.staff.id, role: "STAFF" }, "2026-10");
+    assert.deepEqual(all.rows.map((r) => r.date), [...days].reverse(), "under the default cap nothing is cut");
+    const capped = await ST.loadHistoryAs({ id: w.staff.id, role: "STAFF" }, "2026-10", 3);
+    assert.deepEqual(capped.rows.map((r) => r.date), ["2026-10-05", "2026-10-04", "2026-10-03"], "the newest three");
+    assert.equal(ST.HISTORY_MAX_ROWS, 31);
+    await db.dailySummaryDay.deleteMany();
+  });
+
+  test("A10: History purges FIRST: the order is the only difference (a recorder sees deleteMany before any read of the days)", async () => {
+    await db.dailySummaryDay.deleteMany();
+    const old = "2026-07-20";
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${old}T04:00:00Z`) } });
+    await withClock("2026-08-05T06:00:00Z", async () => {
+      staff();
+      assert.ok((await save(old, w.admin.id)).ok);
+    });
+    staff();
+    const order: string[] = [];
+    const delegate = db.dailySummaryDay as unknown as Record<string, (...a: unknown[]) => unknown>;
+    const realDelete = delegate.deleteMany;
+    const realFind = delegate.findMany;
+    delegate.deleteMany = function (this: unknown, ...a: unknown[]) { order.push("purge"); return realDelete.apply(this, a); };
+    delegate.findMany = function (this: unknown, ...a: unknown[]) { order.push("read"); return realFind.apply(this, a); };
+    try {
+      await A.loadHistory("2026-11");
+    } finally {
+      delegate.deleteMany = realDelete;
+      delegate.findMany = realFind;
+    }
+    assert.deepEqual(order.slice(0, 2), ["purge", "read"], "the purge statement comes before the first read of the days");
+    await db.dailySummaryDay.deleteMany();
+  });
+
+  test("A10: the History query itself never returns an expired day, even when the purge fails", async () => {
     await db.dailySummaryDay.deleteMany();
     const old = "2026-07-20";
     await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "1300.00", takenById: w.staff.id, paidAt: new Date(`${old}T04:00:00Z`) } });

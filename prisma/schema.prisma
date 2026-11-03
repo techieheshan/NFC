@@ -679,6 +679,7 @@ model DailySummaryVersion {
   // The signed-in user who tapped Save (audit).
   savedBy   User     @relation("DsSavedBy", fields: [savedById], references: [id])
   savedById String
+  savedByName String // frozen text: the login that tapped Save, by name at that moment
   savedAt   DateTime @default(now())
 
   bankLines DailySummaryBankLine[]
@@ -701,6 +702,7 @@ model DailySummaryBankLine {
   recordedBy   User     @relation("DsBankRecordedBy", fields: [recordedById], references: [id])
   recordedById String
   recordedAt   DateTime
+  recordedByName String // frozen text: the saved day prints this, never a live lookup
 
   @@unique([versionId, position])
 }

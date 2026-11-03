@@ -130,9 +130,9 @@ test("describeChange: a long re-save list is cut to five and says how many more"
 });
 
 test("changesForEdit: 'edited by' first, then only what changed, in a fixed order; nothing for what stayed", () => {
-  const prev = [{ ...L(500_000, "09:15", "A"), recordedById: "u1", recordedAt: new Date(0) }, { ...L(100_000, "11:00"), recordedById: "u1", recordedAt: new Date(0) }];
+  const prev = [{ ...L(500_000, "09:15", "A"), recordedById: "u1", recordedByName: "U One", recordedAt: new Date(0) }, { ...L(100_000, "11:00"), recordedById: "u1", recordedByName: "U One", recordedAt: new Date(0) }];
   const next = [L(500_000, "09:45", "B"), L(250_000, "12:00")];
-  const match = matchBankLines(prev, next, "u2", new Date(1));
+  const match = matchBankLines(prev, next, { id: "u2", name: "U Two" }, new Date(1));
   const items = changesForEdit({ by: "Thilini", prevBf: 100_000, nextBf: 150_000, match, check: { cleared: { by: "Nadeesha", at: "2026-11-02T10:00:00.000Z" } } });
   assert.deepEqual(items.map((i) => i.t), ["edited-by", "bf", "bank-", "bank~", "bank+", "check-cleared"]);
   const same = changesForEdit({ by: "T", prevBf: 5, nextBf: 5, match: { added: [], removed: [], edited: [] }, check: { kept: "Nadeesha" } });

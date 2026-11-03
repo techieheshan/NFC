@@ -259,23 +259,25 @@ describe("Release 2 screens and document, rendered against a real database", { s
     for (const junk of ["x", "2026-13", "9999-01", ["2026-09", "2026-08"]]) assert.ok(plain(await html(historyPage, { month: junk })).includes("November 2026"), String(junk));
   });
 
-  test("History shows at most 31 rows", async () => {
+  test("History lists one row per saved day of THAT month only (a day of the month before or after never appears)", async () => {
     await db.dailySummaryDay.deleteMany();
     const month = "2026-10";
-    const days = Array.from({ length: 31 }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
+    const days = [...Array.from({ length: 31 }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`), "2026-09-30", "2026-11-01"];
     const staffId = w.staff.id;
     for (const d of days) {
       const day = await db.dailySummaryDay.create({ data: { date: colomboDateValue(d), currentVersion: 1 } });
       await db.dailySummaryVersion.create({
         data: {
           dayId: day.id, version: 1, kind: "SAVE", bringForward: "0.00", collected: "1.00", deductions: "0.00", shouldBeInDrawer: "1.00", bankTotal: "0.00", leftInDrawer: "1.00", net: "1.00",
-          snapshot: {}, snapshotSchema: 1, changes: [], doneById: staffId, doneByName: "Sadun Staff", preparedById: staffId, preparedByName: "Sadun Staff", savedById: staffId,
+          snapshot: {}, snapshotSchema: 1, changes: [], doneById: staffId, doneByName: "Sadun Staff", preparedById: staffId, preparedByName: "Sadun Staff", savedById: staffId, savedByName: "Sadun Staff",
         },
       });
     }
     as("STAFF", staffId);
     const h = await html(historyPage, { month });
-    assert.equal((h.match(/href="\/daily-summary\?date=2026-10-/g) ?? []).length, 31);
+    const hrefs = h.match(/href="\/daily-summary\?date=[0-9-]+/g) ?? [];
+    assert.equal(hrefs.length, 31);
+    assert.ok(hrefs.every((x) => x.includes("date=2026-10-")), "no day of another month");
     await db.dailySummaryDay.deleteMany();
   });
 

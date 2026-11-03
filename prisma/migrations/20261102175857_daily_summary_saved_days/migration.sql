@@ -37,6 +37,7 @@ CREATE TABLE "DailySummaryVersion" (
     "preparedById" TEXT NOT NULL,
     "preparedByName" TEXT NOT NULL,
     "savedById" TEXT NOT NULL,
+    "savedByName" TEXT NOT NULL,
     "savedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "DailySummaryVersion_pkey" PRIMARY KEY ("id")
@@ -53,6 +54,7 @@ CREATE TABLE "DailySummaryBankLine" (
     "note" TEXT NOT NULL DEFAULT '',
     "recordedById" TEXT NOT NULL,
     "recordedAt" TIMESTAMP(3) NOT NULL,
+    "recordedByName" TEXT NOT NULL,
 
     CONSTRAINT "DailySummaryBankLine_pkey" PRIMARY KEY ("id")
 );
