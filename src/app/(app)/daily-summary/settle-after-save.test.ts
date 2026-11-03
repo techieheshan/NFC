@@ -22,7 +22,7 @@ const page = src("page.tsx");
 
 test("F2: both sheets tell the screen the write went through BEFORE they close and refresh", () => {
   for (const [name, s] of [["save-sheet", save], ["check-sheet", check]] as const) {
-    assert.match(s, /if \(r\.ok\) \{\s*onSaved\(\);\s*router\.refresh\(\);\s*onClose\(\);/, `${name}: onSaved() runs first on success`);
+    assert.match(s, /if \(r\.ok\) \{\s*onSaved\(\);\s*onClose\(\);/, `${name}: onSaved() runs first on success (the screen asks for the refresh)`);
     const refusal = s.slice(s.indexOf("} else {", s.indexOf("if (r.ok)")));
     assert.ok(!refusal.slice(0, 120).includes("onSaved"), `${name}: a refusal never settles the screen`);
   }
@@ -31,8 +31,8 @@ test("F2: both sheets tell the screen the write went through BEFORE they close a
 test("F2: every sheet a screen opens is wired to settle that screen", () => {
   // each JSX element, from its tag to its closing "/>" at the end of a line
   const element = (s: string, tag: string) => (s.match(new RegExp(`<${tag}\\b[\\s\\S]*?\\/>`, "g")) ?? []);
-  const settles = (el: string) => el.includes("onSaved={() => setSettled(true)}");
-  assert.deepEqual(element(day, "SaveSheet").map(settles), [true], "the draft's Save sheet");
+  const settles = (el: string) => el.includes("onSaved={() => { setSettled(true); router.refresh(); }}");
+  assert.deepEqual(element(day, "SaveSheet").map((el) => el.includes("onSaved={() => startRefresh(() => router.refresh())}")), [true], "the draft's Save sheet refreshes inside the transition that keeps its buttons off");
   assert.deepEqual(element(saved, "SaveSheet").map(settles), [true], "the re-save sheet");
   assert.deepEqual(element(saved, "CheckSheet").map(settles), [true], "the check sheet");
 });
@@ -62,4 +62,11 @@ test("F2: every action on the saved screen is off while settled", () => {
 
 test("F2: the saved screen is a fresh mount when the version OR the check changes (so settled resets by itself)", () => {
   assert.match(page, /key=\{`\$\{b\.date\}-v\$\{read\.saved\.version\}-\$\{read\.saved\.check \? "checked" : "open"\}`\}/);
+});
+
+test("item 6: the draft screen's `settled` is the refresh transition's own pending state, so it ENDS with the refresh and the buttons never stay off when the day is a draft again", () => {
+  assert.match(day, /const \[settled, startRefresh\] = useTransition\(\);/, "derived from useTransition");
+  assert.ok(!/setSettled/.test(day), "no flag is set and left set");
+  assert.ok(!/useState\(false\)[^\n]*\n[^\n]*settled/.test(day), "and it is not a useState flag");
+  assert.match(day, /startRefresh\(\(\) => router\.refresh\(\)\)/, "the refresh runs inside that transition");
 });

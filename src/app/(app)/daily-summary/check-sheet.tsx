@@ -42,7 +42,6 @@ export function CheckSheet({
       setCheckedById(r.values.checkedById); // echoed on every outcome
       if (r.ok) {
         onSaved();
-        router.refresh();
         onClose();
       } else {
         setRefusal(r);

@@ -303,7 +303,7 @@ export function SavedDayScreen({
         />
       )}
       {sheet === "check" && (
-        <CheckSheet date={date} version={saved.version} shouldBe={cash.shouldBeInDrawer} bankTotal={cash.bankTotal} left={cash.leftInDrawer} admins={admins} onClose={() => setSheet(null)} onSaved={() => setSettled(true)} />
+        <CheckSheet date={date} version={saved.version} shouldBe={cash.shouldBeInDrawer} bankTotal={cash.bankTotal} left={cash.leftInDrawer} admins={admins} onClose={() => setSheet(null)} onSaved={() => { setSettled(true); router.refresh(); }} />
       )}
       {sheet === "diff" && <LiveDiffSheet diffs={liveDiffs} savedLeft={cash.leftInDrawer} liveLeft={liveLeft} onClose={() => setSheet(null)} />}
       {sheet === "resave" && (
@@ -314,7 +314,7 @@ export function SavedDayScreen({
           bringForward={cash.bringForward > 0 ? (cash.bringForward / 100).toFixed(2) : ""}
           bank={saved.bank.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note }))}
           onClose={() => setSheet(null)}
-          onSaved={() => setSettled(true)}
+          onSaved={() => { setSettled(true); router.refresh(); }}
         />
       )}
     </div>

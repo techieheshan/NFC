@@ -57,7 +57,6 @@ export function SaveSheet({
       });
       if (r.ok) {
         onSaved();
-        router.refresh();
         onClose();
       } else {
         setRefusal(r);

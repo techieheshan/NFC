@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useReducer, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Download, History, Landmark, Pencil, Printer, Save, ShieldCheck } from "lucide-react";
 
 import { amountErrorText, decimalToCents, formatCents, parseTypedAmount } from "@/lib/cents";
@@ -56,8 +57,11 @@ export function DayScreen({
   const [editingBf, setEditingBf] = useState(false);
   const [bankSheet, setBankSheet] = useState(false);
   const [saveSheet, setSaveSheet] = useState(false);
-  // A save went through and the screen has not shown it yet: every action stays off, so a quick second tap cannot be a false conflict.
-  const [settled, setSettled] = useState(false);
+  // A save went through and the screen has not shown it yet: every action stays off while the refresh is in flight, so a quick second tap
+  // cannot be a false conflict. It is the refresh's own pending state, so it ENDS with the refresh: if the day is a draft again afterwards
+  // (a saved day that crosses the retention cutoff is read as unsaved), this same screen stays and its buttons come back.
+  const router = useRouter();
+  const [settled, startRefresh] = useTransition();
 
   const bfParsed = bfText.trim() === "" ? ({ ok: true, cents: 0 } as const) : parseTypedAmount(bfText);
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
@@ -219,7 +223,7 @@ export function DayScreen({
           bankCount={bank.length} doners={doners}
           bringForward={bfCents > 0 ? (bfCents / 100).toFixed(2) : ""} bank={bank}
           onClose={() => setSaveSheet(false)}
-          onSaved={() => setSettled(true)}
+          onSaved={() => startRefresh(() => router.refresh())}
         />
       )}
     </div>
