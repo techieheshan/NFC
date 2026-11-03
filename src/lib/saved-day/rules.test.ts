@@ -12,7 +12,7 @@ import { decideBase } from "./conflict";
 import { chooseHint, hintWindow, HINT_DAYS } from "./hint";
 import { DS_LOCK_NAMESPACE, LOCK_WAIT_MS, lockKey, TX_MAX_WAIT_MS, TX_TIMEOUT_MS } from "./lock";
 import { isExpired, retentionCutoff } from "./retention";
-import { parseSaveInput } from "./validate";
+import { NOTE_MAX, parseSaveInput, SLIP_MAX } from "./validate";
 
 // ---- retention ----
 test("retentionCutoff: the same day three calendar months earlier", () => {
@@ -217,14 +217,30 @@ test("parseSaveInput: not an object, wrong types, an overlong value, a fractiona
   }
 });
 
-test("parseSaveInput: slip and note are cleaned and cut exactly as Release 1's address parser does", () => {
-  const nasty = "  a\u0000b\tc\n" + "x".repeat(200);
+test("parseSaveInput: slip and note are cleaned of control characters exactly as Release 1's address parser does (within the limits)", () => {
+  const nasty = "  a\u0000b\tc\n  d  ";
   const r = parseSaveInput(input({ bank: [{ time: "09:15", amount: "12.50", slip: nasty, note: nasty }] }));
   assert.ok(r.ok);
-  const mine = r.value.bank[0];
   const theirs = parseBankLine(serializeBankLine({ cents: 1250, time: "09:15", slip: nasty, note: nasty }));
   assert.ok(theirs);
-  assert.deepEqual(mine, theirs, "the same line comes out of both parsers");
+  assert.deepEqual(r.value.bank[0], theirs, "the same line comes out of both parsers");
+});
+
+test("parseSaveInput: the slip limit is 30 and the note limit 80 (the STORED limits): at the limit it is accepted, one over is REFUSED with the field named, never silently cut", () => {
+  assert.equal(SLIP_MAX, 30);
+  assert.equal(NOTE_MAX, 80);
+  const at = parseSaveInput(input({ bank: [{ time: "09:15", amount: "1", slip: "s".repeat(30), note: "n".repeat(80) }] }));
+  assert.ok(at.ok && at.value.bank[0].slip.length === 30 && at.value.bank[0].note.length === 80);
+  const slip = parseSaveInput(input({ bank: [{ time: "09:15", amount: "1", slip: "s".repeat(31), note: "" }] }));
+  assert.ok(!slip.ok && "bank.0.slip" in slip.fieldErrors && /at most 30 characters/.test(slip.message));
+  const note = parseSaveInput(input({ bank: [{ time: "09:15", amount: "1", slip: "", note: "n".repeat(81) }] }));
+  assert.ok(!note.ok && "bank.0.note" in note.fieldErrors && /at most 80 characters/.test(note.message));
+  assert.ok(!slip.ok && slip.values.bank[0].slip.length === 30, "the echo is what the form can hold");
+  // surrounding spaces are not counted (they are trimmed), so a 30-character slip with spaces around it is accepted
+  assert.ok(parseSaveInput(input({ bank: [{ time: "09:15", amount: "1", slip: `  ${"s".repeat(30)}  `, note: "" }] })).ok);
+  // a very long paste is still a plain refusal, not "could not be read"
+  const huge = parseSaveInput(input({ bank: [{ time: "09:15", amount: "1", slip: "s".repeat(900), note: "" }] }));
+  assert.ok(!huge.ok && "bank.0.slip" in huge.fieldErrors);
 });
 
 test("parseSaveInput accepts the largest typed amounts and refuses one above", () => {

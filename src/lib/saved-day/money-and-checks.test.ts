@@ -77,6 +77,34 @@ test("matchBankLines: a line removed, another kept; two equal amounts are not ma
   assert.deepEqual(m.removed.map((l) => l.time), ["09:00"]);
 });
 
+test("matchBankLines: two deposits of the SAME amount keep their own recorders when their slips are swapped or only one changes", () => {
+  const prev = [{ ...line(100_00, "09:00", "A"), recordedById: "ann", recordedAt: T0 }, { ...line(100_00, "09:00", "B"), recordedById: "bob", recordedAt: T1 }];
+  // swapped order: each slip finds its own line
+  const swapped = matchBankLines(prev, [line(100_00, "09:00", "B"), line(100_00, "09:00", "A")], "cy", new Date("2026-11-03T00:00:00Z"));
+  assert.deepEqual(swapped.lines.map((l) => [l.slip, l.recordedById]), [["B", "bob"], ["A", "ann"]]);
+  assert.deepEqual([swapped.added.length, swapped.removed.length, swapped.edited.length], [0, 0, 0]);
+  // only the first slip changes (A -> C): the line that kept B stays bob's, and the edited one is ann's, whichever order they come in
+  for (const next of [[line(100_00, "09:00", "C"), line(100_00, "09:00", "B")], [line(100_00, "09:00", "B"), line(100_00, "09:00", "C")]]) {
+    const m = matchBankLines(prev, next, "cy", new Date("2026-11-03T00:00:00Z"));
+    assert.deepEqual(m.lines.map((l) => [l.slip, l.recordedById]).sort(), [["B", "bob"], ["C", "ann"]]);
+    assert.equal(m.edited.length, 1);
+  }
+});
+
+test("matchBankLines: among same-amount leftovers the closest line wins (most of time, slip, note equal), the earliest on a tie", () => {
+  const prev = [
+    { ...line(100_00, "08:00", "X", "n1"), recordedById: "ann", recordedAt: T0 },
+    { ...line(100_00, "12:00", "Y", "n2"), recordedById: "bob", recordedAt: T0 },
+  ];
+  // time AND note match the second line (slip differs): it is the second line that was edited
+  const m = matchBankLines(prev, [line(100_00, "12:00", "Z", "n2")], "cy", T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"]);
+  assert.deepEqual(m.removed.map((l) => l.slip), ["X"], "the first line is the one that was removed");
+  // nothing in common: the earliest line is taken
+  const t = matchBankLines(prev, [line(100_00, "23:00", "Q", "q")], "cy", T1);
+  assert.deepEqual(t.lines.map((l) => l.recordedById), ["ann"]);
+});
+
 // ---- classifyEdit ----
 const shape = (bf: number, ...bank: BankLine[]) => ({ bringForwardCents: bf, bank });
 

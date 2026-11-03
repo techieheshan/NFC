@@ -7,7 +7,7 @@ import { parseRealDate } from "@/lib/daily-summary-dates";
 /**
  * Everything a save action receives is hostile input. This reads it with the SAME rules as Release 1's typed state (an amount is
  * digits with optional commas and up to 2 decimals, never negative, never above 99,999,999.99; a bank line needs a real HH:MM and a
- * positive amount; at most 10 lines; slip and note are cleaned of control characters and cut to length), and turns it into integer
+ * positive amount; at most 10 lines; slip and note are cleaned of control characters; a slip over 30 or a note over 80 characters is REFUSED), and turns it into integer
  * cents. On a refusal it returns the sanitised `values` it was given so the form can show them again (rule 14).
  */
 
@@ -22,7 +22,7 @@ const rawSchema = z.object({
   baseVersion: z.number().int().min(0).max(1_000_000),
   doneById: z.string().max(64),
   bringForward: z.string().max(20).default(""),
-  bank: z.array(z.object({ time: z.string().max(5), amount: z.string().max(20), slip: z.string().max(300), note: z.string().max(600) })).max(50).default([]),
+  bank: z.array(z.object({ time: z.string().max(5), amount: z.string().max(20), slip: z.string().max(1000), note: z.string().max(2000) })).max(50).default([]),
   seen: z.object({ collected: z.number().int().min(-MAX_CENTS * 10).max(MAX_CENTS * 10), deductions: z.number().int().min(-MAX_CENTS * 10).max(MAX_CENTS * 10) }).optional(),
 });
 
@@ -100,7 +100,12 @@ export function parseSaveInput(raw: unknown): SaveParse {
     const amount = parseTypedAmount(b.amount);
     if (!isClockTime(b.time)) return fail("A bank deposit needs a real time (HH:MM).", { [`bank.${i}.time`]: "Not a time." });
     if (!amount.ok || amount.cents < 1) return fail("A bank deposit needs an amount above zero.", { [`bank.${i}.amount`]: "Not a valid amount." });
-    bank.push({ cents: amount.cents, time: b.time, slip: clean(b.slip, SLIP_MAX), note: clean(b.note, NOTE_MAX) });
+    // The limits are the STORED limits, and a longer text is refused, never silently cut.
+    const slip = clean(b.slip, Infinity);
+    const note = clean(b.note, Infinity);
+    if (slip.length > SLIP_MAX) return fail(`The slip no. can be at most ${SLIP_MAX} characters.`, { [`bank.${i}.slip`]: `At most ${SLIP_MAX} characters.` });
+    if (note.length > NOTE_MAX) return fail(`A bank note can be at most ${NOTE_MAX} characters.`, { [`bank.${i}.note`]: `At most ${NOTE_MAX} characters.` });
+    bank.push({ cents: amount.cents, time: b.time, slip, note });
   }
 
   // A first save is version 0 -> 1; an edit or a re-save changes a version that exists.

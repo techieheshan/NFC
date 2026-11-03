@@ -149,3 +149,38 @@ test("registered / not-paid counts are not compared (they are not on the paper a
   setPath(live.report, "courses.0.notPaid", 80);
   assert.deepEqual(diffSummaries(base, live), []);
 });
+
+// ---- A9: everything the document prints ----
+test("a course's reconcile flag, course name and teacher name are compared (they are printed)", () => {
+  const base = snapshotOf();
+  const flipped = JSON.parse(JSON.stringify(base));
+  setPath(flipped.report, "courses.0.reconciles", false);
+  const d = diffSummaries(base, flipped);
+  assert.deepEqual(d.map((x) => [x.key, x.saved, x.live]), [["course:1.reconciles", "yes", "no"]]);
+  const renamed = JSON.parse(JSON.stringify(base));
+  setPath(renamed.report, "courses.0.course", "Physics 2028");
+  assert.ok(diffSummaries(base, renamed).some((x) => x.key === "course:1.name" && x.saved === "Physics 2027" && x.live === "Physics 2028"));
+  const retaught = JSON.parse(JSON.stringify(base));
+  setPath(retaught.report, "courses.0.teacher", "Mr Z");
+  assert.ok(diffSummaries(base, retaught).some((x) => x.key === "course:1.teacher" && x.saved === "Mr A" && x.live === "Mr Z"));
+});
+
+test("a staff member's name is compared (it is printed in Collected by staff)", () => {
+  const base = snapshotOf();
+  const renamed = snapshotOf({ staff: [{ userId: "u1", name: "Sadun P.", receipts: 6, collected: "20100.00" }, { userId: "u2", name: "Thilini", receipts: 4, collected: "15000.00" }] });
+  assert.deepEqual(diffSummaries(base, renamed).map((x) => [x.key, x.saved, x.live]), [["staff:u1.name", "Sadun", "Sadun P."]]);
+});
+
+test("whether a deduction is a staff advance is compared (it changes the printed kind)", () => {
+  const base = snapshotOf();
+  const lines = base.report.deductionLines;
+  const flipped = snapshotOf({ report: { deductionLines: [lines[0], { ...lines[1], isStaffAdvance: true }] } });
+  const d = diffSummaries(base, flipped);
+  assert.equal(d.filter((x) => x.key.startsWith("deduction:")).length, 2, "the old line and the new one");
+});
+
+test("a course that exists on one side only is not asked about its name or reconcile flag", () => {
+  const zero = { courseId: 9, course: "New", teacher: "Mr Z", registered: 0, paidFull: 0, paidHalf: 0, paidQuarter: 0, notPaid: 0, free: 0, amount: "0.00", reconciles: false };
+  const base = snapshotOf();
+  assert.deepEqual(diffSummaries(base, snapshotOf({ report: { courses: [...base.report.courses, zero] } })), []);
+});
