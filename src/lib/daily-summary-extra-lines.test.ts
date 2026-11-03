@@ -3,58 +3,89 @@ import "@/test-support/server-stubs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
-import { halfAndNoChargeLines } from "@/app/(app)/daily-summary/extra-lines";
+import { ADMISSION_NOTE, includedMonthsNote, ofWhichLines, reconcileWarning, smartCardLabel } from "@/app/(app)/daily-summary/extra-lines";
 
 /*
- * Job 5: the two optional "Other income" lines are shared by the Daily Summary screen and its PDF.
- * With neither a Half nor a No-charge month the helper returns NOTHING — which is exactly what keeps the
- * screen and the PDF for today's data as they were (nothing is spread into the PDF's Other-income table,
- * no row is rendered).
+ * Daily Summary R1 (this replaces the job-5 "Half months (N): amount, included in Class fees / -" wording).
+ * The two optional lines under Class fees are INDENTED "of which" lines, from ONE helper used by the day screen,
+ * the range screen and the A4 document. With neither a Half nor a No-charge month the helper returns NOTHING, so a
+ * day without them shows no extra line anywhere.
  *
- * Review F3: the Half row's amount is already inside Class fees, so it sits in the LABEL and the Total cell
- * is "-" — nobody adding the Total column up counts it twice. The No-charge row is 0.00 and is unchanged.
+ * A Half month's amount is already inside Class fees: it is an "of which", never a figure to add. A No-charge
+ * month is 0.00 and says nothing was charged. The data object (halfMonths / noChargeMonths, omitted when none) is
+ * untouched — reports-golden.test.ts pins it.
  */
 
-test("no Half month and no No-charge month: no lines at all", () => {
-  assert.deepEqual(halfAndNoChargeLines({}), []);
-  assert.deepEqual(halfAndNoChargeLines({ halfMonths: undefined, noChargeMonths: undefined }), []);
+test("no Half month and no No-charge month: no lines and no footnote", () => {
+  assert.deepEqual(ofWhichLines({}), []);
+  assert.deepEqual(ofWhichLines({ halfMonths: undefined, noChargeMonths: undefined }), []);
+  assert.equal(includedMonthsNote({}), null);
 });
 
-test("a Half month: the amount is in the label, 'included in Class fees', and the Total cell is '-'", () => {
-  assert.deepEqual(halfAndNoChargeLines({ halfMonths: { count: 3, total: "2187.50" } }), [
-    {
-      label: "Half months (3): 2187.50, included in Class fees",
-      screenLabel: "Half months (3): 2187.50, included in Class fees",
-      count: 3,
-      total: "-",
-    },
+test("a Half month: 'of which Half months (N)' with the amount formatted, count kept", () => {
+  assert.deepEqual(ofWhichLines({ halfMonths: { count: 3, total: "2187.50" } }), [
+    { key: "half", count: 3, label: "of which Half months (3)", total: "2,187.50" },
+  ]);
+  assert.deepEqual(ofWhichLines({ halfMonths: { count: 1, total: "1250000.00" } })[0].total, "1,250,000.00");
+});
+
+test("a No-charge month: 'No-charge months (N): nothing charged', 0.00", () => {
+  assert.deepEqual(ofWhichLines({ noChargeMonths: { count: 2 } }), [
+    { key: "noCharge", count: 2, label: "No-charge months (2): nothing charged", total: "0.00" },
   ]);
 });
 
-test("the Half row never puts a money figure in the Total cell (so it cannot be added to Class fees twice)", () => {
-  for (const total of ["0.01", "1250.00", "99999.99"]) {
-    const [line] = halfAndNoChargeLines({ halfMonths: { count: 1, total } });
-    assert.equal(line.total, "-");
-    assert.ok(line.label.includes(total));
+test("both: Half first, No-charge next to it", () => {
+  const lines = ofWhichLines({ halfMonths: { count: 1, total: "1250.00" }, noChargeMonths: { count: 4 } });
+  assert.deepEqual(lines.map((l) => l.key), ["half", "noCharge"]);
+  assert.deepEqual(lines.map((l) => l.total), ["1,250.00", "0.00"]);
+});
+
+test("the document's footnote says both are INCLUDED in the amounts", () => {
+  assert.equal(
+    includedMonthsNote({ halfMonths: { count: 2, total: "2750.00" }, noChargeMonths: { count: 2 } }),
+    "Half months (2: 2,750.00) and No-charge months (2: 0.00) are included in the amounts.",
+  );
+  assert.equal(includedMonthsNote({ noChargeMonths: { count: 1 } }), "No-charge months (1: 0.00) are included in the amounts.");
+  assert.equal(includedMonthsNote({ halfMonths: { count: 1, total: "10.00" } }), "Half months (1: 10.00) are included in the amounts.");
+});
+
+test("ONE source: the day screen, the range screen and the document all take these lines from the helper", () => {
+  const root = path.join(process.cwd(), "src", "app", "(app)", "daily-summary");
+  const read = (...p: string[]) => readFileSync(path.join(root, ...p), "utf8");
+  assert.ok(read("day-screen.tsx").includes("ofWhichLines(report)"));
+  assert.ok(read("range", "page.tsx").includes("ofWhichLines(r)"));
+  const model = read("document", "model.ts");
+  assert.ok(model.includes("ofWhichLines(report)") && model.includes("includedMonthsNote(report)"));
+  for (const f of [read("day-screen.tsx"), read("range", "page.tsx"), model, read("document", "blocks.tsx")]) {
+    assert.ok(!/halfMonths\??\.total|noChargeMonths\??\.count/.test(f), "no screen reads the Half amount itself");
+    assert.ok(!f.includes("included in Class fees"), "the old wording is gone");
   }
 });
 
-test("a No-charge month is unchanged: PDF label without the count (its own column), screen label with it, total 0.00", () => {
-  assert.deepEqual(halfAndNoChargeLines({ noChargeMonths: { count: 2 } }), [
-    { label: "No charge months", screenLabel: "No charge months (2)", count: 2, total: "0.00" },
-  ]);
+test("the Smart card line reads 'Smart card replacement (N)' and Admission carries the note 'Admission includes the first smart card'", () => {
+  assert.equal(smartCardLabel(0), "Smart card replacement (0)");
+  assert.equal(smartCardLabel(3), "Smart card replacement (3)");
+  assert.equal(ADMISSION_NOTE, "Admission includes the first smart card");
 });
 
-test("both: Half first, No charge next to it", () => {
-  assert.deepEqual(halfAndNoChargeLines({ halfMonths: { count: 1, total: "1250.00" }, noChargeMonths: { count: 4 } }).map((l) => l.total), ["-", "0.00"]);
+test("ONE source for that wording: the day screen, the range screen and the document use the helpers, and no old 'Smart card (N)' label is left", () => {
+  const root = path.join(process.cwd(), "src", "app", "(app)", "daily-summary");
+  const read = (...p: string[]) => readFileSync(path.join(root, ...p), "utf8");
+  for (const f of [read("day-screen.tsx"), read("range", "page.tsx"), read("document", "blocks.tsx")]) {
+    assert.ok(f.includes("smartCardLabel(") && f.includes("ADMISSION_NOTE"), "uses the helpers");
+    assert.ok(!/`Smart card \(\$\{/.test(f), "no hand-written 'Smart card (N)' label");
+  }
+  assert.ok(!read("day-screen.tsx").includes('label="Admission and smart card"'), "the old row title is gone");
 });
 
-test("the screen and the PDF both take the label AND the total from the helper (nothing re-derives a figure there)", async () => {
-  const { readFileSync } = await import("node:fs");
-  const path = await import("node:path");
-  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "summary-screen.tsx"), "utf8");
-  assert.ok(src.includes("...halfAndNoChargeLines(report).map((l) => [l.label, l.count, l.total]),"), "PDF row");
-  assert.ok(src.includes("<Line key={l.label} label={l.screenLabel} value={l.total} muted />"), "screen row");
-  assert.ok(!/report\.halfMonths\.total/.test(src), "the screen does not read the Half amount into a Total cell itself");
+test("the reconcile warning counts the courses whose own flag says they do not reconcile, and says nothing otherwise", () => {
+  const c = (reconciles: boolean) => ({ reconciles }) as never;
+  assert.equal(reconcileWarning({ courses: [] }), null);
+  assert.equal(reconcileWarning({ courses: [c(true), c(true)] }), null);
+  assert.equal(reconcileWarning({ courses: [c(true), c(false)] }), "1 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.");
+  assert.equal(reconcileWarning({ courses: [c(false), c(false), c(true), c(false)] }), "3 row(s) do not reconcile. A payment used a tier outside Full/Half/25%, or a student's enrolment changed. Check these courses.");
 });

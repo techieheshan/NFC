@@ -163,13 +163,27 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     only narrow. Validate an enum filter (a day, a month) ONCE and use that one
     value for both the query and the grouping — junk in the URL must be
     ignored, not silently render an empty report.
-24. **The Daily Summary cash-book is print-only.** Bring-forward, Prepared by
-    and Checked by are typed each day and flow straight into the PDF — no
-    table, no carry-over, no auto-fill from yesterday. Bring-forward + Collected
-    − Deductions = Drawer total answers "what should be in the drawer",
-    which is NOT Net (the institute's profit). Both signatures are mandatory
-    before the report can be printed, and both come from active accounts:
-    preparing is STAFF, checking is ADMIN or STAFF.
+24. **The Daily Summary cash flow is typed, never stored (Release 1), and signed.**
+    Bring-forward, the money taken to the bank (up to 10 lines: amount, time, optional
+    slip no. and note), Prepared by and Checked by are TYPED on the screen and are NOT
+    in the database — no table, no carry-over, no auto-fill from yesterday. They are
+    carried in the URL (`typed-state.ts`: first value wins, amounts re-parsed as integer
+    cents, ids only as lookup keys into the offered lists), which is what brings them to
+    the A4 document and back and through a reload. The flow is
+    Bring-forward + Collected − Deductions = **Should be in the drawer**; minus **Money
+    taken to the bank** = **Left in drawer**, the suggested bring-forward for tomorrow
+    (`lib/cash-flow.ts`, cents). It replaces the old "Drawer total" and is still NOT Net
+    (the institute's profit). All collected money is cash; the person preparing the
+    summary is the one who banks it, so a bank line has no "taken by". A bank line that
+    pushes Left in drawer below zero is refused, and a document with such lines is not
+    built; a day whose deductions exceed its cash with nothing banked is NOT over-banking
+    and prints with a negative Left. Both signatures are mandatory for a single day,
+    before it can be printed or downloaded: **Prepared by is any active ADMIN or STAFF
+    account; Checked by is an active ADMIN ONLY**, enforced in `listSigners` /
+    `splitSigners` and again when the document is built (`pickSigner` against the
+    ADMIN-only list). Nothing else in the Daily Summary is admin-only. A range ("Several
+    days", view only) has no cash book and no signatures. Release 2 (a separate job) is
+    where saved days, history and stored bank deposits go; do not add them here.
 25. **One hall resolver: `hallForClassOnDate` / `classesForDate` in
     `src/lib/halls.ts`.** Where a class meets on a date is "the override for
     that class on that date, else its own default (`Schedule.defaultHallId` /
@@ -400,10 +414,14 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   `!== "NO_CHARGE"` / `=== "HALF"`.
 - **A Half month is a real payment, and its student is a normal payer of THEIR tier.** In
   Daily Summary and payslips "Half" still means the HALF TIER: no column is renamed or
-  moved. The month is shown, not hidden: Daily Summary adds two lines to Other income
-  (screen and PDF): "Half months (N): <amount>, included in Class fees" with "-" in the Total
-  cell (the amount is already inside Class fees, so nobody adds it twice) and "No charge
-  months (N)" (0.00); the payslip's sheet line is its own line (it no longer merges into a
+  moved. The month is shown, not hidden. **Daily Summary (changed in Release 1):** under
+  Class fees, on the day screen, the range screen and the A4 document, from ONE helper
+  (`ofWhichLines` in `daily-summary/extra-lines.ts`), come indented lines: "of which Half
+  months (N)" with the amount (already inside Class fees, so it is an "of which", never a
+  figure to add) and "No-charge months (N): nothing charged" 0.00; the document's footnote
+  says both are included in the amounts. The earlier wording ("Half months (N): <amount>,
+  included in Class fees" with "-" in a Total cell) is gone with the old table. The
+  payslip's sheet line is its own line (it no longer merges into a
   Half-TIER student's line of the same price), the voucher says "(Half month)" as a second
   line INSIDE the course cell (a zero-width block, so the eight columns keep their widths),
   and the Payslips SCREEN (not the voucher, not any PDF) notes "incl. Half months: N cards,
@@ -460,6 +478,118 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   !important }`) hides the whole page under print media, while the voucher page relies on
   its own `visibility` rules; under print emulation the sheet measures 0 px wide. A later
   job on the print path should reconcile the two.
+
+**The Daily Summary, Release 1 (screens, A4 document, Print and Download PDF; no database change):**
+
+- **Routes.** `/daily-summary?date=` (the day screen; the old `?from=&to=` links still work: the same
+  day opens the day screen, a real range redirects to the range screen), `/daily-summary/range`
+  (view only), `/daily-summary/document` (the A4 document). All ADMIN + STAFF through the nav guard
+  (TEACHER: not-found); the data comes from the guarded loaders in `daily-summary/bundle.ts`.
+- **The data object is untouched.** `dailySummary()` and what it returns are pinned byte for byte by
+  `reports-golden.test.ts` (six "Daily Summary:" keys); every new figure comes from a NEW read-only
+  helper in `lib/daily-summary-extras.ts` (cancelled receipts, collected by staff, day by day — two
+  queries however long the range, proven equal to `dailySummary()` for every day by
+  `daily-summary-extras.test.ts`). "Not paid" is no longer shown (it is still in the data object).
+  Money here is integer cents (`lib/cents.ts`), displayed with thousands separators; zero never
+  shows a minus sign. Typed amounts: digits, optional commas, up to 2 decimals, 0 to 99,999,999.99.
+- **Dates.** A real calendar day in 2000..2100, else today; the future is today; a reversed range is
+  swapped; a range is cut to 366 days (`lib/daily-summary-dates.ts`). Impossible dates never reach a query.
+- **The document is a normal page, not a portal** (the receipt's old blank print preview came from a
+  portal unmounting before the preview composed). It uses the payslip voucher's print override
+  (`body > *:not(#xenon-print) { display: revert }`, `visibility` to show only the sheets). The sheets are
+  FIXED A4 (794 x 1123 px on screen, 210 x 297 mm in print — 1123 px is a hair over a page and would add
+  a blank page after each sheet), filled by `lib/paginate.ts` from block heights MEASURED in the browser
+  after `document.fonts.ready`: a table splits between rows with its header repeated, never inside a row,
+  and its totals never sit alone on a sheet. The same sheet DOM is printed and drawn into the PDF. The
+  stylesheet is a string in `document/document-css.ts` with hex colours only and nothing newer than
+  Chrome 102 (a test scans it; the build-time baseline script does not see inline CSS). Page numbers and
+  the footer are made by the paginator, not by CSS.
+- **Download PDF is a RASTER PDF.** jsPDF's built-in fonts have no Sinhala, so a text PDF would print
+  Sinhala as garbage (the other nine reports still do, through `downloadReportPdf`, which is untouched).
+  Each sheet is drawn with html2canvas 1.4.1 (MIT; already in the tree as jsPDF's optional dependency)
+  to a JPEG (scale 2; a sheet that fails or stalls is drawn again at 1.5, then 1 — see "The PDF is made only when…") in an A4 PDF; the text cannot be
+  selected. Two traps are handled and tested: html2canvas cannot parse the `oklch()` colours the rest of
+  the app uses (the sheet CSS gives every element hex border/outline colours and the clone a white page),
+  and Tailwind's `img { display: block }` makes html2canvas draw text about 6 px low (an inline-img rule
+  is held on the page while it draws). Sinhala for the document is a Noto Sans Sinhala webfont scoped to
+  this route (`document/fonts.ts`, `preload: false`). **Tested on Chrome 154 only: Chrome 102 / the
+  Terminal 1 are NOT proven** — see `~/xenon-release/DAILY-SUMMARY-R1-CHECKS.md`. If the capture
+  throws, the screen says to use Print and choose Save as PDF.
+- **Anything unusable in the address is refused, never printed smaller.** A bring-forward that is not an amount
+  (unparseable, negative, above 99,999,999.99, longer than 20 characters — never truncated before parsing), a junk bank
+  line, or an 11th bank line makes the document route redirect to the day screen (`notice=bf` / `notice=bank`, texts in
+  `daily-summary/notices.ts`), keeping what WAS valid: the bring-forward when it was fine, the first ten valid bank lines,
+  `prep`, and `chk` re-resolved against the ADMIN list (a STAFF id does not survive the round trip). The day screen shows
+  the same notices for a hand-edited address; the bring-forward notice goes away when a valid amount is typed, the bank
+  notice when a line is added or removed. With NO active admin the Checked by place shows "No active admin account. Ask an
+  owner to activate one." (plain text named by aria-labelledby, no `<label for>`), and Print and Download PDF stay disabled.
+- **The reconcile warning is back, and says what it can say.** "N row(s) do not reconcile. A payment used a tier outside
+  Full/Half/25%, or a student's enrolment changed. Check these courses." — only when N > 0, from each course's existing
+  `reconciles` flag (`reconcileWarning` in `extra-lines.ts`; the data object is not touched), on the day screen, the range
+  screen and both documents. It is true for those two causes (and for a student who paid under two tiers in a range);
+  it does not say which course, so staff check the By course list.
+- **Names print exactly as stored.** The document does not trim or decorate a name (there is no `plainName`): signers are
+  `Staff.name ?? username`, deduction people are teacher / staff names, and the collected-by-staff table is
+  `Staff.name ?? username`. `daily-summary-document-names.test.ts` sends real stored names (a Sinhala one, one with a bracket,
+  a login with no Staff record) through the real loaders and requires the same strings on the model. The screens' Prepared
+  by list adds "(Admin)" / "(Staff)" to the option text only.
+- **The sheet's numbers live in ONE file, `document/sheet-geometry.ts`** (794 x 1123 px, padding, the 713 px measuring width
+  that a 210 mm print can hold, the 20 px page margin, A4 in mm). The stylesheet, the paginator (`paginate-document.ts`)
+  and the PDF step import them; a test fails if one of them writes 794, 1123 or 713 itself. Do NOT name a file in these
+  folders `layout`, `template`, `default`, `error`, `loading`, `not-found` or `route`: Next reads them as route files (a
+  `layout.ts` here broke the build once, and a test now guards it). When a page reports overflow the document shows a visible,
+  unprinted warning (`OverflowNotice`).
+- **The PDF is made only when the sheets' fonts are really loaded.** The PDF is a picture, drawn from a CLONE of the page; if the
+  webfonts are not there the browser draws a fallback face and the PDF no longer matches the print. So `make-pdf.ts` first
+  loads every family the sheet uses (read from the sheet's computed font-family: Geist, and Noto Sans Sinhala when the sheets contain
+  Sinhala) at weights 400, 600 and 700 (`document/sheet-fonts.ts`, pure over a font-set interface and tested with fakes), and
+  repeats the check on the CLONE's own fonts inside html2canvas's `onclone` (`document/clone-fonts.ts`; the library awaits it). A font
+  that is missing, failed, undeclared or still loading raises `SheetFontsError`. One check can wait up to about 10 s: 5 s for the font
+  loads, then up to 5 s more for `document.fonts.ready` (`FONT_TIMEOUT_MS`, one after the other). A `SheetFontsError` is never
+  retried at a smaller scale: it ends the job at once. `downloadPdf` turns ANY failure into the one sentence "Couldn't make the PDF on
+  this device. Use Print and choose Save as PDF." and no file is made. NOT covered: if the PAGE's own fonts never load, the app stays on
+  its startup splash (older behaviour).
+- **Retry at a lower scale, and the deadlines (`document/capture-plan.ts`, `document/deadline.ts`).** One ATTEMPT is one sheet at one
+  scale. A sheet that fails or does not finish inside its deadline is drawn AGAIN, the same sheet, at the next rung: scale 2, then 1.5,
+  then 1, each rung with its own deadline (`ATTEMPT_DEADLINES_MS`, 25 s each). The ladder is shared by the whole PDF — once it has
+  stepped down, later sheets start at the lower rung — so there are at most three failed attempts in total, and a capture that hangs
+  ends with the message after at most 75 s of FAILED attempts (3 x 25 s) however many sheets there are. That 75 s counts only the failed
+  attempts: sheets that finish before the hang add their own time (up to 25 s each), and the page-font check before the first sheet can
+  take about 10 s (a stalled import ends separately, at 20 s). A device that finishes every sheet inside its deadline is never cut off,
+  whatever the number of sheets. The dynamic import of html2canvas and jsPDF has its
+  own deadline (`IMPORT_DEADLINE_MS`, 20 s) and ends in the same one message. **Why the deadline is per sheet:** measured on the laptop
+  with CPU throttling, drawing a sheet costs the SAME time at scale 2, 1.5 and 1 (about 12.4 s per sheet at 12x, at every scale), so a
+  smaller scale does not rescue a CPU-slow device — it helps when a big canvas cannot be allocated. A deadline over the whole document
+  therefore cut off a slow device that was making steady progress (3 sheets at 12x failed under a 25 s whole-attempt deadline in the
+  first version of this work and are made under the per-sheet deadline); the per-sheet deadline only trips on a stall. An abandoned
+  attempt cannot be stopped (a browser promise has no cancel), so it is marked dead: its late result is freed, never encoded, never
+  reaches the PDF, and cannot draw another sheet or report progress. The hidden `iframe.html2canvas-container` copies of the page that
+  html2canvas leaves behind after a failure are removed after every failed attempt and in a `finally` (`clone-cleanup.ts`; only copies
+  this capture added, never one it did not see appear). Only one PDF is made at a time: a module-level lock (`exclusive.ts`) refuses a
+  second call at once ("A PDF is already being made. Wait for it to finish.", the only other sentence), and the button is disabled while
+  busy. The button shows "Preparing PDF, page n of N" while it works. **Measured** (Chrome 154, 360 px, `Emulation.setCPUThrottlingRate`;
+  this is a laptop with a throttled main thread, NOT a Terminal 1): 2-sheet day, scale 2 throughout: 2.2 s unthrottled, 7.7 s at 4x
+  (3.9 s per sheet), 11.4 s at 6x (5.8 s per sheet). 3-sheet dense day, scale 2 throughout: 3.1 s, 11.0 s at 4x, 18.0 s at 6x, 34.6 s
+  at 12x, 45.7 s at 16x, 69.9 s at 24x (about 21 s per sheet, inside the 25 s deadline). With the clone's font files never answering, both
+  days end with the message at 77.1 s, nothing downloaded, the button back to "Download PDF", and no clone iframe left in the page.
+  Chrome 102 / the Terminal 1 are still NOT proven. The evidence is in `~/xenon-release/r1-fix4-evidence/`.
+- **Known limit: a lower scale does not fix a stalled font or a slow CPU.** A sheet costs the same at every scale, so a clone font that
+  never answers stalls all three rungs: the message comes after about 77 s, not sooner. If Terminal 1 turns out slower than this
+  laptop, the per-sheet deadline constant (`ATTEMPT_DEADLINES_MS`) is the lever.
+- **Known limit: the PDF lock is module-level.** After a give-up a dead attempt may still be rendering when the lock is released, and
+  after navigating away in the middle of a PDF another day's tap says "A PDF is already being made".
+- **Known limit: memory.** Every page image is held until the PDF is finished, so the peak memory is about double the old code
+  (which added each page as it went).
+- **Known limit: a deadline can only fire between tasks.** `withDeadline` fires at a macrotask boundary: a long synchronous parse or
+  render is never cut off in the middle, only noticed at the next real wait.
+- **Small pure units behind the day screen, so they can be tested without a browser.** What is typed (bring-forward, bank lines,
+  signers) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen only
+  dispatches). Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`
+  (`lib/daily-summary-rows.ts`); `daily-summary-names-pure.test.ts` runs them on fake rows with no database and fails if any name
+  gets a role hint. The "one source for the sheet's numbers" test reads the real imports with the TypeScript parser, so an alias
+  (`import { CONTENT_H as H }`) or a namespace import cannot get round it.
+- **Follow-ups, not in this release.** Release 2: saved days, history, stored bank deposits (a schema
+  change, its own job and migration). Other-income entry (income that is not a payment) is its own later job.
 
 **Rules for the money rules (job 3A) that later work must keep:**
 

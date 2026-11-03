@@ -39,6 +39,9 @@ internals._load = function (this: unknown, request: string, ...rest: unknown[]) 
         auth: async () =>
           currentRole ? { user: { id: currentUserId, username: "test", role: currentRole } } : null,
       };
+    case "next/font/google":
+      // next/font is a build-time transform; under node every font function just returns its CSS variable name.
+      return new Proxy({}, { get: () => () => ({ variable: "stub-font-variable", className: "stub-font-class" }) });
     case "next/cache":
       return { revalidatePath() {}, revalidateTag() {}, unstable_cache: (fn: unknown) => fn };
     case "next/navigation":
@@ -46,8 +49,9 @@ internals._load = function (this: unknown, request: string, ...rest: unknown[]) 
         notFound() {
           throw new Error("NEXT_NOT_FOUND");
         },
-        redirect() {
-          throw new Error("NEXT_REDIRECT");
+        redirect(url?: string) {
+          // The target travels on the error so a test can assert WHERE a page sends someone.
+          throw Object.assign(new Error("NEXT_REDIRECT"), { url });
         },
       };
     default:
