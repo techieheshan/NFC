@@ -5,6 +5,9 @@ import type { DayFigures, CancelledSummary, StaffCollected } from "@/lib/daily-s
 import { friendlyDate } from "@/lib/friendly-date";
 import { to12Hour } from "@/lib/colombo-time";
 import type { DailySummary } from "@/lib/reports";
+import { changeLogRows, formatWhen, type LogRow } from "@/lib/saved-day/log-rows";
+import { overBankedBanner } from "@/lib/saved-day/over-bank";
+import type { LogEntry } from "@/lib/saved-day/store";
 
 import { includedMonthsNote, ofWhichLines, reconcileWarning, type OfWhichLine } from "../extra-lines";
 
@@ -26,8 +29,22 @@ export type DocModel = {
   dateText: string;
   generatedText: string;
   generatedBy: string;
+  /** Version 1's Done by; null for a draft. */
   preparedBy: string | null;
+  /** The admin who checked it; null when not checked (and for a draft). */
   checkedBy: string | null;
+  /** "Draft, not saved" | "Saved, version 2, not checked" | "Saved, version 2, checked" (a range: unused). */
+  status: string;
+  /** "Saved 14 Oct 2026, 4:32 PM by Sadun" (a saved day), else null. */
+  savedLine: string | null;
+  /** "Last edited 14 Oct 2026, 6:10 PM by Thilini" (version 2 or more), else null. */
+  lastEditedLine: string | null;
+  /** The end of the footer: "Draft" or "Saved v3". */
+  footerStatus: string;
+  /** The change log table (version 2 or more), oldest first; null otherwise. */
+  changeLog: LogRow[] | null;
+  /** "Bank deposits are X more than the drawer should hold. …" on an over-banked saved day, else null. */
+  overBankedNote: string | null;
   courses: DocCourseRow[];
   noPaymentCourses: string[];
   classFees: string;
@@ -61,6 +78,19 @@ export type DocModel = {
   dayByDayTotal: { collected: string; deductions: string; net: string } | null;
 };
 
+/** What the document says about a saved version: the status, who saved and last edited it, the change log and any over-bank flag. */
+export type SavedDocInfo = {
+  version: number;
+  /** Version 1: when it was saved and by whom (its Done by). */
+  savedAtIso: string;
+  savedBy: string;
+  /** The newest version when it is version 2 or more: when and by whom. */
+  lastEditedAtIso: string | null;
+  lastEditedBy: string | null;
+  overBankedBy: number | null;
+  log: readonly LogEntry[];
+};
+
 export function cancelledLine(c: CancelledSummary): string | null {
   return c.receipts === 0 ? null : `Cancelled: ${c.receipts} receipt${c.receipts === 1 ? "" : "s"}, ${formatMoney(c.total)} (not counted)`;
 }
@@ -78,13 +108,21 @@ export function buildDocModel(input: {
   cancelled: CancelledSummary;
   generated: { date: string; time: string };
   generatedBy: string;
-  /** Single day only. */
-  day?: { staff: readonly StaffCollected[]; bringForwardCents: number; bank: readonly BankLine[]; preparedBy: string | null; checkedBy: string | null };
+  /** Single day only. `saved` is set when the day is a SAVED version (the figures above are then the frozen ones). */
+  day?: {
+    staff: readonly StaffCollected[];
+    bringForwardCents: number;
+    bank: readonly BankLine[];
+    preparedBy: string | null;
+    checkedBy: string | null;
+    saved?: SavedDocInfo;
+  };
   /** Range only. */
   byDay?: { days: readonly DayFigures[]; total: DayFigures };
 }): DocModel {
   const { report } = input;
   const isDay = input.day !== undefined;
+  const sv = input.day?.saved;
 
   const hasPayments = (c: DailySummary["courses"][number]) => c.paidFull + c.paidHalf + c.paidQuarter > 0 || decimalToCents(c.amount) > 0;
   const courses: DocCourseRow[] = report.courses.filter(hasPayments).map((c) => ({
@@ -116,6 +154,12 @@ export function buildDocModel(input: {
     generatedBy: input.generatedBy,
     preparedBy: input.day?.preparedBy ?? null,
     checkedBy: input.day?.checkedBy ?? null,
+    status: sv ? `Saved, version ${sv.version}, ${input.day?.checkedBy ? "checked" : "not checked"}` : "Draft, not saved",
+    savedLine: sv ? `Saved ${formatWhen(sv.savedAtIso)} by ${sv.savedBy}` : null,
+    lastEditedLine: sv && sv.lastEditedAtIso !== null && sv.lastEditedBy !== null ? `Last edited ${formatWhen(sv.lastEditedAtIso)} by ${sv.lastEditedBy}` : null,
+    footerStatus: sv ? `Saved v${sv.version}` : "Draft",
+    changeLog: sv && sv.version >= 2 ? changeLogRows(sv.log) : null,
+    overBankedNote: sv && sv.overBankedBy !== null ? overBankedBanner(sv.overBankedBy) : null,
     courses,
     noPaymentCourses: report.courses.filter((c) => !hasPayments(c)).map((c) => c.course),
     classFees: formatMoney(report.classTotal),

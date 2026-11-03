@@ -161,7 +161,7 @@ export function DocumentView({
                       return <div key={`${pl.blockId}-${pl.rowStart ?? 0}`}>{def.render(pl.rowStart === undefined ? undefined : pl)}</div>;
                     })}
                     <div className="ds-foot">
-                      <span>Generated {model.generatedText} by {model.generatedBy} · {model.docNo} · Draft</span>
+                      <span>Generated {model.generatedText} by {model.generatedBy} · {model.docNo} · {model.footerStatus}</span>
                       <span>Page {i + 1} of {total}</span>
                     </div>
                   </div>
