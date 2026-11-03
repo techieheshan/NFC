@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { diffSummaries } from "./diff";
-import { liveDiffBanner, LIVE_DIFFERS, TEXT_DIFFER } from "./texts";
+import { liveDiffBanner, LIVE_DIFFERS, TEXT_DIFFER, TEXT_DIFFER_NOTE } from "./texts";
 import { deletePath, setPath, snapshotOf, summaryOf } from "./fixtures";
 import { buildSnapshot, cashBookColumns, cashBookOf, parseSnapshot, SNAPSHOT_SCHEMA, SnapshotError } from "./snapshot";
 
@@ -237,6 +237,7 @@ test("two deductions with IDENTICAL figures listed in a different order are not 
 test("liveDiffBanner: nothing is null; names only says so; any number or flag keeps the numbers wording (exact texts)", () => {
   assert.equal(LIVE_DIFFERS, "The live numbers are different from the saved ones");
   assert.equal(TEXT_DIFFER, "Some names or wording differ from the saved day");
+  assert.equal(TEXT_DIFFER_NOTE, "Only names or wording are different (a rename in Setup, an expense given to someone else, or a reworded reason). Re-saving takes the new text and asks an admin to check the day again.");
   assert.equal(liveDiffBanner([]), null);
   assert.equal(liveDiffBanner([{ textOnly: true }, { textOnly: true }]), TEXT_DIFFER);
   assert.equal(liveDiffBanner([{ textOnly: true }, {}]), LIVE_DIFFERS);
