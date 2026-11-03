@@ -13,10 +13,11 @@ import { changeLogNewestFirst, formatClock, formatWhen } from "@/lib/saved-day/l
 import { overBankedBanner } from "@/lib/saved-day/over-bank";
 import type { SavedDayView, SaveOutcome } from "@/lib/saved-day/store";
 import {
-  checkClearedChip, checkedChip, conflictText, editedChip, LIVE_DIFFERS, NOT_CHECKED_CHIP, NOTHING_CHANGED, savedChip,
+  checkClearedChip, checkedChip, conflictText, editedChip, LIVE_DIFFERS, NOT_CHECKED_CHIP, NOTHING_CHANGED, RELOAD_BUTTON, savedChip, UPDATING_SCREEN,
 } from "@/lib/saved-day/texts";
 
 import { BankSheet } from "./bank-sheet";
+import { blockReason as blockReasonFor } from "./block-reason";
 import { CheckSheet } from "./check-sheet";
 import { Action, DateStrip } from "./day-screen";
 import { Banner, Chip, DetailSections, Expander, MoneyFlow, SELECT, type BankLineView } from "./day-parts";
@@ -26,7 +27,8 @@ import { ReconcileNotice } from "./reconcile-notice";
 import { SaveSheet } from "./save-sheet";
 import { saveDay } from "./saved-actions";
 import type { Signer } from "./signer-lists";
-import { initialTypedState, typedReducer } from "./typed-reducer";
+import { editSessionReducer, initialEditSession } from "./edit-session";
+import type { TypedAction } from "./typed-reducer";
 
 /**
  * The day screen for a SAVED day. Everything on it is the FROZEN version (numbers, deposits, who and when); the live data is only used to
@@ -53,16 +55,21 @@ export function SavedDayScreen({
   const cash = saved.cash;
   const bankLines: BankLineView[] = saved.bank.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note, recordedBy: b.recordedByName }));
 
-  // edit mode: bring-forward and bank lines in the same pure state machine the draft uses; Done by is required
-  const [typed, dispatch] = useReducer(typedReducer, undefined, () =>
-    initialTypedState({ bf: cash.bringForward > 0 ? (cash.bringForward / 100).toFixed(2) : "", bank: bankLines.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note })), preparedId: "", checkedId: "" }, []),
-  );
-  const [editing, setEditing] = useState(false);
+  // One edit: whether edit mode is open, what is typed (bring-forward, bank lines) and Done by (required) are ONE pure state machine
+  // (edit-session.ts), so Cancel throws all of it away and the next Edit starts from the saved numbers.
+  const original = { bf: cash.bringForward > 0 ? (cash.bringForward / 100).toFixed(2) : "", bank: bankLines.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note })) };
+  const [session, sessionDispatch] = useReducer(editSessionReducer, undefined, () => initialEditSession(original));
+  const { typed, editing, doneById } = session;
+  const dispatch = (action: TypedAction) => sessionDispatch({ type: "typed", action });
+  const setDoneById = (id: string) => sessionDispatch({ type: "doneBy", id });
   const [editingBf, setEditingBf] = useState(false);
-  const [doneById, setDoneById] = useState("");
   const [refusal, setRefusal] = useState<Extract<SaveOutcome, { ok: false }> | null>(null);
   const [pending, start] = useTransition();
   const [sheet, setSheet] = useState<null | "check" | "diff" | "resave" | "bank">(null);
+  // A save, edit, check or re-save went through and the screen has not shown it yet. Every action stays off until it does: the page keys this
+  // component on date + version + checked, so the new screen is a fresh mount and this resets by itself. A second tap in between could only
+  // be a false conflict or "Already checked".
+  const [settled, setSettled] = useState(false);
 
   const bfText = typed.bfText;
   const bfParsed = bfText.trim() === "" ? ({ ok: true, cents: 0 } as const) : parseTypedAmount(bfText);
@@ -82,6 +89,7 @@ export function SavedDayScreen({
         bank: typed.bank.map((l) => ({ time: l.time, amount: (l.cents / 100).toFixed(2), slip: l.slip, note: l.note })),
       });
       if (r.ok) {
+        setSettled(true);
         router.refresh();
       } else {
         setRefusal(r);
@@ -96,6 +104,12 @@ export function SavedDayScreen({
   const unreconciled = reconcileWarning(report);
   const docHref = (auto: "print" | "pdf") => `/daily-summary/document?date=${date}&auto=${auto}`;
   const differs = liveDiffs.length > 0;
+  const editBlock = blockReasonFor({ bringForwardOk: bfParsed.ok, overdrawn: flow.overdrawn, needsDoneBy: doneById === "" });
+  const cancelEdit = () => {
+    sessionDispatch({ type: "cancel" });
+    setEditingBf(false);
+    setRefusal(null);
+  };
 
   return (
     <div className="mx-auto w-full max-w-[720px] space-y-4 pb-48">
@@ -138,7 +152,7 @@ export function SavedDayScreen({
           <p className="font-medium">{LIVE_DIFFERS}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setSheet("diff")} className="border-input bg-background h-11 rounded-md border text-sm font-medium text-foreground">See what changed</button>
-            <button type="button" onClick={() => setSheet("resave")} className="bg-primary text-primary-foreground h-11 rounded-md text-sm font-medium">Re-save with live numbers</button>
+            <button type="button" onClick={() => setSheet("resave")} disabled={settled} className="bg-primary text-primary-foreground h-11 rounded-md text-sm font-medium disabled:opacity-50">Re-save with live numbers</button>
           </div>
         </Banner>
       )}
@@ -191,7 +205,7 @@ export function SavedDayScreen({
       {editing && (
         <section className="space-y-3 rounded-xl border p-4">
           <button
-            type="button" onClick={() => setSheet("bank")} disabled={typed.bank.length >= MAX_BANK_LINES}
+            type="button" onClick={() => setSheet("bank")} disabled={typed.bank.length >= MAX_BANK_LINES || settled}
             className="border-primary text-primary flex h-12 w-full items-center justify-center gap-2 rounded-md border-2 text-base font-medium disabled:opacity-50"
           >
             <Landmark className="size-5" aria-hidden /> Take money to bank
@@ -236,11 +250,19 @@ export function SavedDayScreen({
 
       <div className="bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
         <div className="mx-auto max-w-[720px] space-y-2">
+          {settled ? (
+            <p role="status" className="text-muted-foreground text-center text-xs">
+              {UPDATING_SCREEN}{" "}
+              <button type="button" onClick={() => window.location.reload()} className="text-primary min-h-11 px-2 font-medium underline underline-offset-4">{RELOAD_BUTTON}</button>
+            </p>
+          ) : (
+            editing && editBlock && <p role="alert" className="text-muted-foreground text-center text-xs">{editBlock}</p>
+          )}
           {editing ? (
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => { setEditing(false); setRefusal(null); }} className="border-input bg-background h-12 rounded-md border text-base font-medium">Cancel</button>
+              <button type="button" onClick={cancelEdit} disabled={settled} className="border-input bg-background h-12 rounded-md border text-base font-medium disabled:opacity-50">Cancel</button>
               <button
-                type="button" onClick={send} disabled={pending || doneById === "" || !bfParsed.ok || flow.overdrawn}
+                type="button" onClick={send} disabled={pending || settled || editBlock !== null}
                 className="bg-primary text-primary-foreground h-12 rounded-md text-base font-medium disabled:opacity-50"
               >
                 {pending ? "Saving…" : "Save changes"}
@@ -249,19 +271,19 @@ export function SavedDayScreen({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => setEditing(true)} className="bg-primary text-primary-foreground flex h-12 items-center justify-center gap-2 rounded-md text-base font-medium">
+                <button type="button" onClick={() => sessionDispatch({ type: "start" })} disabled={settled} className="bg-primary text-primary-foreground flex h-12 items-center justify-center gap-2 rounded-md text-base font-medium disabled:opacity-50">
                   <Pencil className="size-5" aria-hidden /> Edit
                 </button>
                 <button
-                  type="button" onClick={() => setSheet("check")} disabled={saved.check !== null}
+                  type="button" onClick={() => setSheet("check")} disabled={saved.check !== null || settled}
                   className="border-input bg-background flex h-12 items-center justify-center gap-2 rounded-md border text-base font-medium disabled:opacity-50"
                 >
                   <ShieldCheck className="size-5" aria-hidden /> {saved.check ? "Checked" : "Admin check"}
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Action href={docHref("print")} icon={<Printer className="size-5" aria-hidden />} label="Print" variant="outline" />
-                <Action href={docHref("pdf")} icon={<Download className="size-5" aria-hidden />} label="Download PDF" variant="outline" />
+                <Action href={settled ? null : docHref("print")} icon={<Printer className="size-5" aria-hidden />} label="Print" variant="outline" />
+                <Action href={settled ? null : docHref("pdf")} icon={<Download className="size-5" aria-hidden />} label="Download PDF" variant="outline" />
               </div>
             </>
           )}
@@ -279,7 +301,7 @@ export function SavedDayScreen({
         />
       )}
       {sheet === "check" && (
-        <CheckSheet date={date} version={saved.version} shouldBe={cash.shouldBeInDrawer} bankTotal={cash.bankTotal} left={cash.leftInDrawer} admins={admins} onClose={() => setSheet(null)} />
+        <CheckSheet date={date} version={saved.version} shouldBe={cash.shouldBeInDrawer} bankTotal={cash.bankTotal} left={cash.leftInDrawer} admins={admins} onClose={() => setSheet(null)} onSaved={() => setSettled(true)} />
       )}
       {sheet === "diff" && <LiveDiffSheet diffs={liveDiffs} savedLeft={cash.leftInDrawer} liveLeft={liveLeft} onClose={() => setSheet(null)} />}
       {sheet === "resave" && (
@@ -290,6 +312,7 @@ export function SavedDayScreen({
           bringForward={cash.bringForward > 0 ? (cash.bringForward / 100).toFixed(2) : ""}
           bank={saved.bank.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note }))}
           onClose={() => setSheet(null)}
+          onSaved={() => setSettled(true)}
         />
       )}
     </div>

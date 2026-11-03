@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useReducer, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Download, History, Landmark, Printer, Save } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, History, Landmark, Pencil, Printer, Save, ShieldCheck } from "lucide-react";
 
 import { amountErrorText, decimalToCents, formatCents, parseTypedAmount } from "@/lib/cents";
 import { MAX_BANK_LINES, computeCashFlow, type BankLine } from "@/lib/cash-flow";
 import { dayLabelShort, shiftDay } from "@/lib/daily-summary-dates";
 import type { CancelledSummary, StaffCollected } from "@/lib/daily-summary-extras";
 import type { Hint } from "@/lib/saved-day/hint";
-import { hintLabel, NOT_SAVED_CHIP, UNREADABLE_DAY } from "@/lib/saved-day/texts";
+import { hintLabel, NOT_SAVED_CHIP, RELOAD_BUTTON, UNREADABLE_BLOCK, UNREADABLE_DAY, UPDATING_SCREEN } from "@/lib/saved-day/texts";
 import type { DailySummary } from "@/lib/reports";
 
 import { BankSheet } from "./bank-sheet";
+import { blockReason as blockReasonFor } from "./block-reason";
 import { Banner, Chip, DetailSections, MoneyFlow } from "./day-parts";
 import { ReconcileNotice } from "./reconcile-notice";
 import { reconcileWarning } from "./extra-lines";
@@ -55,6 +56,8 @@ export function DayScreen({
   const [editingBf, setEditingBf] = useState(false);
   const [bankSheet, setBankSheet] = useState(false);
   const [saveSheet, setSaveSheet] = useState(false);
+  // A save went through and the screen has not shown it yet: every action stays off, so a quick second tap cannot be a false conflict.
+  const [settled, setSettled] = useState(false);
 
   const bfParsed = bfText.trim() === "" ? ({ ok: true, cents: 0 } as const) : parseTypedAmount(bfText);
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
@@ -74,18 +77,20 @@ export function DayScreen({
     }
   }, [queryText]);
 
-  const blockReason = !bfParsed.ok ? "Fix the bring-forward amount first." : flow.overdrawn ? "Money taken to the bank is more than the drawer holds." : null;
+  // An unreadable saved day: the live numbers are only shown, never saved over it, edited, checked or printed as if they were the saved ones.
+  const blockReason = unreadable ? UNREADABLE_BLOCK : blockReasonFor({ bringForwardOk: bfParsed.ok, overdrawn: flow.overdrawn });
+  const off = blockReason !== null || settled;
   const docHref = (auto: "print" | "pdf") => {
     const p = new URLSearchParams(query);
     p.set("auto", auto);
     return `/daily-summary/document?${p.toString()}`;
   };
   const unreconciled = reconcileWarning(report);
-  const showHint = hint !== null && bfCents === 0;
+  const showHint = hint !== null && bfCents === 0 && !unreadable;
   const hintWhen = hint ? (hint.daysAgo === 1 ? "Yesterday" : dayLabelShort(hint.date).replace(/ \d{4}$/, "")) : "";
 
   return (
-    <div className="mx-auto w-full max-w-[720px] space-y-4 pb-44">
+    <div className={`mx-auto w-full max-w-[720px] space-y-4 ${unreadable ? "pb-72" : "pb-44"}`}>
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">Daily Summary</h1>
         <Link href="/daily-summary/history" className="text-primary flex min-h-11 items-center gap-1.5 px-1 text-sm font-medium underline-offset-4 hover:underline">
@@ -103,7 +108,7 @@ export function DayScreen({
         <Link href={`/daily-summary/range?from=${shiftDay(date, -6)}&to=${date}`} className="text-primary flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline">
           Several days
         </Link>
-        <Chip tone="grey">{NOT_SAVED_CHIP}</Chip>
+        {!unreadable && <Chip tone="grey">{NOT_SAVED_CHIP}</Chip>}
       </div>
 
       <MoneyFlow
@@ -157,7 +162,7 @@ export function DayScreen({
       {flow.overdrawn && <p role="alert" className="text-destructive text-sm">The bank lines add up to more than the drawer should hold. Remove or correct a line.</p>}
 
       <button
-        type="button" onClick={() => setBankSheet(true)} disabled={bank.length >= MAX_BANK_LINES}
+        type="button" onClick={() => setBankSheet(true)} disabled={bank.length >= MAX_BANK_LINES || unreadable || settled}
         className="border-primary text-primary flex h-12 w-full items-center justify-center gap-2 rounded-md border-2 text-base font-medium disabled:opacity-50"
       >
         <Landmark className="size-5" aria-hidden /> Take money to bank
@@ -170,16 +175,29 @@ export function DayScreen({
       {/* sticky bottom bar: Save day, then Print and Download PDF (a draft) */}
       <div className="bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
         <div className="mx-auto max-w-[720px] space-y-2">
-          {blockReason && <p className="text-muted-foreground text-center text-xs">{blockReason}</p>}
+          {settled ? (
+            <p role="status" className="text-muted-foreground text-center text-xs">
+              {UPDATING_SCREEN}{" "}
+              <button type="button" onClick={() => window.location.reload()} className="text-primary min-h-11 px-2 font-medium underline underline-offset-4">{RELOAD_BUTTON}</button>
+            </p>
+          ) : (
+            blockReason && <p role="alert" className="text-muted-foreground text-center text-xs">{blockReason}</p>
+          )}
           <button
-            type="button" disabled={blockReason !== null} onClick={() => setSaveSheet(true)}
+            type="button" disabled={off} onClick={() => setSaveSheet(true)}
             className="bg-primary text-primary-foreground flex h-12 w-full items-center justify-center gap-2 rounded-md text-base font-medium disabled:opacity-50"
           >
             <Save className="size-5" aria-hidden /> Save day
           </button>
+          {unreadable && (
+            <div className="grid grid-cols-2 gap-3">
+              <Action href={null} icon={<Pencil className="size-5" aria-hidden />} label="Edit" variant="outline" />
+              <Action href={null} icon={<ShieldCheck className="size-5" aria-hidden />} label="Admin check" variant="outline" />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            <Action href={blockReason ? null : docHref("print")} icon={<Printer className="size-5" aria-hidden />} label="Print" variant="outline" />
-            <Action href={blockReason ? null : docHref("pdf")} icon={<Download className="size-5" aria-hidden />} label="Download PDF" variant="outline" />
+            <Action href={off ? null : docHref("print")} icon={<Printer className="size-5" aria-hidden />} label="Print" variant="outline" />
+            <Action href={off ? null : docHref("pdf")} icon={<Download className="size-5" aria-hidden />} label="Download PDF" variant="outline" />
           </div>
         </div>
       </div>
@@ -201,6 +219,7 @@ export function DayScreen({
           bankCount={bank.length} doners={doners}
           bringForward={bfCents > 0 ? (bfCents / 100).toFixed(2) : ""} bank={bank}
           onClose={() => setSaveSheet(false)}
+          onSaved={() => setSettled(true)}
         />
       )}
     </div>

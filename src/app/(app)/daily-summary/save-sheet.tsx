@@ -23,7 +23,7 @@ export type SheetNumbers = { collected: number; deductions: number; shouldBe: nu
  * chosen or typed (rule 14).
  */
 export function SaveSheet({
-  mode, date, dateText, baseVersion, numbers, bankCount, doners, bringForward, bank, onClose,
+  mode, date, dateText, baseVersion, numbers, bankCount, doners, bringForward, bank, onClose, onSaved,
 }: {
   mode: "save" | "resave";
   date: string;
@@ -36,6 +36,8 @@ export function SaveSheet({
   bringForward: string;
   bank: readonly BankLine[];
   onClose: () => void;
+  /** The save went through: the screen keeps its buttons off until it shows the new version. */
+  onSaved: () => void;
 }) {
   const router = useRouter();
   const [doneById, setDoneById] = useState("");
@@ -54,6 +56,7 @@ export function SaveSheet({
         seen: { collected: numbers.collected, deductions: numbers.deductions },
       });
       if (r.ok) {
+        onSaved();
         router.refresh();
         onClose();
       } else {

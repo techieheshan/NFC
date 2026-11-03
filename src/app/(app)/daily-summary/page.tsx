@@ -47,10 +47,10 @@ export default async function DailySummaryPage({ searchParams }: PageProps<"/dai
   const dateText = dayLabelShort(b.date);
 
   if (read.saved) {
-    // Keyed on the day AND its version: a new version is a new screen (rule 17), never props synced into state.
+    // Keyed on the day, its version AND whether it is checked: a new version or a new check is a new screen (rule 17), never props synced into state.
     return (
       <SavedDayScreen
-        key={`${b.date}-v${read.saved.version}`}
+        key={`${b.date}-v${read.saved.version}-${read.saved.check ? "checked" : "open"}`}
         date={b.date}
         today={b.today}
         dateText={dateText}

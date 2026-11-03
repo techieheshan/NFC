@@ -7,12 +7,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PrismaClient, UserRole } from "@prisma/client";
 
+import { BLOCK_BF, BLOCK_OVER } from "@/app/(app)/daily-summary/block-reason";
+import { typedQuery } from "@/app/(app)/daily-summary/typed-state";
 import { colomboDateValue } from "@/lib/colombo-time";
 import { shiftDay } from "@/lib/daily-summary-dates";
 
+import { snapshotOf } from "./fixtures";
 import { overBankedBanner, overBankRefusal } from "./over-bank";
 import {
-  checkClearedChip, checkedChip, editedChip, HISTORY_NOTE, LIVE_DIFFERS, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_DAY,
+  checkClearedChip, checkedChip, editedChip, HISTORY_NOTE, LIVE_DIFFERS, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
 } from "./texts";
 
 /*
@@ -31,6 +34,7 @@ let db: PrismaClient;
 let handle: TestDatabase;
 let w: World;
 let A: typeof import("@/app/(app)/daily-summary/saved-actions");
+let DayScreen: typeof import("@/app/(app)/daily-summary/day-screen").DayScreen; // loaded after the test database exists (it reaches `@/lib/db`)
 let dayPage: unknown;
 let docPage: unknown;
 let historyPage: unknown;
@@ -50,6 +54,7 @@ describe("Release 2 screens and document, rendered against a real database", { s
     freezeClock(NOW);
     ({ db } = await import("@/lib/db"));
     A = await import("@/app/(app)/daily-summary/saved-actions");
+    ({ DayScreen } = await import("@/app/(app)/daily-summary/day-screen"));
     ({ default: dayPage } = await import("@/app/(app)/daily-summary/page"));
     ({ default: docPage } = await import("@/app/(app)/daily-summary/document/page"));
     ({ default: historyPage } = await import("@/app/(app)/daily-summary/history/page"));
@@ -125,7 +130,10 @@ describe("Release 2 screens and document, rendered against a real database", { s
     as("STAFF", w.staff.id);
     let h = await dayHtml(date);
     assert.ok(h.includes("Yesterday closed with 12,000.00 (not checked yet). Use this"), "yesterday, not checked yet");
-    assert.ok(/id="bf"|Bring-forward/.test(h) && !/value="12000\.00"/.test(h), "the field is NOT filled for the person");
+    // NOT filled for the person: the Bring-forward row still reads 0.00, the hint's figure appears only in the hint's own words, and the flow adds nothing from it
+    assert.match(h, /Opening cash · tap to type<\/span><\/span><span[^>]*>0\.00<\/span>/, "the Bring-forward row is 0.00");
+    assert.equal((h.match(/12,000\.00/g) ?? []).length, 1, "12,000.00 appears once: in the hint, nowhere in the flow");
+    assert.ok(!h.includes("12,500.00"), "Should be in the drawer is 500.00 (today's money), not 12,500.00");
     await check(prev, 1, w.admin.id);
     as("STAFF", w.staff.id);
     h = await dayHtml(date);
@@ -215,15 +223,36 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.equal(overBankRefusal(500000), "The money taken to the bank is 5,000.00 more than the drawer should hold.");
   });
 
-  test("an unreadable saved day: 'This saved day can't be read. Showing the live numbers.' and the live draft view; no crash", async () => {
-    const date = await makeDay();
+  /** The markup of the button whose text is `label`, or null. */
+  const buttonHtml = (h: string, label: string) => {
+    const m = new RegExp(`<button[^>]*>(?:(?!</button>).)*${label}(?:(?!</button>).)*</button>`).exec(h);
+    return m ? m[0] : null;
+  };
+  const isOff = (h: string, label: string) => {
+    const b = buttonHtml(h, label);
+    return b !== null && /\bdisabled=""/.test(b);
+  };
+  const isLink = (h: string, hrefPart: string) => h.includes(`href="/daily-summary/document?`) && h.includes(hrefPart);
+
+  test("F1: an unreadable saved day keeps the banner and the live numbers but DISABLES Save day, Edit, Admin check, Print and Download PDF, shows why, and has no 'Not saved' chip, no hint and no conflict message", async () => {
+    const prev = await makeDay({ pays: ["15000.00"] });
+    const date = shiftDay(prev, 1);
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "500.00", takenById: w.staff.id, paidAt: new Date(`${date}T05:00:00Z`) } });
+    dayCounter++;
+    await save(prev, w.admin.id, { bank: [line("3,000.00")] }); // a hint would be on offer: "closed with 12,000.00"
     await save(date, w.admin.id);
     await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshotSchema" = 2 WHERE "dayId" = (SELECT id FROM "DailySummaryDay" WHERE date = '${date}')`);
     as("STAFF", w.staff.id);
     const h = await dayHtml(date);
-    assert.ok(h.includes(UNREADABLE_DAY) && h.includes(NOT_SAVED_CHIP) && h.includes("Save day"), "the live unsaved view stands in");
-    assert.ok(h.includes("3,750.00"));
-    assert.ok((await docHtml(date)).includes("Draft, not saved"), "and so does the document");
+    assert.ok(h.includes(UNREADABLE_DAY), "the banner");
+    assert.ok(h.includes("Left in drawer"), "the live numbers stand in");
+    assert.ok(h.includes(UNREADABLE_BLOCK), "the reason is visible next to the buttons");
+    for (const label of ["Save day", "Edit", "Admin check", "Print", "Download PDF"]) assert.ok(isOff(h, label), `${label} is a disabled button`);
+    assert.ok(!isLink(h, "auto=print") && !isLink(h, "auto=pdf"), "Print and Download PDF are not links");
+    assert.ok(!h.includes(NOT_SAVED_CHIP), "no 'Not saved' chip");
+    assert.ok(!h.includes("Use this") && !h.includes("closed with"), "no hint");
+    assert.ok(!h.includes("while you were working"), "never the false conflict message");
+    assert.ok(h.includes("3,750.00") || h.includes("500.00"), "live figures");
   });
 
   test("a purged or very old day simply shows as an unsaved day with live data (C5)", async () => {
@@ -281,12 +310,35 @@ describe("Release 2 screens and document, rendered against a real database", { s
     await db.dailySummaryDay.deleteMany();
   });
 
+  test("F4: a draft whose bank lines add up to more than the drawer disables Save day, Print and Download PDF and says why right there", async () => {
+    const date = await makeDay();
+    as("STAFF", w.staff.id);
+    const q = typedQuery({ bringForwardCents: 0, bank: [{ cents: 500_000_00, time: "09:00", slip: "", note: "" }] });
+    const h = await dayHtml(date).then(async () => plain(await html(dayPage, { date, b: q.getAll("b") })));
+    assert.ok(h.includes(BLOCK_OVER), "the reason is in the bottom bar");
+    for (const label of ["Save day", "Print", "Download PDF"]) assert.ok(isOff(h, label), `${label} is off`);
+    assert.ok(!isLink(h, "auto=print") && !isLink(h, "auto=pdf"));
+    // and a draft that is fine has the buttons on and no reason
+    const ok = await dayHtml(date);
+    assert.ok(!ok.includes(BLOCK_OVER) && !isOff(ok, "Save day") && isLink(ok, "auto=print") && isLink(ok, "auto=pdf"));
+  });
+
+  test("F4: a draft whose bring-forward cannot be parsed disables Save day, Print and Download PDF and says why right there", () => {
+    const s = snapshotOf();
+    const h = plain(renderToStaticMarkup(createElement(DayScreen, {
+      date: "2026-10-14", today: "2026-11-01", dateText: "Wed 14 Oct 2026", report: s.report, cancelled: s.cancelled, staff: s.staff, doners: [],
+      initial: { bf: "12x", bank: [] }, notices: [], hint: null, unreadable: false,
+    })));
+    assert.ok(h.includes(BLOCK_BF), "the reason is in the bottom bar");
+    for (const label of ["Save day", "Print", "Download PDF"]) assert.ok(isOff(h, label), `${label} is off`);
+  });
+
   // ---- the A4 document ---------------------------------------------------------------
-  test("document, a draft: Status 'Draft, not saved', Prepared by '—', Checked by 'Not checked', empty signature boxes, no Saved or Last edited row, no change log", async () => {
+  test("document, a draft: Status 'Draft, not saved', Prepared by '—', Checked by '—', empty signature boxes, no Saved or Last edited row, no change log", async () => {
     const date = await makeDay();
     as("STAFF", w.staff.id);
     const h = await docHtml(date);
-    assert.ok(h.includes("<span>Status</span><b>Draft, not saved</b>") && h.includes("<span>Prepared by</span><b>—</b>") && h.includes("<b>Not checked</b>"));
+    assert.ok(h.includes("<span>Status</span><b>Draft, not saved</b>") && h.includes("<span>Prepared by</span><b>—</b>") && h.includes("<span>Checked by (admin)</span><b>—</b>") && !h.includes("Not checked"));
     assert.ok(!h.includes("<span>Saved</span>") && !h.includes("<span>Last edited</span>") && !h.includes("Change log"));
     assert.equal((h.match(/<div class="name"><\/div>/g) ?? []).length, 2, "both signature boxes are empty");
   });
@@ -388,7 +440,7 @@ describe("Release 2 screens and document, rendered against a real database", { s
     const out = plain(renderToStaticMarkup(createElement(SaveSheet, {
       mode: "save", date: "2026-10-14", dateText: "Wed 14 Oct 2026", baseVersion: 0,
       numbers: { collected: 375000, deductions: 95000, shouldBe: 280000, bankTotal: 150000, left: 130000 }, bankCount: 2, doners,
-      bringForward: "", bank: [], onClose: () => undefined,
+      bringForward: "", bank: [], onClose: () => undefined, onSaved: () => undefined,
     })));
     for (const t of ["Save Wed 14 Oct 2026?", "These numbers are frozen as of now.", "Collected", "3,750.00", "Deductions", "950.00", "Should be in the drawer", "2,800.00", "Taken to bank (2)", "1,500.00", "Left in drawer", "1,300.00", "Done by", "Cancel", "Save day", "Sadun Staff (Staff)", "Nadeesha Admin (Admin)"]) assert.ok(out.includes(t), t);
     assert.match(out, /<option value="" disabled(="")?[^>]*>Select who did this…<\/option>/);
@@ -399,7 +451,7 @@ describe("Release 2 screens and document, rendered against a real database", { s
     const { SaveSheet } = await import("@/app/(app)/daily-summary/save-sheet");
     const out = plain(renderToStaticMarkup(createElement(SaveSheet, {
       mode: "resave", date: "2026-10-14", dateText: "Wed 14 Oct 2026", baseVersion: 2,
-      numbers: { collected: 1, deductions: 2, shouldBe: 3, bankTotal: 4, left: 5 }, bankCount: 1, doners: [], bringForward: "", bank: [], onClose: () => undefined,
+      numbers: { collected: 1, deductions: 2, shouldBe: 3, bankTotal: 4, left: 5 }, bankCount: 1, doners: [], bringForward: "", bank: [], onClose: () => undefined, onSaved: () => undefined,
     })));
     assert.ok(out.includes("Re-save Wed 14 Oct 2026 with the live numbers?") && out.includes("Re-save"));
   });
@@ -407,7 +459,7 @@ describe("Release 2 screens and document, rendered against a real database", { s
   test("the Admin check sheet: the three numbers, an admin select (admins only), Mark as checked; with no active admin it says so and the button is off", async () => {
     const { CheckSheet } = await import("@/app/(app)/daily-summary/check-sheet");
     const admins = [{ id: w.admin.id, name: "Nadeesha Admin", role: "ADMIN" as const }, { id: admin2.id, name: "Ruwan Admin", role: "ADMIN" as const }];
-    const props = { date: "2026-10-14", version: 2, shouldBe: 280000, bankTotal: 150000, left: 130000, onClose: () => undefined };
+    const props = { date: "2026-10-14", version: 2, shouldBe: 280000, bankTotal: 150000, left: 130000, onClose: () => undefined, onSaved: () => undefined };
     const out = plain(renderToStaticMarkup(createElement(CheckSheet, { ...props, admins })));
     for (const t of ["Admin check", "Should be in the drawer", "2,800.00", "Taken to bank", "1,500.00", "Left in drawer", "1,300.00", "Nadeesha Admin", "Ruwan Admin", "Mark as checked", "Select an admin…"]) assert.ok(out.includes(t), t);
     assert.ok(!out.includes("Sadun Staff"));

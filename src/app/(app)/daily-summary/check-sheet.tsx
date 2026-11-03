@@ -18,7 +18,7 @@ import type { Signer } from "./signer-lists";
  * admin named is looked up on the server. The select is controlled, so a refusal keeps it (rule 14).
  */
 export function CheckSheet({
-  date, version, shouldBe, bankTotal, left, admins, onClose,
+  date, version, shouldBe, bankTotal, left, admins, onClose, onSaved,
 }: {
   date: string;
   version: number;
@@ -27,6 +27,8 @@ export function CheckSheet({
   left: number;
   admins: readonly Signer[];
   onClose: () => void;
+  /** The check went through: the screen keeps its buttons off until it shows the check. */
+  onSaved: () => void;
 }) {
   const router = useRouter();
   const [checkedById, setCheckedById] = useState("");
@@ -39,6 +41,7 @@ export function CheckSheet({
       const r = await markChecked({ date, baseVersion: version, checkedById });
       setCheckedById(r.values.checkedById); // echoed on every outcome
       if (r.ok) {
+        onSaved();
         router.refresh();
         onClose();
       } else {

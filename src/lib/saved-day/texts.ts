@@ -5,6 +5,11 @@
 export const NOT_SAVED_CHIP = "Not saved";
 export const NOT_CHECKED_CHIP = "Not checked";
 export const UNREADABLE_DAY = "This saved day can't be read. Showing the live numbers.";
+/** Shown next to the disabled buttons of an unreadable saved day: nothing can be saved, edited, checked or printed from numbers that are not the saved ones. */
+export const UNREADABLE_BLOCK = "This saved day can't be read, so it can't be saved, edited, checked or printed here.";
+/** After a save, edit, check or re-save went through: the buttons wait until the screen shows the new version. */
+export const UPDATING_SCREEN = "Saved. Updating this screen…";
+export const RELOAD_BUTTON = "Reload";
 export const LIVE_DIFFERS = "The live numbers are different from the saved ones";
 export const CHECK_CONFLICT = "The day changed after you opened it. Look at the new numbers and check again.";
 export const NO_ADMIN = "No active admin account. Ask an owner to activate one.";
