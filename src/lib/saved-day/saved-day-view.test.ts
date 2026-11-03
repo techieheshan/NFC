@@ -90,6 +90,12 @@ test("the document's footer (built in the browser after measuring) reads 'Genera
   assert.ok(!/·\s*Draft/.test(src), "the word Draft is the model's, not the view's");
 });
 
+test("the Admin check sheet words a refusal through checkRefusalMessage (the one place the conflict sentence comes from)", () => {
+  const src = readFileSync(path.join(process.cwd(), "src", "app", "(app)", "daily-summary", "check-sheet.tsx"), "utf8");
+  assert.ok(src.includes("{checkRefusalMessage(refusal)}"));
+  assert.ok(!src.includes("{refusal.message}"), "no second, hand-made wording");
+});
+
 test("changeLogRows orders by TIME even if the versions arrive out of order (a stable sort: equal times keep their order)", () => {
   const rows = changeLogRows([
     v(2, T(9), "Second", [{ t: "edited-by", name: "Second" }]),
