@@ -677,6 +677,16 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     assert.ok(await ST.liveOrNull(day), "the real loaders fit");
   });
 
+  test("A4: a save whose live numbers cannot be read is a refusal ('could not be read, nothing saved'), never a crash, and writes nothing", async () => {
+    const day = await makeDay();
+    const bad = { dailySummary: async () => ({ from: day, to: day }) as never, cancelledReceipts: async () => ({ receipts: 0, total: "0.00" }), collectedByStaff: async () => [] };
+    const base = await counts();
+    const r = await ST.saveDayAs({ id: w.staff.id, role: "STAFF" }, { date: day, mode: "save", baseVersion: 0, doneById: w.admin.id, bringForward: "", bank: [], seen: { collected: 130000, deductions: 0 } }, bad);
+    assert.ok(!r.ok && r.reason === "snapshot");
+    if (!r.ok) assert.equal(r.message, "The numbers for this day could not be read. Nothing was saved.");
+    assert.deepEqual(await counts(), base);
+  });
+
   test("A5: a saved snapshot that cannot be read (unknown schema, corrupt) does not crash the screen: the day is 'unreadable' and the live view stands", async () => {
     const unknownSchema = await savedDay();
     await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshotSchema" = 2 WHERE "dayId" = ${(await dayRow(unknownSchema)).id}`);

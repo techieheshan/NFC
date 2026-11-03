@@ -166,6 +166,7 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(h.includes(checkedChip("Ruwan Admin", "Sadun Staff")));
     assert.ok(h.includes("1 Nov 2026, 9:18 PM"), "with the time");
     assert.ok(!h.includes(NOT_CHECKED_CHIP) && h.includes("bg-green-100"));
+    assert.ok(!h.includes("Admin check") && /disabled=""[^>]*>(<svg[^>]*>.*?<\/svg>)? ?Checked/.test(h), "the button reads 'Checked' and is off: one version is checked once");
   });
 
   test("edited (version 3) with the check cleared once: 'Edited · version 3', the change log newest first with who, when and what, 'Check cleared: …'", async () => {

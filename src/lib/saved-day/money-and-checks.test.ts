@@ -105,6 +105,22 @@ test("matchBankLines: among same-amount leftovers the closest line wins (most of
   assert.deepEqual(t.lines.map((l) => l.recordedById), ["ann"]);
 });
 
+test("matchBankLines: the closest line is chosen by EACH of time, slip and note on its own", () => {
+  const rec = (l: BankLine, by: string) => ({ ...l, recordedById: by, recordedAt: T0 });
+  // only the TIME tells them apart
+  let m = matchBankLines([rec(line(100_00, "08:00", "s", "n"), "ann"), rec(line(100_00, "12:00", "s", "n"), "bob")], [line(100_00, "12:00", "z", "z")], "cy", T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"], "time");
+  // only the SLIP tells them apart
+  m = matchBankLines([rec(line(100_00, "09:00", "A", "n"), "ann"), rec(line(100_00, "09:00", "B", "n"), "bob")], [line(100_00, "10:00", "B", "z")], "cy", T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"], "slip");
+  // only the NOTE tells them apart
+  m = matchBankLines([rec(line(100_00, "09:00", "s", "x"), "ann"), rec(line(100_00, "09:00", "s", "y"), "bob")], [line(100_00, "10:00", "z", "y")], "cy", T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"], "note");
+  // the same amount in two lines, nothing else shared: the EARLIEST old line is taken, then the next
+  m = matchBankLines([rec(line(100_00, "08:00", "a", "a"), "ann"), rec(line(100_00, "09:00", "b", "b"), "bob")], [line(100_00, "20:00", "q", "q"), line(100_00, "21:00", "r", "r")], "cy", T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["ann", "bob"]);
+});
+
 // ---- classifyEdit ----
 const shape = (bf: number, ...bank: BankLine[]) => ({ bringForwardCents: bf, bank });
 

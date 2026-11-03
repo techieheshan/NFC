@@ -143,8 +143,9 @@ const defaultLoaders: LiveLoaders = { dailySummary, cancelledReceipts, collected
  * The numbers as they are right now: `dailySummary()` untouched plus the two read-only helpers, or `null` when they do not fit the
  * snapshot shape (a refusal for the caller, never a crash). The loaders are a parameter only so the unreadable case can be tested.
  */
-export async function liveOrNull(date: string, loaders: LiveLoaders = defaultLoaders): Promise<Snapshot | null> {
-  const [report, cancelled, staff] = await Promise.all([loaders.dailySummary(date, date), loaders.cancelledReceipts(date, date), loaders.collectedByStaff(date, date)]);
+export async function liveOrNull(date: string, loaders: LiveLoaders | undefined = defaultLoaders): Promise<Snapshot | null> {
+  const l = loaders ?? defaultLoaders;
+  const [report, cancelled, staff] = await Promise.all([l.dailySummary(date, date), l.cancelledReceipts(date, date), l.collectedByStaff(date, date)]);
   try {
     return buildSnapshot({ report, cancelled, staff });
   } catch (e) {
@@ -182,7 +183,7 @@ export async function tryPurge(): Promise<number> {
 
 // ---- save / edit / re-save ----
 
-export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome> {
+export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoaders): Promise<SaveOutcome> {
   assertOperational(actor);
   const parsed = parseSaveInput(raw);
   if (!parsed.ok) return { ok: false, reason: "invalid", message: parsed.message, fieldErrors: parsed.fieldErrors, values: parsed.values };
@@ -203,7 +204,7 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
   // The server's own numbers, read before the transaction. The sheet's figures are only compared with them.
   let fresh: Snapshot | null = null;
   if (p.mode !== "edit") {
-    fresh = await liveOrNull(p.date);
+    fresh = await liveOrNull(p.date, loaders);
     if (fresh === null) return refuse("snapshot", MESSAGE.snapshot);
     const f = figures(fresh);
     if (!p.seen || p.seen.collected !== f.collected || p.seen.deductions !== f.deductions) return refuse("numbers-moved", MESSAGE.numbersMoved, { fresh: f });
