@@ -264,6 +264,15 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(h.includes("Check cleared: the money changed after Ruwan Admin checked it. An admin must check again."));
   });
 
+  test("the See what changed sheet lets a long value wrap inside a 360 px sheet (min-w-0 and break-words on the saved and live values)", async () => {
+    const { LiveDiffSheet } = await import("@/app/(app)/daily-summary/live-diff-sheet");
+    const long = "Nadeesha" + "x".repeat(120);
+    const h = renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Deduction: who", saved: long, live: `${long}2`, textOnly: true }], savedLeft: 1, liveLeft: 1, onClose: () => undefined }));
+    const spans = h.match(/<span class="[^"]*tabular-nums[^"]*">[^<]*x{120}[^<]*<\/span>/g) ?? [];
+    assert.equal(spans.length, 2, "the saved and the live value");
+    for (const sp of spans) assert.ok(sp.includes("min-w-0") && sp.includes("break-words"), sp.slice(0, 120));
+  });
+
   test("the See what changed sheet says so when only names differ", async () => {
     const { LiveDiffSheet } = await import("@/app/(app)/daily-summary/live-diff-sheet");
     const names = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", textOnly: true }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));

@@ -28,12 +28,12 @@ export function LiveDiffSheet({
           <li key={d.key} className="px-3 py-2 text-sm">
             <span className="block break-words font-medium">{d.label}</span>
             <span className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Saved</span>
-              <span className="tabular-nums">{d.saved}</span>
+              <span className="text-muted-foreground shrink-0">Saved</span>
+              <span className="min-w-0 break-words text-right tabular-nums">{d.saved}</span>
             </span>
             <span className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Live</span>
-              <span className="tabular-nums">{d.live}</span>
+              <span className="text-muted-foreground shrink-0">Live</span>
+              <span className="min-w-0 break-words text-right tabular-nums">{d.live}</span>
             </span>
           </li>
         ))}

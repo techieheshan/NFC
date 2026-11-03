@@ -14,6 +14,7 @@ import { matchBankLines, type StoredBankLine } from "./bank-lines";
 import { changesForEdit, changesForResave, changesForSave, parseChanges, type ChangeItem } from "./changes";
 import { classifyEdit, decideCheck, type EditShape, type SaveKind } from "./check-rule";
 import { decideBase } from "./conflict";
+import { checkFkKind, fkColumn, saveFkKind } from "./fk";
 import { diffSummaries, type FigureDiff } from "./diff";
 import { chooseHint, hintWindow, type Hint } from "./hint";
 import { DS_LOCK_NAMESPACE, LOCK_WAIT_MS, lockKey, TX_MAX_WAIT_MS, TX_TIMEOUT_MS } from "./lock";
@@ -124,18 +125,6 @@ function isBusyError(e: unknown): boolean {
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 /** A foreign key failed: the day was deleted by the purge between our read and our write. */
 const isForeignKeyViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003";
-/** Which column's foreign key failed (`doneById`, `savedById`, `checkedById`…), read from the constraint name `DailySummary<Table>_<column>_fkey` that the error carries; null if it cannot be told. */
-function fkColumn(e: unknown): string | null {
-  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return null;
-  let text = e.message;
-  try {
-    text += ` ${JSON.stringify(e.meta ?? {})}`;
-  } catch {
-    // meta that cannot be serialised must not replace the real error
-  }
-  return /DailySummary[A-Za-z]+_([A-Za-z]+)_fkey/.exec(text)?.[1] ?? null;
-}
-
 const versionInclude = { bankLines: { orderBy: { position: "asc" as const } }, check: true } satisfies Prisma.DailySummaryVersionInclude;
 type VersionRow = Prisma.DailySummaryVersionGetPayload<{ include: typeof versionInclude }>;
 
@@ -386,9 +375,9 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
       const gone = p.baseVersion > 0 && (await db.dailySummaryDay.findUnique({ where: { date: dateValue }, select: { id: true } })) === null;
       if (gone) return refuse("conflict", MESSAGE.noDay);
       // Otherwise say WHICH account is missing: the session user is the only case where the person's own sign-in is the problem.
-      const column = fkColumn(e);
-      if (column === "savedById") return refuse("sign-in", MESSAGE.signIn);
-      if (column === "doneById") return refuse("done-by", MESSAGE.accountGone);
+      const kind = saveFkKind(fkColumn(e));
+      if (kind === "session") return refuse("sign-in", MESSAGE.signIn);
+      if (kind === "done-by") return refuse("done-by", MESSAGE.accountGone);
       return refuse("invalid", MESSAGE.fkOther);
     }
     throw e;
@@ -457,9 +446,9 @@ export async function markCheckedAs(actor: Actor, raw: unknown): Promise<CheckOu
     if (isForeignKeyViolation(e)) {
       const gone = (await db.dailySummaryDay.findUnique({ where: { date: dateValue }, select: { id: true } })) === null;
       if (gone) return refuse("not-saved", MESSAGE.noDay);
-      const column = fkColumn(e);
-      if (column === "markedById") return refuse("sign-in", MESSAGE.signIn);
-      if (column === "checkedById") return refuse("not-admin", MESSAGE.accountGone);
+      const kind = checkFkKind(fkColumn(e));
+      if (kind === "session") return refuse("sign-in", MESSAGE.signIn);
+      if (kind === "named-admin") return refuse("not-admin", MESSAGE.accountGone);
       return refuse("invalid", MESSAGE.fkOther);
     }
     throw e;

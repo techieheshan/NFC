@@ -891,6 +891,37 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     }
   });
 
+  test("F9 fallback: a foreign-key failure on a column that is NOT the Done by, the named admin or the session user (a deposit's recorder, the carried Prepared by, anything else) never blames the person: it says something is no longer available and writes nothing", async () => {
+    const FK_OTHER = "Something this day refers to is no longer available, so nothing was saved. Reload the page and try again.";
+    const bogus = (col: string) => `NEW."${col}" := 'no-such-user'; RETURN NEW;`;
+    // 1. the recorder of a new deposit
+    {
+      const date = await makeDay();
+      staff();
+      const r = await withTrigger("ds_test_fk_other", "BEFORE INSERT", "DailySummaryBankLine", bogus("recordedById"), () => save(date, w.admin.id, { bank: [line("10.00")] }));
+      assert.ok(!r.ok && r.reason === "invalid" && r.message === FK_OTHER, JSON.stringify(r));
+      assert.equal(await db.dailySummaryDay.findUnique({ where: { date: colomboDateValue(date) } }), null, "nothing was written");
+    }
+    // 2. the carried Prepared by, on an edit
+    {
+      const day = await savedDay();
+      const before = await counts();
+      admin();
+      const r = await withTrigger("ds_test_fk_other", "BEFORE INSERT", "DailySummaryVersion", bogus("preparedById"), () => edit(day, 1, u.staff2.id, { bringForward: "5.00" }));
+      assert.ok(!r.ok && r.reason === "invalid" && r.message === FK_OTHER, JSON.stringify(r));
+      assert.deepEqual(await counts(), before, "nothing was written");
+    }
+    // 3. a check whose version link is broken (a column that is none of the person's accounts)
+    {
+      const day = await savedDay();
+      const before = await counts();
+      admin();
+      const r = await withTrigger("ds_test_fk_other", "BEFORE INSERT", "DailySummaryCheck", `NEW."versionId" := 2147483000; RETURN NEW;`, () => check(day, 1, w.admin.id));
+      assert.ok(!r.ok && r.reason === "invalid" && r.message === FK_OTHER, JSON.stringify(r));
+      assert.deepEqual(await counts(), before);
+    }
+  });
+
   test("F9: saving needs the signed-in user to exist and be active ADMIN or STAFF; the refusal says so and writes nothing", async () => {
     const date = await makeDay();
     const base = await counts();
