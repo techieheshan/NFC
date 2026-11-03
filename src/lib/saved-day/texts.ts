@@ -11,6 +11,15 @@ export const UNREADABLE_BLOCK = "This saved day can't be read, so it can't be sa
 export const UPDATING_SCREEN = "Saved. Updating this screen…";
 export const RELOAD_BUTTON = "Reload";
 export const LIVE_DIFFERS = "The live numbers are different from the saved ones";
+/** The banner when the ONLY differences are printed names (a rename, or a reassigned deduction): there is nothing to re-add up, but a person should look. */
+export const NAMES_DIFFER = "Some names differ from the saved day";
+/** Shown in "See what changed" when only names differ. */
+export const NAMES_DIFFER_NOTE = "Only names are different (a rename in Setup, or an expense given to someone else). Re-saving takes the new names and asks an admin to check the day again.";
+/** The banner text for a saved day's differences from the live data: null when there are none. Any difference in a number or a flag keeps the numbers wording. */
+export function liveDiffBanner(diffs: readonly { nameOnly?: boolean }[]): string | null {
+  if (diffs.length === 0) return null;
+  return diffs.every((d) => d.nameOnly === true) ? NAMES_DIFFER : LIVE_DIFFERS;
+}
 export const CHECK_CONFLICT = "The day changed after you opened it. Look at the new numbers and check again.";
 export const NO_ADMIN = "No active admin account. Ask an owner to activate one.";
 export const SAVE_FROZEN = "These numbers are frozen as of now.";

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { diffSummaries } from "./diff";
+import { liveDiffBanner, LIVE_DIFFERS, NAMES_DIFFER } from "./texts";
 import { deletePath, setPath, snapshotOf, summaryOf } from "./fixtures";
 import { buildSnapshot, cashBookColumns, cashBookOf, parseSnapshot, SNAPSHOT_SCHEMA, SnapshotError } from "./snapshot";
 
@@ -151,36 +152,61 @@ test("registered / not-paid counts are not compared (they are not on the paper a
 });
 
 // ---- A9: everything the document prints ----
-test("a course's reconcile flag is compared (it prints a warning); a course or teacher NAME is not (F8: a Setup rename must not flag every saved day)", () => {
+test("a course's reconcile flag is a flag difference; a course or teacher NAME difference is listed and marked names-only", () => {
   const base = snapshotOf();
   const flipped = JSON.parse(JSON.stringify(base));
   setPath(flipped.report, "courses.0.reconciles", false);
-  assert.deepEqual(diffSummaries(base, flipped).map((x) => [x.key, x.saved, x.live]), [["course:1.reconciles", "yes", "no"]]);
+  assert.deepEqual(diffSummaries(base, flipped).map((x) => [x.key, x.saved, x.live, x.nameOnly]), [["course:1.reconciles", "yes", "no", undefined]]);
   const renamed = JSON.parse(JSON.stringify(base));
   setPath(renamed.report, "courses.0.course", "Physics 2028");
-  setPath(renamed.report, "courses.0.teacher", "Mr Z");
-  assert.deepEqual(diffSummaries(base, renamed), [], "names only: no difference");
-  // a rename together with a real figure change reports ONLY the figure
+  const d1 = diffSummaries(base, renamed);
+  assert.deepEqual(d1.map((x) => [x.key, x.saved, x.live, x.nameOnly]), [["course:1.name", "Physics 2027", "Physics 2028", true]]);
+  const retaught = JSON.parse(JSON.stringify(base));
+  setPath(retaught.report, "courses.0.teacher", "Mr Z");
+  assert.deepEqual(diffSummaries(base, retaught).map((x) => [x.key, x.saved, x.live, x.nameOnly]), [["course:1.teacher", "Mr A", "Mr Z", true]]);
+  // names together with a real figure change: both are listed, and the figure is NOT names-only
   setPath(renamed.report, "courses.0.paidFull", 99);
-  const d = diffSummaries(base, renamed);
-  assert.ok(d.length > 0 && d.every((x) => !/name|teacher/i.test(x.key)), JSON.stringify(d));
+  const d2 = diffSummaries(base, renamed);
+  assert.ok(d2.some((x) => x.key === "course:1.name") && d2.some((x) => x.key === "course:1.paidFull" && x.nameOnly === undefined), JSON.stringify(d2));
+  assert.equal(liveDiffBanner(d2), LIVE_DIFFERS);
 });
 
-test("a staff member's NAME is not compared; their receipts and money are", () => {
+test("a staff member's NAME difference is listed (names-only); their receipts and money are figures", () => {
   const base = snapshotOf();
   const renamed = snapshotOf({ staff: [{ userId: "u1", name: "Sadun P.", receipts: 6, collected: "20100.00" }, { userId: "u2", name: "Thilini", receipts: 4, collected: "15000.00" }] });
-  assert.deepEqual(diffSummaries(base, renamed), []);
-  const moved = snapshotOf({ staff: [{ userId: "u1", name: "Sadun P.", receipts: 7, collected: "20100.00" }, { userId: "u2", name: "Thilini", receipts: 4, collected: "15000.00" }] });
-  assert.ok(diffSummaries(base, moved).some((x) => x.key.startsWith("staff:u1")), "a changed receipt count is still a difference");
+  assert.deepEqual(diffSummaries(base, renamed).map((x) => [x.key, x.saved, x.live, x.nameOnly]), [["staff:u1.name", "Sadun", "Sadun P.", true]]);
+  const moved = snapshotOf({ staff: [{ userId: "u1", name: "Sadun", receipts: 7, collected: "20100.00" }, { userId: "u2", name: "Thilini", receipts: 4, collected: "15000.00" }] });
+  const d = diffSummaries(base, moved);
+  assert.ok(d.length === 1 && d[0].key.startsWith("staff:u1") && d[0].nameOnly === undefined);
 });
 
-test("a deduction's person and authoriser names are names: renaming them is not a difference, changing its amount is", () => {
+test("a deduction reassigned from one person to another, or given another authoriser, is a difference (names-only); a changed amount is a figure difference", () => {
   const base = snapshotOf();
   const lines = base.report.deductionLines;
-  const renamed = snapshotOf({ report: { deductionLines: [{ ...lines[0], person: "Someone Else", authorizedBy: "Another Admin" }, lines[1]] } });
-  assert.deepEqual(diffSummaries(base, renamed), []);
+  const reassigned = snapshotOf({ report: { deductionLines: [{ ...lines[0], person: "Teacher B" }, lines[1]] } });
+  const d1 = diffSummaries(base, reassigned);
+  assert.equal(d1.length, 1, JSON.stringify(d1));
+  assert.ok(d1[0].key.startsWith("deduction-names:") && d1[0].nameOnly === true);
+  assert.ok(d1[0].saved.includes(String(lines[0].person ?? "—")) && d1[0].live.includes("Teacher B"), `${d1[0].saved} → ${d1[0].live}`);
+  const reauthorised = snapshotOf({ report: { deductionLines: [{ ...lines[0], authorizedBy: "Another Admin" }, lines[1]] } });
+  const d2 = diffSummaries(base, reauthorised);
+  assert.ok(d2.length === 1 && d2[0].nameOnly === true && d2[0].live.includes("authorised by Another Admin"), JSON.stringify(d2));
   const amount = snapshotOf({ report: { deductionLines: [{ ...lines[0], amount: "1.00" }, lines[1]] } });
-  assert.ok(diffSummaries(base, amount).some((x) => x.key.startsWith("deduction:")));
+  const d3 = diffSummaries(base, amount);
+  assert.ok(d3.some((x) => x.key.startsWith("deduction:") && x.nameOnly === undefined));
+  assert.equal(liveDiffBanner(d3), LIVE_DIFFERS);
+  // the same figures with the same people in a different ORDER are not a difference
+  const swapped = snapshotOf({ report: { deductionLines: [lines[1], lines[0]] } });
+  assert.deepEqual(diffSummaries(base, swapped), []);
+});
+
+test("liveDiffBanner: nothing is null; names only says so; any number or flag keeps the numbers wording (exact texts)", () => {
+  assert.equal(LIVE_DIFFERS, "The live numbers are different from the saved ones");
+  assert.equal(NAMES_DIFFER, "Some names differ from the saved day");
+  assert.equal(liveDiffBanner([]), null);
+  assert.equal(liveDiffBanner([{ nameOnly: true }, { nameOnly: true }]), NAMES_DIFFER);
+  assert.equal(liveDiffBanner([{ nameOnly: true }, {}]), LIVE_DIFFERS);
+  assert.equal(liveDiffBanner([{}]), LIVE_DIFFERS);
 });
 
 test("whether a deduction is a staff advance is compared (it changes the printed kind)", () => {

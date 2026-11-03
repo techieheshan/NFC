@@ -2,6 +2,7 @@
 
 import { formatCents } from "@/lib/cents";
 import type { FigureDiff } from "@/lib/saved-day/diff";
+import { NAMES_DIFFER_NOTE } from "@/lib/saved-day/texts";
 
 import { BottomSheet, SheetRow } from "./bottom-sheet";
 
@@ -21,6 +22,7 @@ export function LiveDiffSheet({
   return (
     <BottomSheet label="What changed" onClose={onClose}>
       <h2 className="text-lg font-semibold">What changed since it was saved</h2>
+      {diffs.length > 0 && diffs.every((d) => d.nameOnly === true) && <p className="text-muted-foreground mt-1 text-sm">{NAMES_DIFFER_NOTE}</p>}
       <ul className="mt-3 divide-y rounded-lg border">
         {diffs.map((d) => (
           <li key={d.key} className="px-3 py-2 text-sm">

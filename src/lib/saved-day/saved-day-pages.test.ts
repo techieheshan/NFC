@@ -15,7 +15,7 @@ import { shiftDay } from "@/lib/daily-summary-dates";
 import { snapshotOf } from "./fixtures";
 import { overBankedBanner, overBankRefusal } from "./over-bank";
 import {
-  checkClearedChip, checkedChip, editedChip, HISTORY_NOTE, LIVE_DIFFERS, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
+  checkClearedChip, checkedChip, editedChip, HISTORY_NOTE, LIVE_DIFFERS, NAMES_DIFFER, NAMES_DIFFER_NOTE, NO_ADMIN, NOT_CHECKED_CHIP, NOT_SAVED_CHIP, savedChip, UNREADABLE_BLOCK, UNREADABLE_DAY,
 } from "./texts";
 
 /*
@@ -207,6 +207,44 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(!h.includes("2,800.00"), "the live figure is not shown as the day's number (it is only in the closed 'What changed' sheet)");
   });
 
+  test("a names-only difference has its own banner ('Some names differ from the saved day') with the same two buttons; a number difference keeps the numbers banner; re-saving clears the check", async () => {
+    const date = await makeDay({ pays: ["5000.00"], spends: [["900.00", "repair: lock"]] });
+    await save(date, w.admin.id);
+    await check(date, 1, admin2.id);
+    as("STAFF", w.staff.id);
+    assert.ok(!(await dayHtml(date)).includes(NAMES_DIFFER), "nothing differs yet");
+    // the expense is corrected to another authoriser: a NAME differs, no number does
+    await db.expense.updateMany({ where: { date: colomboDateValue(date), reason: "repair: lock" }, data: { authorizedById: w.admin.id } });
+    let h = await dayHtml(date);
+    assert.ok(h.includes(NAMES_DIFFER), "the names-only banner");
+    assert.ok(!h.includes(LIVE_DIFFERS), "not the numbers banner");
+    assert.ok(h.includes("See what changed") && h.includes("Re-save with live numbers"), "the same two buttons");
+    assert.ok(h.includes("Authorised by Ruwan Admin") && !h.includes("Authorised by Nadeesha Admin"), "the saved screen still shows the FROZEN authoriser");
+    // a real number moves as well: the numbers banner wins
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "300.00", takenById: w.staff.id, paidAt: new Date(`${date}T09:00:00Z`) } });
+    h = await dayHtml(date);
+    assert.ok(h.includes(LIVE_DIFFERS) && !h.includes(NAMES_DIFFER));
+    await db.payment.deleteMany({ where: { paidAt: new Date(`${date}T09:00:00Z`) } });
+    // re-saving after a names-only difference is a money change: the check is cleared (an admin looks again), and the difference is gone
+    as("STAFF", w.staff.id);
+    const r = await A.saveDay({ date, mode: "resave", baseVersion: 1, doneById: w.staff.id, bringForward: "", bank: [], seen: await seen(date) });
+    assert.ok(r.ok, JSON.stringify(r));
+    h = await dayHtml(date);
+    assert.ok(h.includes("Authorised by Nadeesha Admin") && !h.includes("Authorised by Ruwan Admin"), "the new names are frozen into version 2");
+    assert.ok(!h.includes(NAMES_DIFFER) && !h.includes(LIVE_DIFFERS), "nothing differs now");
+    assert.ok(h.includes(checkClearedChip("Ruwan Admin")) && !h.includes("bg-green-100"), "the check was cleared by the re-save");
+    const again = await A.saveDay({ date, mode: "resave", baseVersion: 2, doneById: w.staff.id, bringForward: "", bank: [], seen: await seen(date) });
+    assert.ok(!again.ok && again.reason === "nothing-changed");
+  });
+
+  test("the See what changed sheet says so when only names differ", async () => {
+    const { LiveDiffSheet } = await import("@/app/(app)/daily-summary/live-diff-sheet");
+    const names = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", nameOnly: true }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));
+    assert.ok(names.includes(NAMES_DIFFER_NOTE));
+    const mixed = plain(renderToStaticMarkup(createElement(LiveDiffSheet, { diffs: [{ key: "k", label: "Staff name", saved: "A", live: "B", nameOnly: true }, { key: "n", label: "Net", saved: "1", live: "2" }], savedLeft: 1, liveLeft: 1, onClose: () => undefined })));
+    assert.ok(!mixed.includes(NAMES_DIFFER_NOTE));
+  });
+
   test("over-banked (after a cancelled receipt and a re-save): the red banner with the amount; Admin check refuses with the same words", async () => {
     const date = await makeDay({ pays: ["5000.00", "5000.00"] });
     await save(date, w.admin.id, { bank: [line("10,000.00", "09:00", "S1", "")] });
@@ -237,7 +275,7 @@ describe("Release 2 screens and document, rendered against a real database", { s
   test("F1: an unreadable saved day keeps the banner and the live numbers but DISABLES Save day, Edit, Admin check, Print and Download PDF, shows why, and has no 'Not saved' chip, no hint and no conflict message", async () => {
     const prev = await makeDay({ pays: ["15000.00"] });
     const date = shiftDay(prev, 1);
-    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "500.00", takenById: w.staff.id, paidAt: new Date(`${date}T05:00:00Z`) } });
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "777.00", takenById: w.staff.id, paidAt: new Date(`${date}T05:00:00Z`) } });
     dayCounter++;
     await save(prev, w.admin.id, { bank: [line("3,000.00")] }); // a hint would be on offer: "closed with 12,000.00"
     await save(date, w.admin.id);
@@ -252,7 +290,11 @@ describe("Release 2 screens and document, rendered against a real database", { s
     assert.ok(!h.includes(NOT_SAVED_CHIP), "no 'Not saved' chip");
     assert.ok(!h.includes("Use this") && !h.includes("closed with"), "no hint");
     assert.ok(!h.includes("while you were working"), "never the false conflict message");
-    assert.ok(h.includes("3,750.00") || h.includes("500.00"), "live figures");
+    // the LIVE figures of THIS day (one 777.00 admission), not the day before's 15,000.00 or its 12,000.00 left in the drawer
+    assert.match(h, /Should be in the drawer<\/span><span[^>]*>777\.00</, "Should be in the drawer is the live 777.00");
+    assert.match(h, /Left in drawer<\/span>[\s\S]{0,160}?>777\.00</, "Left in drawer is the live 777.00");
+    assert.match(h, /Total collected<\/span><span[^>]*>777\.00</, "Total collected is the live 777.00");
+    assert.ok(!h.includes("15,000.00") && !h.includes("12,000.00"), "nothing of the other day");
   });
 
   test("a purged or very old day simply shows as an unsaved day with live data (C5)", async () => {

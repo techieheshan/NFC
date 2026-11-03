@@ -13,7 +13,7 @@ import { changeLogNewestFirst, formatClock, formatWhen } from "@/lib/saved-day/l
 import { overBankedBanner } from "@/lib/saved-day/over-bank";
 import type { SavedDayView, SaveOutcome } from "@/lib/saved-day/store";
 import {
-  checkClearedChip, checkedChip, conflictText, editedChip, LIVE_DIFFERS, NOT_CHECKED_CHIP, NOTHING_CHANGED, RELOAD_BUTTON, savedChip, UPDATING_SCREEN,
+  checkClearedChip, checkedChip, conflictText, editedChip, liveDiffBanner, NOT_CHECKED_CHIP, NOTHING_CHANGED, RELOAD_BUTTON, savedChip, UPDATING_SCREEN,
 } from "@/lib/saved-day/texts";
 
 import { BankSheet } from "./bank-sheet";
@@ -103,7 +103,8 @@ export function SavedDayScreen({
   const log = changeLogNewestFirst(saved.log);
   const unreconciled = reconcileWarning(report);
   const docHref = (auto: "print" | "pdf") => `/daily-summary/document?date=${date}&auto=${auto}`;
-  const differs = liveDiffs.length > 0;
+  const diffBanner = liveDiffBanner(liveDiffs);
+  const differs = diffBanner !== null;
   const editBlock = blockReasonFor({ bringForwardOk: bfParsed.ok, overdrawn: flow.overdrawn, needsDoneBy: doneById === "" });
   const cancelEdit = () => {
     sessionDispatch({ type: "cancel" });
@@ -149,7 +150,7 @@ export function SavedDayScreen({
       {saved.overBankedBy !== null && <Banner tone="red" role="alert">{overBankedBanner(saved.overBankedBy)}</Banner>}
       {differs && (
         <Banner tone="amber" role="status">
-          <p className="font-medium">{LIVE_DIFFERS}</p>
+          <p className="font-medium">{diffBanner}</p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setSheet("diff")} className="border-input bg-background h-11 rounded-md border text-sm font-medium text-foreground">See what changed</button>
             <button type="button" onClick={() => setSheet("resave")} disabled={settled} className="bg-primary text-primary-foreground h-11 rounded-md text-sm font-medium disabled:opacity-50">Re-save with live numbers</button>
