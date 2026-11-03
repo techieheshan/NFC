@@ -1,3 +1,7 @@
+-- Wait at most 3 seconds for a lock on any table this migration touches (the foreign keys to "User" take a brief SHARE ROW EXCLUSIVE lock);
+-- if the lock is not free, the statement fails instead of queueing logins behind it, and nothing is applied.
+SET lock_timeout = '3s';
+
 -- CreateEnum
 CREATE TYPE "DailySummarySaveKind" AS ENUM ('SAVE', 'EDIT', 'RESAVE_LIVE');
 
