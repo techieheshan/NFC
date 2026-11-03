@@ -310,6 +310,18 @@ describe("Release 2 screens and document, rendered against a real database", { s
     await db.dailySummaryDay.deleteMany();
   });
 
+  test("F1: the screen of an unreadable day shows no hint even when it is handed one (a hinted unsaved day is the control)", () => {
+    const s = snapshotOf();
+    const props = {
+      date: "2026-10-14", today: "2026-11-01", dateText: "Wed 14 Oct 2026", report: s.report, cancelled: s.cancelled, staff: s.staff, doners: [],
+      initial: { bf: "", bank: [] }, notices: [], hint: { date: "2026-10-13", daysAgo: 1, leftCents: 1_200_000, checked: true },
+    };
+    const control = plain(renderToStaticMarkup(createElement(DayScreen, { ...props, unreadable: false })));
+    assert.ok(control.includes("Yesterday closed with 12,000.00. Use this"), "an unsaved day shows the hint it is handed");
+    const unreadable = plain(renderToStaticMarkup(createElement(DayScreen, { ...props, unreadable: true })));
+    assert.ok(!unreadable.includes("Use this") && !unreadable.includes("closed with"), "an unreadable day shows none");
+  });
+
   test("F4: a draft whose bank lines add up to more than the drawer disables Save day, Print and Download PDF and says why right there", async () => {
     const date = await makeDay();
     as("STAFF", w.staff.id);

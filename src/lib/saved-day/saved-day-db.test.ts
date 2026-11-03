@@ -662,6 +662,22 @@ describe("saved days against a real database", { skip: dbSkip }, () => {
     await db.dailySummaryDay.deleteMany();
   });
 
+  test("F1: an unreadable saved day gets no hint from the store, though a saved day the day before would offer one (the unsaved sibling is the control)", async () => {
+    const prev = await makeDay({ pays: ["15000.00"] });
+    const date = shiftDay(prev, 1);
+    await db.payment.create({ data: { kind: "ADMISSION", studentId, amount: "500.00", takenById: w.staff.id, paidAt: new Date(`${date}T05:00:00Z`) } });
+    dayCounter++;
+    staff();
+    assert.ok((await save(prev, w.admin.id, { bank: [line("3,000.00")] })).ok);
+    const control = await A.loadSavedDay(date);
+    assert.ok(control.hint && control.hint.leftCents === 1_200_000, JSON.stringify(control.hint));
+    assert.ok((await save(date, w.admin.id)).ok);
+    await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshotSchema" = 2 WHERE "dayId" = (SELECT id FROM "DailySummaryDay" WHERE date = '${date}')`);
+    const read = await A.loadSavedDay(date);
+    assert.equal(read.unreadable, true);
+    assert.equal(read.hint, null);
+  });
+
   test("F10: the bring-forward hint is looked up for an UNSAVED day only (a saved or unreadable day costs no hint query)", async () => {
     const saved = await savedDay();
     const unsaved = await makeDay();
