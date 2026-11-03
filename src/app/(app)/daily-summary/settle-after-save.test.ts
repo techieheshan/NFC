@@ -50,7 +50,7 @@ test("F2: every action on the draft screen is off while settled", () => {
 });
 
 test("F2: every action on the saved screen is off while settled", () => {
-  assert.match(saved, /onClick=\{cancelEdit\} disabled=\{settled\}/, "Cancel");
+  assert.match(saved, /onClick=\{cancelEdit\} disabled=\{settled \|\| pending\}/, "Cancel");
   assert.match(saved, /disabled=\{pending \|\| settled \|\| editBlock !== null\}/, "Save changes");
   assert.match(saved, /sessionDispatch\(\{ type: "start" \}\)\} disabled=\{settled\}/, "Edit");
   assert.match(saved, /disabled=\{saved\.check !== null \|\| settled\}/, "Admin check");

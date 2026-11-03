@@ -30,6 +30,8 @@ import type { Signer } from "./signer-lists";
 import { editSessionReducer, initialEditSession } from "./edit-session";
 import type { TypedAction } from "./typed-reducer";
 
+type Refusal = Extract<SaveOutcome, { ok: false }>;
+
 /**
  * The day screen for a SAVED day. Everything on it is the FROZEN version (numbers, deposits, who and when); the live data is only used to
  * tell whether it moved (`liveDiffs`) and what a re-save would give. Any signed-in ADMIN or STAFF may edit (bring-forward, bank lines) or
@@ -58,12 +60,11 @@ export function SavedDayScreen({
   // One edit: whether edit mode is open, what is typed (bring-forward, bank lines) and Done by (required) are ONE pure state machine
   // (edit-session.ts), so Cancel throws all of it away and the next Edit starts from the saved numbers.
   const original = { bf: cash.bringForward > 0 ? (cash.bringForward / 100).toFixed(2) : "", bank: bankLines.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note })) };
-  const [session, sessionDispatch] = useReducer(editSessionReducer, undefined, () => initialEditSession(original));
-  const { typed, editing, doneById } = session;
+  const [session, sessionDispatch] = useReducer(editSessionReducer<Refusal>, undefined, () => initialEditSession<Refusal>(original));
+  const { typed, editing, doneById, refusal } = session;
   const dispatch = (action: TypedAction) => sessionDispatch({ type: "typed", action });
   const setDoneById = (id: string) => sessionDispatch({ type: "doneBy", id });
   const [editingBf, setEditingBf] = useState(false);
-  const [refusal, setRefusal] = useState<Extract<SaveOutcome, { ok: false }> | null>(null);
   const [pending, start] = useTransition();
   const [sheet, setSheet] = useState<null | "check" | "diff" | "resave" | "bank">(null);
   // A save, edit, check or re-save went through and the screen has not shown it yet. Every action stays off until it does: the page keys this
@@ -82,6 +83,7 @@ export function SavedDayScreen({
   const shownBank: BankLineView[] = editing ? typed.bank : bankLines;
 
   const send = () => {
+    const epoch = session.epoch; // the edit this save belongs to: a Cancel starts a new one
     start(async () => {
       const r = await saveDay({
         date, mode: "edit", baseVersion: saved.version, doneById,
@@ -92,8 +94,8 @@ export function SavedDayScreen({
         setSettled(true);
         router.refresh();
       } else {
-        setRefusal(r);
-        setDoneById(r.values.doneById); // controlled: a refusal keeps the choice (rule 14)
+        // controlled: a refusal keeps the choice (rule 14); one that arrives after a Cancel is ignored by the reducer (its epoch is old)
+        sessionDispatch({ type: "refused", epoch, refusal: r });
       }
     });
   };
@@ -109,7 +111,6 @@ export function SavedDayScreen({
   const cancelEdit = () => {
     sessionDispatch({ type: "cancel" });
     setEditingBf(false);
-    setRefusal(null);
   };
 
   return (
@@ -261,7 +262,7 @@ export function SavedDayScreen({
           )}
           {editing ? (
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={cancelEdit} disabled={settled} className="border-input bg-background h-12 rounded-md border text-base font-medium disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={cancelEdit} disabled={settled || pending} className="border-input bg-background h-12 rounded-md border text-base font-medium disabled:opacity-50">Cancel</button>
               <button
                 type="button" onClick={send} disabled={pending || settled || editBlock !== null}
                 className="bg-primary text-primary-foreground h-12 rounded-md text-base font-medium disabled:opacity-50"
