@@ -52,3 +52,13 @@ test("blockReason: the first reason that applies wins; null when the buttons may
   assert.equal(blockReason({ bringForwardOk: true, overdrawn: false }), null);
   assert.equal(blockReason({ bringForwardOk: true, overdrawn: false, needsDoneBy: false }), null);
 });
+
+// F3, the wiring: the screen's Cancel runs the reducer's "cancel" (not a partial reset of some of the state)
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+test("F3: the saved screen's Cancel button runs cancelEdit, and cancelEdit dispatches the reducer's cancel", () => {
+  const screen = readFileSync(path.join(process.cwd(), "src/app/(app)/daily-summary/saved-day-screen.tsx"), "utf8");
+  assert.match(screen, /onClick=\{cancelEdit\}/, "the Cancel button");
+  assert.match(screen, /const cancelEdit = \(\) => \{\s*sessionDispatch\(\{ type: "cancel" \}\);/, "cancelEdit");
+});
