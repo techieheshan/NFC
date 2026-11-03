@@ -56,11 +56,11 @@ test("the document's footnote says both are INCLUDED in the amounts", () => {
 test("ONE source: the day screen, the range screen and the document all take these lines from the helper", () => {
   const root = path.join(process.cwd(), "src", "app", "(app)", "daily-summary");
   const read = (...p: string[]) => readFileSync(path.join(root, ...p), "utf8");
-  assert.ok(read("day-screen.tsx").includes("ofWhichLines(report)"));
+  assert.ok(read("day-parts.tsx").includes("ofWhichLines(report)"));
   assert.ok(read("range", "page.tsx").includes("ofWhichLines(r)"));
   const model = read("document", "model.ts");
   assert.ok(model.includes("ofWhichLines(report)") && model.includes("includedMonthsNote(report)"));
-  for (const f of [read("day-screen.tsx"), read("range", "page.tsx"), model, read("document", "blocks.tsx")]) {
+  for (const f of [read("day-parts.tsx"), read("day-screen.tsx"), read("saved-day-screen.tsx"), read("range", "page.tsx"), model, read("document", "blocks.tsx")]) {
     assert.ok(!/halfMonths\??\.total|noChargeMonths\??\.count/.test(f), "no screen reads the Half amount itself");
     assert.ok(!f.includes("included in Class fees"), "the old wording is gone");
   }
@@ -75,11 +75,11 @@ test("the Smart card line reads 'Smart card replacement (N)' and Admission carri
 test("ONE source for that wording: the day screen, the range screen and the document use the helpers, and no old 'Smart card (N)' label is left", () => {
   const root = path.join(process.cwd(), "src", "app", "(app)", "daily-summary");
   const read = (...p: string[]) => readFileSync(path.join(root, ...p), "utf8");
-  for (const f of [read("day-screen.tsx"), read("range", "page.tsx"), read("document", "blocks.tsx")]) {
+  for (const f of [read("day-parts.tsx"), read("range", "page.tsx"), read("document", "blocks.tsx")]) {
     assert.ok(f.includes("smartCardLabel(") && f.includes("ADMISSION_NOTE"), "uses the helpers");
     assert.ok(!/`Smart card \(\$\{/.test(f), "no hand-written 'Smart card (N)' label");
   }
-  assert.ok(!read("day-screen.tsx").includes('label="Admission and smart card"'), "the old row title is gone");
+  assert.ok(!read("day-parts.tsx").includes('label="Admission and smart card"'), "the old row title is gone");
 });
 
 test("the reconcile warning counts the courses whose own flag says they do not reconcile, and says nothing otherwise", () => {
