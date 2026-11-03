@@ -308,7 +308,8 @@ describe("Release 2 screens and document, rendered against a real database", { s
     await db.$executeRawUnsafe(`UPDATE "DailySummaryVersion" SET "snapshotSchema" = 2 WHERE "dayId" = (SELECT id FROM "DailySummaryDay" WHERE date = '${date}')`);
     for (const auto of ["print", "pdf", undefined]) {
       const h = plain(await html(docPage, { date, ...(auto ? { auto } : {}) }));
-      assert.ok(h.includes(DOCUMENT_UNREADABLE), "the refusal");
+      assert.equal(DOCUMENT_UNREADABLE, "This saved day can't be read.");
+      assert.ok(h.includes("This saved day can't be read."), "the refusal, in its exact words");
       assert.ok(h.includes(`href="/daily-summary?date=${date}"`) && h.includes("Back to the day"), "the way back to the day");
       assert.ok(!h.includes("ds-sheet") && !h.includes("Draft, not saved") && !h.includes("Signature"), "no document, never the draft");
       assert.ok(!/Print|Download PDF/.test(h), "no Print and no PDF button");
