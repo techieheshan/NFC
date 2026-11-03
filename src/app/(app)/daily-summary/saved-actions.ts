@@ -30,12 +30,12 @@ export async function markChecked(input: unknown): Promise<CheckOutcome> {
 
 /** The saved day (if any) with how the live figures compare, and the bring-forward hint. */
 export async function loadSavedDay(date: unknown): Promise<SavedDayRead> {
-  await requireRole([...OPERATIONAL]);
-  return loadSavedDayAs(date);
+  const user = await requireRole([...OPERATIONAL]);
+  return loadSavedDayAs(user, date);
 }
 
 /** Saved days of one month. Opening History also runs the lazy purge. */
 export async function loadHistory(month: unknown): Promise<HistoryRead> {
-  await requireRole([...OPERATIONAL]);
-  return loadHistoryAs(month);
+  const user = await requireRole([...OPERATIONAL]);
+  return loadHistoryAs(user, month);
 }

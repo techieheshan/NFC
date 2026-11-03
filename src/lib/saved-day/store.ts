@@ -18,7 +18,8 @@ import { diffSummaries, type FigureDiff } from "./diff";
 import { chooseHint, hintWindow, type Hint } from "./hint";
 import { DS_LOCK_NAMESPACE, LOCK_WAIT_MS, lockKey, TX_MAX_WAIT_MS, TX_TIMEOUT_MS } from "./lock";
 import { centsToDecimalString, columnToCents } from "./money";
-import { retentionCutoff } from "./retention";
+import { overBankedBanner, overBankedBy, overBankRefusal } from "./over-bank";
+import { isExpired, retentionCutoff } from "./retention";
 import { buildSnapshot, cashBookColumns, cashBookOf, parseSnapshot, SNAPSHOT_SCHEMA, SnapshotError, type CashBook, type Snapshot } from "./snapshot";
 import { echoValues, parseSaveInput, type SaveValues } from "./validate";
 
@@ -49,6 +50,7 @@ export type RefusalReason =
   | "conflict"
   | "numbers-moved"
   | "busy"
+  | "snapshot"
   | "corrupt";
 
 export type SaveOutcome =
@@ -65,25 +67,42 @@ export type SaveOutcome =
       fresh?: { collected: number; deductions: number };
     };
 
+/** What the check sheet submitted, echoed on EVERY outcome so a refusal keeps the admin select (rule 14). */
+export type CheckValues = { checkedById: string };
+
 export type CheckOutcome =
-  | { ok: true; date: string; version: number; checkedByName: string; markedByName: string; checkedAt: string }
-  | { ok: false; reason: "invalid" | "not-admin" | "not-saved" | "conflict" | "already-checked" | "busy"; message: string; current?: ConflictInfo };
+  | { ok: true; date: string; version: number; checkedByName: string; markedByName: string; checkedAt: string; values: CheckValues }
+  | {
+      ok: false;
+      reason: "invalid" | "not-admin" | "not-saved" | "expired" | "conflict" | "already-checked" | "over-banked" | "sign-in" | "busy";
+      message: string;
+      values: CheckValues;
+      current?: ConflictInfo;
+    };
 
 const MESSAGE = {
   busy: "The day didn't save in time and nothing was saved. Try again.",
   checkBusy: "The check didn't go through in time and nothing was recorded. Try again.",
-  overBank: "The money taken to the bank is more than the drawer should hold.",
   nothing: "Nothing changed.",
   numbersMoved: "The numbers moved while you were looking. Check them and save again.",
   doneBy: "Choose who did this from the list.",
   future: "That day has not happened yet.",
   tooOld: "Saved days are kept for 3 months, and that day is older, so it cannot be saved.",
-  corrupt: "This saved day was written by a newer version of the app and cannot be changed here.",
+  corrupt: "This saved day can't be read here, so it cannot be changed. Showing the live numbers is safe.",
+  snapshot: "The numbers for this day could not be read. Nothing was saved.",
+  noDay: "This day is no longer saved (saved details are kept for 3 months). Nothing was changed.",
+  expired: "This day's saved details are older than 3 months.",
+  signIn: "Your sign-in could not be checked. Sign out and in again.",
 } as const;
 
 // ---- small helpers ----
 
 const nameOf = (u: { username: string; staff?: { name: string } | null }) => displayName(u);
+
+/** The store checks the role itself as well as its caller: ADMIN and STAFF only. */
+function assertOperational(actor: Actor): void {
+  if (actor.role !== "ADMIN" && actor.role !== "STAFF") throw new Error("Not authorised");
+}
 const userSelect = { id: true, username: true, staff: { select: { name: true } } } as const;
 
 /** True when the transaction could not run in time: it expired (P2028) or the day's lock was not free within LOCK_WAIT_MS (55P03). */
@@ -100,6 +119,8 @@ function isBusyError(e: unknown): boolean {
 }
 
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+/** A foreign key failed: the day was deleted by the purge between our read and our write. */
+const isForeignKeyViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003";
 
 const versionInclude = { bankLines: { orderBy: { position: "asc" as const } }, check: true } satisfies Prisma.DailySummaryVersionInclude;
 type VersionRow = Prisma.DailySummaryVersionGetPayload<{ include: typeof versionInclude }>;
@@ -115,10 +136,21 @@ const conflictInfo = (v: VersionRow): ConflictInfo => ({
   changes: parseChanges(v.changes),
 });
 
-/** The numbers as they are right now: `dailySummary()` untouched plus the two read-only helpers. */
-async function freshSnapshot(date: string): Promise<Snapshot> {
-  const [report, cancelled, staff] = await Promise.all([dailySummary(date, date), cancelledReceipts(date, date), collectedByStaff(date, date)]);
-  return buildSnapshot({ report, cancelled, staff });
+export type LiveLoaders = { dailySummary: typeof dailySummary; cancelledReceipts: typeof cancelledReceipts; collectedByStaff: typeof collectedByStaff };
+const defaultLoaders: LiveLoaders = { dailySummary, cancelledReceipts, collectedByStaff };
+
+/**
+ * The numbers as they are right now: `dailySummary()` untouched plus the two read-only helpers, or `null` when they do not fit the
+ * snapshot shape (a refusal for the caller, never a crash). The loaders are a parameter only so the unreadable case can be tested.
+ */
+export async function liveOrNull(date: string, loaders: LiveLoaders = defaultLoaders): Promise<Snapshot | null> {
+  const [report, cancelled, staff] = await Promise.all([loaders.dailySummary(date, date), loaders.cancelledReceipts(date, date), loaders.collectedByStaff(date, date)]);
+  try {
+    return buildSnapshot({ report, cancelled, staff });
+  } catch (e) {
+    if (e instanceof SnapshotError) return null;
+    throw e;
+  }
 }
 
 const figures = (s: Snapshot) => ({ collected: decimalToCents(s.report.totalCollected), deductions: decimalToCents(s.report.deductions.total) });
@@ -151,6 +183,7 @@ export async function tryPurge(): Promise<number> {
 // ---- save / edit / re-save ----
 
 export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome> {
+  assertOperational(actor);
   const parsed = parseSaveInput(raw);
   if (!parsed.ok) return { ok: false, reason: "invalid", message: parsed.message, fieldErrors: parsed.fieldErrors, values: parsed.values };
   const p = parsed.value;
@@ -170,7 +203,8 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
   // The server's own numbers, read before the transaction. The sheet's figures are only compared with them.
   let fresh: Snapshot | null = null;
   if (p.mode !== "edit") {
-    fresh = await freshSnapshot(p.date);
+    fresh = await liveOrNull(p.date);
+    if (fresh === null) return refuse("snapshot", MESSAGE.snapshot);
     const f = figures(fresh);
     if (!p.seen || p.seen.collected !== f.collected || p.seen.deductions !== f.deductions) return refuse("numbers-moved", MESSAGE.numbersMoved, { fresh: f });
   }
@@ -193,7 +227,7 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
         const decision = decideBase(p.baseVersion, day ? day.currentVersion : null);
         if (!decision.ok) {
           if (decision.reason === "bad-base") return refuse("invalid", "That could not be read. Reload the page and try again.");
-          if (decision.reason === "not-saved") return refuse("conflict", "This day is no longer saved (saved details are kept for 3 months). Nothing was changed.");
+          if (decision.reason === "not-saved") return refuse("conflict", MESSAGE.noDay);
           return refuse("conflict", `${current?.doneByName ?? "Someone"} saved this day (version ${current?.version ?? "?"}) while you were working. Your changes were NOT saved.`, current ? { current: conflictInfo(current) } : {});
         }
         // modes must match what is stored: a first save has no day, an edit and a re-save need one
@@ -202,6 +236,7 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
         let kind: SaveKind;
         let snapshot: Snapshot;
         let snapshotJson: Prisma.InputJsonValue;
+        let snapshotSchema = SNAPSHOT_SCHEMA;
         let bringForwardCents: number;
         let items: ChangeItem[];
         let lines: StoredBankLine[];
@@ -238,6 +273,7 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
             if (d.refuse) return refuse("nothing-changed", MESSAGE.nothing);
             snapshot = saved;
             snapshotJson = current.snapshot as Prisma.InputJsonValue;
+            snapshotSchema = current.snapshotSchema; // a copy keeps the schema number of the row it was copied from
             bringForwardCents = p.bringForwardCents;
             const match = matchBankLines(prevLines, p.bank, doneBy.id, now);
             lines = match.lines;
@@ -263,7 +299,10 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
         }
 
         const book: CashBook = cashBookOf(snapshot, bringForwardCents, lines);
-        if (book.overdrawn) return refuse("over-bank", MESSAGE.overBank);
+        // A first save and an edit refuse an over-bank (and name the amount). A re-save is always allowed: it is the live numbers that
+        // moved, so it is saved FLAGGED (derived from the columns) and cannot be checked until the bank lines or bring-forward are put right.
+        const over = overBankedBy(book.bankTotal, book.leftInDrawer);
+        if (over > 0 && kind !== "RESAVE_LIVE") return refuse("over-bank", overBankRefusal(over));
 
         // ---- guards done: writes only below this line ----
         const version = (current?.version ?? 0) + 1;
@@ -282,7 +321,7 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
             kind,
             ...cashBookColumns(book),
             snapshot: snapshotJson,
-            snapshotSchema: SNAPSHOT_SCHEMA,
+            snapshotSchema,
             changes: items as unknown as Prisma.InputJsonValue,
             doneById: doneBy.id,
             doneByName: doneBy.name,
@@ -313,6 +352,7 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
   } catch (e) {
     if (isBusyError(e)) return refuse("busy", MESSAGE.busy);
     if (isUniqueViolation(e)) return refuse("conflict", "Someone saved this day while you were working. Reload it and try again.");
+    if (isForeignKeyViolation(e)) return refuse("conflict", MESSAGE.noDay); // the day was purged between our read and our write
     throw e;
   }
 }
@@ -320,19 +360,28 @@ export async function saveDayAs(actor: Actor, raw: unknown): Promise<SaveOutcome
 // ---- mark as checked ----
 
 export async function markCheckedAs(actor: Actor, raw: unknown): Promise<CheckOutcome> {
+  assertOperational(actor);
   const o = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const echoed = typeof o.checkedById === "string" ? o.checkedById.slice(0, 64) : "";
+  const values: CheckValues = { checkedById: echoed };
+  const refuse = (reason: Extract<CheckOutcome, { ok: false }>["reason"], message: string, current?: ConflictInfo): CheckOutcome => ({ ok: false, reason, message, values, ...(current ? { current } : {}) });
+
   const date = parseRealDate(o.date);
   const base = o.baseVersion;
-  const adminId = typeof o.checkedById === "string" && o.checkedById.length > 0 && o.checkedById.length <= 64 ? o.checkedById : null;
+  const adminId = echoed !== "" && typeof o.checkedById === "string" && o.checkedById.length <= 64 ? echoed : null;
   if (date === null || typeof base !== "number" || !Number.isInteger(base) || base < 1 || base > 1_000_000 || adminId === null) {
-    return { ok: false, reason: "invalid", message: "That could not be read. Reload the page and try again." };
+    return refuse("invalid", "That could not be read. Reload the page and try again.");
   }
+  // an expired day is refused before anything is read or written
+  if (isExpired(date, colomboNow().date)) return refuse("expired", MESSAGE.expired);
 
-  // The admin named must be an ACTIVE ADMIN, looked up here. The person who taps may be ADMIN or STAFF (the caller checked the role).
+  // The admin named must be an ACTIVE ADMIN, looked up here. The person who taps may be ADMIN or STAFF, and must exist and be active:
+  // the tapper is never stored under a made-up name.
   const admin = await db.user.findFirst({ where: { id: adminId, active: true, role: "ADMIN" }, select: userSelect });
-  if (!admin) return { ok: false, reason: "not-admin", message: "Choose an active admin from the list." };
-  const marker = await db.user.findUnique({ where: { id: actor.id }, select: userSelect });
-  const markedByName = marker ? nameOf(marker) : "unknown";
+  if (!admin) return refuse("not-admin", "Choose an active admin from the list.");
+  const marker = await db.user.findFirst({ where: { id: actor.id, active: true }, select: userSelect });
+  if (!marker) return refuse("sign-in", MESSAGE.signIn);
+  const markedByName = nameOf(marker);
   const checkedByName = nameOf(admin);
   const dateValue = colomboDateValue(date);
   const now = new Date();
@@ -348,35 +397,34 @@ export async function markCheckedAs(actor: Actor, raw: unknown): Promise<CheckOu
           include: { versions: { orderBy: { version: "desc" }, take: 1, include: versionInclude } },
         });
         const current = day?.versions[0] ?? null;
-        if (!day || !current) return { ok: false, reason: "not-saved", message: "This day is not saved, so there is nothing to check." };
+        if (!day || !current) return refuse("not-saved", "This day is not saved, so there is nothing to check.");
         if (current.version !== base) {
-          return {
-            ok: false,
-            reason: "conflict",
-            message: `${current.doneByName} changed this day (now version ${current.version}) after you opened it. Look at the new numbers and check again.`,
-            current: conflictInfo(current),
-          };
+          return refuse("conflict", `${current.doneByName} changed this day (now version ${current.version}) after you opened it. Look at the new numbers and check again.`, conflictInfo(current));
         }
-        if (current.check) return { ok: false, reason: "already-checked", message: `Already checked by ${current.check.checkedByName}.`, current: conflictInfo(current) };
+        if (current.check) return refuse("already-checked", `Already checked by ${current.check.checkedByName}.`, conflictInfo(current));
+        const over = overBankedBy(columnToCents(current.bankTotal), columnToCents(current.leftInDrawer));
+        if (over > 0) return refuse("over-banked", overBankedBanner(over), conflictInfo(current));
 
         // ---- guards done: the one write ----
         await tx.dailySummaryCheck.create({
           data: { versionId: current.id, checkedById: admin.id, checkedByName, markedById: actor.id, markedByName, checkedAt: now },
         });
-        return { ok: true, date, version: current.version, checkedByName, markedByName, checkedAt: now.toISOString() };
+        return { ok: true, date, version: current.version, checkedByName, markedByName, checkedAt: now.toISOString(), values };
       },
       { maxWait: TX_MAX_WAIT_MS, timeout: TX_TIMEOUT_MS },
     );
   } catch (e) {
-    if (isBusyError(e)) return { ok: false, reason: "busy", message: MESSAGE.checkBusy };
-    if (isUniqueViolation(e)) return { ok: false, reason: "already-checked", message: "Already checked." };
+    if (isBusyError(e)) return refuse("busy", MESSAGE.checkBusy);
+    if (isUniqueViolation(e)) return refuse("already-checked", "Already checked.");
+    if (isForeignKeyViolation(e)) return refuse("not-saved", MESSAGE.noDay); // purged between our read and our write
     throw e;
   }
 }
 
 // ---- reads ----
 
-export type LogEntry = { version: number; kind: SaveKind; savedAt: string; doneByName: string; savedByName: string; items: ChangeItem[] };
+export type LogCheck = { checkedByName: string; markedByName: string; checkedAt: string; carriedFromVersion: number | null };
+export type LogEntry = { version: number; kind: SaveKind; savedAt: string; doneByName: string; savedByName: string; items: ChangeItem[]; check: LogCheck | null };
 
 export type SavedDayView = {
   date: string;
@@ -391,6 +439,10 @@ export type SavedDayView = {
   doneBy: { id: string; name: string };
   savedByName: string;
   check: null | { checkedById: string; checkedByName: string; markedById: string; markedByName: string; checkedAt: string; carriedFromVersion: number | null };
+  /** Cents the bank lines exceed the drawer by; null when this version is not over-banked (a re-save can leave it so). */
+  overBankedBy: number | null;
+  /** This day was checked once and a later money change cleared it; null when it is checked, or was never checked. */
+  checkCleared: null | { by: string };
   /** Every version, oldest first. */
   log: LogEntry[];
 };
@@ -398,12 +450,23 @@ export type SavedDayView = {
 export type SavedDayRead = {
   date: string;
   saved: SavedDayView | null;
+  /** A saved day exists but its snapshot cannot be read (unknown schema, corrupt, or deleted between two queries). */
+  unreadable: boolean;
   /** Saved day only: how the live figures differ from the frozen ones (empty = identical). */
   liveDiffs: FigureDiff[];
+  /** The live numbers could not be read for the comparison. */
+  liveUnreadable: boolean;
   hint: Hint | null;
 };
 
-export async function loadSavedDayAs(rawDate: unknown): Promise<SavedDayRead> {
+/**
+ * The saved day (if any), its comparison with the live numbers, and the bring-forward hint.
+ *
+ * `live` is what the DAY PAGE already loaded for its own screen, handed in so the numbers are read once: `undefined` means "read them
+ * here" (the server action does that); `null` means the caller could not build them. It is only ever passed by server code, never taken from a client.
+ */
+export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snapshot | null): Promise<SavedDayRead> {
+  assertOperational(actor);
   const date = resolveDay(rawDate, colomboNow().date);
   const day = await db.dailySummaryDay.findUnique({
     where: { date: colomboDateValue(date) },
@@ -424,43 +487,75 @@ export async function loadSavedDayAs(rawDate: unknown): Promise<SavedDayRead> {
   });
 
   let saved: SavedDayView | null = null;
+  let unreadable = false;
   let liveDiffs: FigureDiff[] = [];
+  let liveUnreadable = false;
   if (day && day.versions.length > 0) {
     const v = day.versions[day.versions.length - 1];
+    // Never crash the screen on a snapshot that cannot be read: an unknown schema, a corrupt row, or a day the purge deleted between the two queries.
     const snapRow = await db.dailySummaryVersion.findUnique({ where: { id: v.id }, select: { snapshot: true, snapshotSchema: true } });
-    const snapshot = parseSnapshot(snapRow?.snapshot, snapRow?.snapshotSchema ?? 0);
-    saved = {
-      date,
-      version: v.version,
-      kind: v.kind,
-      savedAt: v.savedAt.toISOString(),
-      cash: {
+    let snapshot: Snapshot | null = null;
+    if (snapRow) {
+      try {
+        snapshot = parseSnapshot(snapRow.snapshot, snapRow.snapshotSchema);
+      } catch (e) {
+        if (!(e instanceof SnapshotError)) throw e;
+      }
+    }
+    if (snapshot === null) {
+      unreadable = true;
+    } else {
+      const cash = {
         bringForward: columnToCents(v.bringForward), collected: columnToCents(v.collected), deductions: columnToCents(v.deductions),
         shouldBeInDrawer: columnToCents(v.shouldBeInDrawer), bankTotal: columnToCents(v.bankTotal), leftInDrawer: columnToCents(v.leftInDrawer), net: columnToCents(v.net),
-      },
-      snapshot,
-      bank: v.bankLines.map((b) => ({
-        position: b.position, time: b.time, cents: columnToCents(b.amount), slip: b.slip, note: b.note,
-        recordedById: b.recordedById, recordedByName: nameOf(b.recordedBy), recordedAt: b.recordedAt.toISOString(),
-      })),
-      preparedBy: { id: v.preparedById, name: v.preparedByName },
-      doneBy: { id: v.doneById, name: v.doneByName },
-      savedByName: nameOf(v.savedBy),
-      check: v.check && {
-        checkedById: v.check.checkedById, checkedByName: v.check.checkedByName, markedById: v.check.markedById, markedByName: v.check.markedByName,
-        checkedAt: v.check.checkedAt.toISOString(), carriedFromVersion: v.check.carriedFromVersion,
-      },
-      log: day.versions.map((x) => ({
-        version: x.version, kind: x.kind, savedAt: x.savedAt.toISOString(), doneByName: x.doneByName, savedByName: nameOf(x.savedBy), items: parseChanges(x.changes),
-      })),
-    };
-    liveDiffs = diffSummaries(snapshot, await freshSnapshot(date));
+      };
+      const over = overBankedBy(cash.bankTotal, cash.leftInDrawer);
+      // "Check cleared": walk back from the newest version to the last one that had a check or said it cleared one.
+      let checkCleared: SavedDayView["checkCleared"] = null;
+      for (let i = day.versions.length - 1; i >= 0; i--) {
+        const x = day.versions[i];
+        if (x.check) break;
+        const cleared = parseChanges(x.changes).find((c) => c.t === "check-cleared");
+        if (cleared && cleared.t === "check-cleared") {
+          checkCleared = { by: cleared.by };
+          break;
+        }
+      }
+      saved = {
+        date,
+        version: v.version,
+        kind: v.kind,
+        savedAt: v.savedAt.toISOString(),
+        cash,
+        snapshot,
+        bank: v.bankLines.map((b) => ({
+          position: b.position, time: b.time, cents: columnToCents(b.amount), slip: b.slip, note: b.note,
+          recordedById: b.recordedById, recordedByName: nameOf(b.recordedBy), recordedAt: b.recordedAt.toISOString(),
+        })),
+        preparedBy: { id: v.preparedById, name: v.preparedByName },
+        doneBy: { id: v.doneById, name: v.doneByName },
+        savedByName: nameOf(v.savedBy),
+        check: v.check && {
+          checkedById: v.check.checkedById, checkedByName: v.check.checkedByName, markedById: v.check.markedById, markedByName: v.check.markedByName,
+          checkedAt: v.check.checkedAt.toISOString(), carriedFromVersion: v.check.carriedFromVersion,
+        },
+        overBankedBy: over > 0 ? over : null,
+        checkCleared,
+        log: day.versions.map((x) => ({
+          version: x.version, kind: x.kind, savedAt: x.savedAt.toISOString(), doneByName: x.doneByName, savedByName: nameOf(x.savedBy), items: parseChanges(x.changes),
+          check: x.check && { checkedByName: x.check.checkedByName, markedByName: x.check.markedByName, checkedAt: x.check.checkedAt.toISOString(), carriedFromVersion: x.check.carriedFromVersion },
+        })),
+      };
+      const liveSnap: Snapshot | null = live === undefined ? await liveOrNull(date) : live;
+      if (liveSnap === null) liveUnreadable = true;
+      else liveDiffs = diffSummaries(snapshot, liveSnap);
+    }
   }
 
   // The hint is only useful while the bring-forward is still empty: an unsaved day, or a saved one with no bring-forward.
   let hint: Hint | null = null;
   if (saved === null || saved.cash.bringForward === 0) hint = await findHint(date);
-  return { date, saved, liveDiffs, hint };
+  return { date, saved, unreadable, liveDiffs, liveUnreadable, hint };
 }
 
 async function findHint(date: string): Promise<Hint | null> {
@@ -484,7 +579,7 @@ async function findHint(date: string): Promise<Hint | null> {
   );
 }
 
-export type HistoryRow = { date: string; version: number; doneByName: string; savedAt: string; collected: number; net: number; checked: boolean };
+export type HistoryRow = { date: string; version: number; preparedByName: string; doneByName: string; savedAt: string; collected: number; net: number; checked: boolean };
 export type HistoryRead = { month: string; rows: HistoryRow[]; purged: number };
 
 /** `YYYY-MM` within 2000..2100, else the current Colombo month. Validated ONCE: the query and the heading use this one value (rule 23). */
@@ -496,25 +591,32 @@ export function resolveMonth(raw: unknown, todayYmd: string): string {
   return todayYmd.slice(0, 7);
 }
 
-export async function loadHistoryAs(rawMonth: unknown): Promise<HistoryRead> {
-  const month = resolveMonth(rawMonth, colomboNow().date);
+/** Purge first, then read: the page never lists a day the same request deletes, and the query itself never returns an expired day. */
+export async function loadHistoryAs(actor: Actor, rawMonth: unknown): Promise<HistoryRead> {
+  assertOperational(actor);
+  const today = colomboNow().date;
+  const purged = await tryPurge(); // a failure is logged and ignored; the query below still filters expired days
+  const month = resolveMonth(rawMonth, today);
   const [y, m] = month.split("-").map(Number);
   const first = `${month}-01`;
   const last = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
-  const days = await db.dailySummaryDay.findMany({
-    where: { date: { gte: colomboDateValue(first), lte: colomboDateValue(last) } },
+  const cutoff = retentionCutoff(today);
+  const from = first < cutoff ? cutoff : first;
+  const days = from > last ? [] : await db.dailySummaryDay.findMany({
+    where: { date: { gte: colomboDateValue(from), lte: colomboDateValue(last) } },
     orderBy: { date: "desc" },
     select: { id: true, date: true, currentVersion: true },
   });
   const versions = days.length === 0 ? [] : await db.dailySummaryVersion.findMany({
     where: { OR: days.map((d) => ({ dayId: d.id, version: d.currentVersion })) },
-    select: { dayId: true, version: true, doneByName: true, savedAt: true, collected: true, net: true, check: { select: { id: true } } },
+    select: { dayId: true, version: true, preparedByName: true, doneByName: true, savedAt: true, collected: true, net: true, check: { select: { id: true } } },
   });
   const byDay = new Map(versions.map((v) => [v.dayId, v]));
   const rows = days.flatMap((d): HistoryRow[] => {
     const v = byDay.get(d.id);
-    return v ? [{ date: d.date.toISOString().slice(0, 10), version: v.version, doneByName: v.doneByName, savedAt: v.savedAt.toISOString(), collected: columnToCents(v.collected), net: columnToCents(v.net), checked: v.check !== null }] : [];
+    const date = d.date.toISOString().slice(0, 10);
+    if (!v || isExpired(date, today)) return [];
+    return [{ date, version: v.version, preparedByName: v.preparedByName, doneByName: v.doneByName, savedAt: v.savedAt.toISOString(), collected: columnToCents(v.collected), net: columnToCents(v.net), checked: v.check !== null }];
   });
-  const purged = await tryPurge(); // separate statement after the read; a failure is logged and ignored
   return { month, rows, purged };
 }
