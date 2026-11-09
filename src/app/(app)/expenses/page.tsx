@@ -69,7 +69,7 @@ export default async function ExpensesPage({
 
   /* Plain GET forms — filtering needs no client JS and stays shareable. */
   const expenseFilterUi = (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+    <form method="get" className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4">
       <input type="hidden" name="tab" value="all" />
       <div className="space-y-1.5">
         <label htmlFor="type" className="block text-sm font-medium">Type</label>
@@ -116,7 +116,7 @@ export default async function ExpensesPage({
   );
 
   const reportFilterUi = (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+    <form method="get" className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4">
       <input type="hidden" name="tab" value="staff" />
       <div className="space-y-1.5">
         <label htmlFor="rfrom" className="block text-sm font-medium">From</label>

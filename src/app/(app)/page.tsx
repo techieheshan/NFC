@@ -42,7 +42,7 @@ export default async function DashboardPage() {
                 href={item.href}
                 className="border-border bg-card hover:border-primary hover:bg-accent focus-visible:ring-ring flex aspect-square flex-col items-center justify-center gap-3 rounded-xl border p-4 text-center transition-colors focus-visible:ring-2 focus-visible:outline-none sm:aspect-auto sm:min-h-36"
               >
-                <span className="bg-primary/10 text-primary grid size-12 place-items-center rounded-full">
+                <span className="bg-secondary text-primary grid size-12 place-items-center rounded-full">
                   <item.icon className="size-6" aria-hidden />
                 </span>
                 <span className="text-sm leading-tight font-medium">{item.label}</span>

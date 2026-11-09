@@ -110,7 +110,7 @@ export function DayScreen({
             <ChevronRight className="size-5" aria-hidden />
           </Link>
         ) : (
-          <span aria-disabled="true" className="border-input text-muted-foreground/40 grid size-11 shrink-0 place-items-center rounded-md border">
+          <span aria-disabled="true" className="border-input text-muted-foreground opacity-40 grid size-11 shrink-0 place-items-center rounded-md border">
             <ChevronRight className="size-5" aria-hidden />
           </span>
         )}
@@ -189,7 +189,7 @@ export function DayScreen({
         </ol>
         </div>
 
-        <div className="bg-primary/10 my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
+        <div className="bg-secondary my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
           <span className="min-w-0 break-words text-sm font-medium">Should be in the drawer</span>
           <span className="shrink-0 text-lg font-semibold tabular-nums">{formatCents(flow.shouldBe)}</span>
         </div>
@@ -309,7 +309,7 @@ export function DayScreen({
       </section>
 
       {/* sticky bottom bar */}
-      <div className="bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
+      <div className="bg-background fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
         <div className="mx-auto max-w-[720px]">
           {reason && <p className="text-muted-foreground mb-2 text-center text-xs">{reason}</p>}
           <div className="grid grid-cols-2 gap-3">

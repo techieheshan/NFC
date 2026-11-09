@@ -65,7 +65,7 @@ export function AppShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-background/95 supports-[backdrop-filter]:bg-background/75 sticky top-0 z-10 flex h-16 items-center justify-between gap-3 border-b px-4 backdrop-blur lg:px-8">
+        <header className="bg-background sticky top-0 z-10 flex h-16 items-center justify-between gap-3 border-b px-4 backdrop-blur lg:px-8">
           {/* Phones get the full menu behind the burger — tiles only carry the
               daily work, and staff away from a desktop need the rest too. */}
           <div className="flex items-center gap-1 lg:hidden">

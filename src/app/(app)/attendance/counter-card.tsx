@@ -49,7 +49,7 @@ export function ChoiceCard({
   const isConfirm = result.status === "confirm";
 
   return (
-    <div data-counter-popup className="border-primary bg-primary/5 space-y-3 rounded-xl border-2 p-4">
+    <div data-counter-popup className="border-primary bg-muted space-y-3 rounded-xl border-2 p-4">
       <p className="flex items-center gap-2 font-semibold">
         <AlertTriangle className="size-5 shrink-0" aria-hidden />
         {isConfirm ? "Additional class — confirm" : "Which class?"}

@@ -746,7 +746,7 @@ function Buttons({
         type="button"
         onClick={onQr}
         aria-label="Scan a QR code"
-        className="bg-primary/10 text-primary hover:bg-primary/15 flex h-24 w-full items-center justify-center rounded-2xl transition-colors"
+        className="bg-secondary text-primary hover:bg-accent flex h-24 w-full items-center justify-center rounded-2xl transition-colors"
       >
         <QrCode className="size-11" aria-hidden />
       </button>
@@ -754,7 +754,7 @@ function Buttons({
         type="button"
         onClick={onSearch}
         aria-label="Find a student by name or card number"
-        className="bg-primary/10 text-primary hover:bg-primary/15 flex h-24 w-full items-center justify-center rounded-2xl transition-colors"
+        className="bg-secondary text-primary hover:bg-accent flex h-24 w-full items-center justify-center rounded-2xl transition-colors"
       >
         <Search className="size-11" aria-hidden />
       </button>
@@ -808,7 +808,7 @@ function ConnectionBar({
   return (
     <div className="space-y-2 print:hidden">
       {!online && (
-        <p className="border-primary/30 bg-primary/5 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+        <p className="border-primary-line bg-muted flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
           <CloudOff className="size-4 shrink-0" aria-hidden />
           <span>
             Offline — attendance still works from this device&apos;s cached
@@ -818,7 +818,7 @@ function ConnectionBar({
       )}
 
       {stale && (
-        <p role="alert" className="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+        <p role="alert" className="border-destructive bg-destructive-soft text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
           <AlertTriangle className="size-4 shrink-0" aria-hidden />
           <span>Offline data is from {cacheDate}, not today. Reconnect to refresh before relying on it.</span>
         </p>

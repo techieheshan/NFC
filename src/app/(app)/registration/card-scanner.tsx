@@ -42,7 +42,7 @@ export function CardScanner({
   return (
     <div className="mx-auto max-w-md space-y-6">
       <div className="text-center">
-        <span className="bg-primary/10 text-primary mx-auto grid size-16 place-items-center rounded-full">
+        <span className="bg-secondary text-primary mx-auto grid size-16 place-items-center rounded-full">
           <Nfc className="size-8" aria-hidden />
         </span>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Registration</h1>

@@ -91,7 +91,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       </div>
 
       {blocked && (
-        <p className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm">
+        <p className="border-destructive bg-destructive-soft text-destructive rounded-lg border px-4 py-3 text-sm">
           This login is not linked to a teacher record, so it has no courses.
         </p>
       )}
@@ -101,7 +101,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
           <label htmlFor="teacherId" className="block text-sm font-medium">Teacher</label>
           {isTeacher ? (
             // Fixed, and not a form field at all — there is nothing to submit.
-            <p className={`${FIELD} flex items-center bg-muted/50`}>{ownName ?? "—"}</p>
+            <p className={`${FIELD} flex items-center bg-muted`}>{ownName ?? "—"}</p>
           ) : (
             <select id="teacherId" name="teacherId" className={FIELD} defaultValue={teacherId ?? ""}>
               <option value="">All teachers</option>

@@ -289,6 +289,20 @@ screens to check on the real device. Do not use the standalone `translate`,
 `scale-*` / `rotate-*`; Chrome 104), `svh`/`dvh`/`lvh` units (108), or rely on
 `:has()` or container queries (105) for anything that matters.
 
+**No opacity modifier (a slash and a number) on a THEME colour.** Tailwind v4 compiles
+it to `color-mix()` (Chrome 111) and, before it, writes the plain colour as the
+fallback. On Chrome 102 a "10% purple" circle is therefore SOLID purple, its purple
+icon vanishes, and a tinted error box becomes solid red under red text. Use a solid
+token instead: `bg-secondary` / `bg-muted` / `bg-accent` for a purple tint,
+`bg-destructive-soft` for an error box, `border-primary-line` / `ring-primary-line`
+for a soft purple line, or `opacity-N` on a text-only element; a new tint is a new
+token in `globals.css`, never a modifier. Static colours (black, white, the palette)
+are precomputed to a plain alpha colour and are fine. `dark:` variants are tolerated
+only because nothing switches the dark theme on (a test fails the day something
+does). Tailwind scans EVERY file, comments and scripts included, so do not quote a
+tinted class name in prose. Enforced by `css-baseline.test.ts` (the source) and by
+`npm run check:baseline` (the built CSS: no rule may be left with an opaque fallback).
+
 `package.json` declares the floor (`browserslist`: Chrome/Edge/Firefox 102,
 Safari 15.4) and Next 16 honours it — measured, not assumed: a Chrome 50 target
 changes the output a lot, and the 102 target changes the JS slightly (+0.8%) and

@@ -209,7 +209,7 @@ export function PendingPanel({
     <div
       data-counter-pending
       aria-live="polite"
-      className="border-primary/40 bg-primary/5 space-y-3 rounded-xl border-2 p-3 text-left print:hidden"
+      className="border-primary-line bg-muted space-y-3 rounded-xl border-2 p-3 text-left print:hidden"
     >
       <p className="text-primary flex items-center gap-2 leading-tight font-semibold">
         <Loader2 className="size-5 shrink-0 animate-spin" aria-hidden />
@@ -241,9 +241,9 @@ export function PendingPanel({
 /** A thin bar, not a number: it says "this is about to go" without being read. */
 function Countdown({ durationMs }: { durationMs: number }) {
   return (
-    <div className="bg-foreground/10 h-1 overflow-hidden rounded-full" aria-hidden>
+    <div className="bg-border h-1 overflow-hidden rounded-full" aria-hidden>
       <div
-        className="xenon-countdown bg-foreground/30 h-full w-full origin-left"
+        className="xenon-countdown bg-muted-foreground opacity-50 h-full w-full origin-left"
         style={{ animationDuration: `${durationMs}ms` }}
       />
     </div>
@@ -442,7 +442,7 @@ function ClassAttendanceCard({
   if (failed) return null;
 
   return (
-    <div className="bg-background/70 space-y-2 rounded-lg border p-2.5">
+    <div className="bg-background space-y-2 rounded-lg border p-2.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold tracking-wide uppercase">Attendance (this class)</p>
         {data?.isNew && (

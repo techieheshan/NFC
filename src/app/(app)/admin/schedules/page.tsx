@@ -98,7 +98,7 @@ export default async function SchedulesPage({
 
   /* Plain GET forms — filtering needs no client JS and stays shareable by URL. */
   const timetableFilterUi = (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+    <form method="get" className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4">
       <input type="hidden" name="tab" value="weekly" />
       <div className="space-y-1.5">
         <label htmlFor="teacher" className="block text-sm font-medium">Teacher</label>
@@ -140,7 +140,7 @@ export default async function SchedulesPage({
   );
 
   const additionalFilterUi = (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+    <form method="get" className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4">
       <input type="hidden" name="tab" value="additional" />
       <div className="space-y-1.5">
         <label htmlFor="from" className="block text-sm font-medium">From</label>

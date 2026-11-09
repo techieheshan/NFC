@@ -48,7 +48,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const passwordChanged = "changed" in params;
 
   return (
-    <div className="from-primary/10 flex min-h-screen items-center justify-center bg-gradient-to-b to-transparent px-4 py-12">
+    <div className="from-secondary flex min-h-screen items-center justify-center bg-gradient-to-b to-transparent px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <span className="bg-primary text-primary-foreground grid size-12 place-items-center rounded-xl text-lg font-bold">
@@ -64,14 +64,14 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           {lockedUntil ? (
             <p
               role="alert"
-              className="border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
+              className="border-destructive bg-destructive-soft text-destructive rounded-md border px-3 py-2 text-sm"
             >
               Too many attempts — try again after {lockedUntil}.
             </p>
           ) : failed ? (
             <p
               role="alert"
-              className="border-destructive/30 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
+              className="border-destructive bg-destructive-soft text-destructive rounded-md border px-3 py-2 text-sm"
             >
               Incorrect username or password.
             </p>

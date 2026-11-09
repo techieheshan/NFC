@@ -116,7 +116,7 @@ export function ExistingStudent({
       </div>
 
       {missing && (
-        <div className="border-primary/30 bg-primary/5 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
+        <div className="border-primary-line bg-muted flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4">
           <p className="text-sm">
             This student has no{" "}
             {missing.kind === "cardUid" ? "card UID" : "card number"} on file.

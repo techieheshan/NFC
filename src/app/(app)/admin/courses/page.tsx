@@ -116,7 +116,7 @@ export default async function CoursesPage({
   const filters = (
     <form
       method="get"
-      className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4"
+      className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4"
     >
       <div className="space-y-1.5">
         <label htmlFor="teacher" className="block text-sm font-medium">

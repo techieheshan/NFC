@@ -86,7 +86,7 @@ export function MonthStateBoxes({ counts }: { counts: MonthCounts }) {
           <li
             key={state}
             className={`flex min-w-0 flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-center ${
-              n > 0 ? look.box : "border-border bg-muted/40 text-muted-foreground"
+              n > 0 ? look.box : "border-border bg-muted text-muted-foreground"
             }`}
           >
             <span className={`text-lg leading-none font-bold tabular-nums ${n > 0 ? look.number : ""}`}>

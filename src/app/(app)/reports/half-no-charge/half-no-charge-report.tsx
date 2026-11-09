@@ -43,7 +43,7 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
           <>
             <div className="hidden overflow-hidden rounded-xl border sm:block">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left">
+                <thead className="bg-muted text-left">
                   <tr>
                     <th className="p-3 font-medium">Taken by</th>
                     <th className="p-3 text-right font-medium">Half months</th>
@@ -62,7 +62,7 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
                       <td className="p-3 text-right tabular-nums">{share(s.share)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-muted/30 border-t font-semibold">
+                  <tr className="bg-muted border-t font-semibold">
                     <td className="p-3">Total</td>
                     <td className="p-3 text-right tabular-nums">{report.totals.half}</td>
                     <td className="p-3 text-right tabular-nums">{report.totals.halfAmount}</td>
@@ -89,7 +89,7 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
                   </dl>
                 </li>
               ))}
-              <li className="bg-muted/30 rounded-xl border p-3 text-sm font-semibold">
+              <li className="bg-muted rounded-xl border p-3 text-sm font-semibold">
                 <span className="flex justify-between">
                   <span>Total</span>
                   <span className="tabular-nums">
@@ -113,7 +113,7 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
 
         <div className="hidden overflow-hidden rounded-xl border sm:block">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left">
+            <thead className="bg-muted text-left">
               <tr>
                 <th className="p-3 font-medium">Recorded</th>
                 <th className="p-3 font-medium">Receipt</th>
@@ -126,7 +126,7 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
             </thead>
             <tbody>
               {report.rows.map((r) => (
-                <tr key={r.id} className={`border-t align-top ${r.cancelled ? "text-muted-foreground bg-muted/30" : ""}`}>
+                <tr key={r.id} className={`border-t align-top ${r.cancelled ? "text-muted-foreground bg-muted" : ""}`}>
                   <td className="p-3 whitespace-nowrap">{recorded(r)}</td>
                   <td className="p-3 whitespace-nowrap"><ReceiptLink row={r} /></td>
                   <td className="p-3">
@@ -148,7 +148,7 @@ export function HalfNoChargeScreen({ report }: { report: HalfNoChargeReport }) {
 
         <ul className="space-y-2 sm:hidden">
           {report.rows.map((r) => (
-            <li key={r.id} className={`rounded-xl border p-3 text-sm ${r.cancelled ? "text-muted-foreground bg-muted/30" : "bg-white"}`}>
+            <li key={r.id} className={`rounded-xl border p-3 text-sm ${r.cancelled ? "text-muted-foreground bg-muted" : "bg-white"}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <ReceiptLink row={r} />
                 <Chips row={r} />

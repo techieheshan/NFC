@@ -88,7 +88,7 @@ export function AllocationScreen({
           className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
             message.kind === "warn"
               ? "border-amber-300 bg-amber-50 text-amber-900"
-              : "border-destructive/40 text-destructive"
+              : "border-destructive text-destructive"
           }`}
         >
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />

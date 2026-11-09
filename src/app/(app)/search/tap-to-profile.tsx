@@ -152,7 +152,7 @@ export function TapToProfile({
       {missing && (
         <p
           role="alert"
-          className="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+          className="border-destructive bg-destructive-soft text-destructive flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
         >
           <XCircle className="size-4 shrink-0" aria-hidden />
           No student for card <span className="font-mono">{missing}</span> — register
