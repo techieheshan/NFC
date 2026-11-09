@@ -1,9 +1,10 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireOperationalAccess } from "@/lib/authz";
+import { requireOperationalAccess, requireRole } from "@/lib/authz";
 import { normalizeCardNumber, normalizeCardUid } from "@/lib/card-uid";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
@@ -63,6 +64,8 @@ export type EnrolmentView = {
   courseId: number;
   course: string;
   feeTier: string;
+  /** Additive: lets the "Change fee" dialog preselect the current tier. */
+  feeTierId: number;
   status: "ACTIVE" | "DROPPED";
   /**
    * How much history hangs off this enrolment. Zero of both means it is still
@@ -231,6 +234,7 @@ function toStudentView(student: {
     id: number;
     courseId: number;
     status: "ACTIVE" | "DROPPED";
+    feeTierId: number;
     feeTier: { label: string };
     course: {
       name: string | null;
@@ -257,6 +261,7 @@ function toStudentView(student: {
       courseId: e.courseId,
       course: courseDisplayName(e.course),
       feeTier: e.feeTier.label,
+      feeTierId: e.feeTierId,
       status: e.status,
       payments: 0,
       attendance: 0,
@@ -835,4 +840,143 @@ export async function removeEnrolment(
 
   revalidatePath(PATH);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Change a course's fee tier (ADMIN only)
+// ---------------------------------------------------------------------------
+
+/**
+ * The SAME per-student advisory lock namespace the payment charge takes
+ * (`PAYMENT_LOCK_NAMESPACE` in payment/actions.ts, a non-exported constant of a "use server"
+ * file, so the number is repeated here; `fee-tier-change.test.ts` fails if the two differ). A
+ * tier change and a checkout of the same student therefore never interleave: a payment prices
+ * from the tier it read and freezes that tier onto its row, and this makes sure the row is
+ * either wholly old-tier or wholly new-tier.
+ */
+const STUDENT_LOCK_NAMESPACE = 7301;
+const LOCK_WAIT_MS = 4000;
+const TX_MAX_WAIT_MS = 2000;
+const TX_TIMEOUT_MS = 6000;
+
+/** Could not run in time (transaction expired, or the student's lock was not free). Nothing was written. */
+function isBusyError(e: unknown): boolean {
+  if (!(e instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (e.code === "P2028") return true;
+  let detail = e.message;
+  try {
+    detail += ` ${JSON.stringify(e.meta ?? {})}`;
+  } catch {
+    // meta that cannot be serialised must not replace the real error — the message alone decides.
+  }
+  return /55P03|lock timeout/i.test(detail);
+}
+
+export type ChangeFeeResult =
+  | { ok: true; course: string; from: string; to: string }
+  | { ok: false; error: string };
+
+/**
+ * Move one enrolment to another of Full / Half / 25%. ADMIN only, enforced HERE (AGENTS rule 10;
+ * the button on the screen is a courtesy). Writes ONE column of ONE enrolment: no Payment row is
+ * created or touched (rule 13) and every past payment keeps its own frozen amount, tier and share.
+ * From then on, every month still unpaid for that course — earlier owed months included — is
+ * charged at the new tier.
+ *
+ * Refused: an unknown or dropped enrolment, an inactive or unknown tier, the tier it already has,
+ * and ANY change to or from a Free tier (multiplier 0): the Daily Summary derives "free" from the
+ * current enrolments but counts payers from the payments' frozen tier, so switching a payer to or
+ * from Free would make past days stop adding up.
+ */
+export async function changeFeeTier(enrolmentId: number, feeTierId: number): Promise<ChangeFeeResult> {
+  const user = await requireRole(["ADMIN"]);
+
+  const parsed = z.object({ enrolmentId: id, feeTierId: id }).safeParse({ enrolmentId, feeTierId });
+  if (!parsed.success) return { ok: false, error: "Invalid enrolment or fee." };
+
+  const first = await db.enrollment.findUnique({
+    where: { id: parsed.data.enrolmentId },
+    select: { studentId: true },
+  });
+  if (!first) return { ok: false, error: "That enrolment no longer exists." };
+  const studentId = first.studentId;
+
+  type Done = { refused: string } | { course: string; from: string; to: string; log: Record<string, unknown> };
+  let done: Done;
+  try {
+    done = await db.$transaction(
+      async (tx): Promise<Done> => {
+        await tx.$executeRaw`SELECT set_config('lock_timeout', ${`${LOCK_WAIT_MS}ms`}, true)`; // this transaction only
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${STUDENT_LOCK_NAMESPACE}::int, ${studentId}::int)`;
+
+        // Everything is re-read under the lock: what the screen showed may be minutes old.
+        const enrolment = await tx.enrollment.findUnique({
+          where: { id: parsed.data.enrolmentId },
+          select: {
+            id: true,
+            studentId: true,
+            courseId: true,
+            status: true,
+            feeTier: { select: { id: true, code: true, label: true, multiplier: true } },
+            course: {
+              select: {
+                name: true,
+                grade: { select: { label: true } },
+                subject: { select: { label: true } },
+                classType: { select: { label: true } },
+                teacher: { select: { name: true } },
+              },
+            },
+          },
+        });
+        if (!enrolment || enrolment.studentId !== studentId) return { refused: "That enrolment no longer exists." };
+        if (enrolment.status !== "ACTIVE") return { refused: "Only a course the student is attending can change its fee." };
+
+        const target = await tx.feeTier.findUnique({
+          where: { id: parsed.data.feeTierId },
+          select: { id: true, code: true, label: true, multiplier: true, active: true },
+        });
+        if (!target || !target.active) return { refused: "Select an active fee tier." };
+        if (target.id === enrolment.feeTier.id) return { refused: `This course is already on ${target.label}.` };
+
+        const isFree = (m: { toString(): string }) => Number(m.toString()) === 0;
+        if (isFree(enrolment.feeTier.multiplier) || isFree(target.multiplier)) {
+          return { refused: "The fee can only be changed between Full, Half and 25%. A Free course cannot be changed here." };
+        }
+
+        await tx.enrollment.update({ where: { id: enrolment.id }, data: { feeTierId: target.id } });
+
+        const course = courseDisplayName(enrolment.course);
+        return {
+          course,
+          from: enrolment.feeTier.label,
+          to: target.label,
+          log: {
+            event: "fee-tier-changed",
+            byUserId: user.id,
+            byUsername: user.username,
+            studentId,
+            enrolmentId: enrolment.id,
+            courseId: enrolment.courseId,
+            fromTier: { id: enrolment.feeTier.id, code: enrolment.feeTier.code, label: enrolment.feeTier.label },
+            toTier: { id: target.id, code: target.code, label: target.label },
+          },
+        };
+      },
+      { maxWait: TX_MAX_WAIT_MS, timeout: TX_TIMEOUT_MS },
+    );
+  } catch (e) {
+    if (isBusyError(e)) {
+      return { ok: false, error: "The change didn't go through in time and nothing was changed. Try again." };
+    }
+    throw e;
+  }
+
+  if ("refused" in done) return { ok: false, error: done.refused };
+
+  // The only audit trail without a table: this line, plus Enrollment.updatedAt.
+  console.info(JSON.stringify(done.log));
+
+  revalidatePath(PATH);
+  return { ok: true, course: done.course, from: done.from, to: done.to };
 }

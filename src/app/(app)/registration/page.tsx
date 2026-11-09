@@ -7,6 +7,7 @@ import {
   loadCoursesForCascade,
   loadSubjectsForStream,
   attachIdentifier,
+  changeFeeTier,
   createStudent,
   lookupCard,
   refreshStudent,
@@ -21,7 +22,7 @@ export const metadata = { title: "Registration" };
 export default async function RegistrationPage({
   searchParams,
 }: PageProps<"/registration">) {
-  await requireNavAccess("/registration");
+  const user = await requireNavAccess("/registration");
 
   // Search links here with a student id so its rows open the edit view
   // directly; the scan flow is unchanged when the parameter is absent.
@@ -68,6 +69,9 @@ export default async function RegistrationPage({
       updateStudent={updateStudent}
       updatePhoto={updateStudentPhoto}
       attachIdentifier={attachIdentifier}
+      // A courtesy only: changeFeeTier itself refuses anyone but an ADMIN.
+      canChangeFee={user.role === "ADMIN"}
+      changeFeeTier={changeFeeTier}
       initialStudent={initialStudent}
       voiceEnabled={voiceEnabled}
     />
