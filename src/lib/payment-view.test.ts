@@ -57,7 +57,9 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     assert.equal(res.status, "ok");
     return view.buildPaymentView((res as Extract<typeof res, { status: "ok" }>).panel);
   }
-  const states = (v: Awaited<ReturnType<typeof load>>, i = 0) => v.courses[i].months.map((m) => `${m.year}-${m.month}:${m.state}`);
+  /** The months from the ENROLMENT's own start on. The earlier (`beforeStart`) months have their own tests. */
+  const ownMonths = (v: Awaited<ReturnType<typeof load>>, i = 0) => v.courses[i].months.filter((m) => !m.beforeStart);
+  const states = (v: Awaited<ReturnType<typeof load>>, i = 0) => ownMonths(v, i).map((m) => `${m.year}-${m.month}:${m.state}`);
 
   // ---- the month a card charges --------------------------------------------------------
 
@@ -76,7 +78,7 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     assert.equal(card.cardMonth?.attended, 1);
     assert.equal(card.paidThisMonth, null);
     assert.deepEqual(states(v), ["2026-8:paid", "2026-9:paid", "2026-10:unpaid", "2026-11:unpaid", "2026-12:ahead", "2027-1:ahead", "2027-2:ahead"]);
-    const nov = card.months.find((m) => m.month === 11)!;
+    const nov = card.months.find((m) => m.year === 2026 && m.month === 11)!;
     assert.equal(nov.owed, false); // this month is unpaid but not "owed" yet
     assert.equal(nov.attended, 3);
   });
@@ -140,15 +142,23 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     const v = await load(s.id);
     assert.deepEqual(states(v), ["2026-11:unpaid", "2026-12:ahead", "2027-1:ahead", "2027-2:ahead"]);
     assert.equal(v.courses[0].cardMonth?.owed, false);
+    // Before the start there are only the flagged EARLIER months: the 12 up to Oct 2026, back to Nov 2025.
+    const early = v.courses[0].months.filter((m) => m.beforeStart);
+    assert.equal(early.length, 12);
+    assert.equal(early[0].label, "Nov 2025");
+    assert.equal(early.at(-1)?.label, "Oct 2026");
+    assert.equal(v.courses[0].months.indexOf(early.at(-1)!) + 1, v.courses[0].months.indexOf(v.courses[0].months.find((m) => !m.beforeStart)!));
   });
 
-  test("CURRENT BEHAVIOUR (will change in job 3: any past month payable — the new screen already offers it): months older than the old 5-month window are offered back to the enrolment start", async () => {
+  test("months older than the old 5-month window are offered back to the enrolment start; the two before it are flagged earlier months", async () => {
     const c = await course();
     const s = await student([{ courseId: c.id, since: "2026-01-04T06:00:00Z" }]);
     const v = await load(s.id);
-    assert.equal(v.courses[0].months.length, 14); // Jan 2026 .. Feb 2027
-    assert.equal(v.courses[0].months[0].label, "Jan 2026");
+    const own = ownMonths(v);
+    assert.equal(own.length, 14); // Jan 2026 .. Feb 2027
+    assert.equal(own[0].label, "Jan 2026");
     assert.equal(v.courses[0].cardMonth?.label, "Jan 2026");
+    assert.deepEqual(v.courses[0].months.filter((m) => m.beforeStart).map((m) => m.label), ["Nov 2025", "Dec 2025"]);
   });
 
   test("the ahead limit is the panel's, and takePayment agrees: the last offered month is payable, the next is refused", async () => {
@@ -169,7 +179,7 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     const c = await course();
     const s = await student([{ courseId: c.id }]);
     await settle(s.id, c.id, 2026, 12, { paidAt: "2026-11-09T06:00:00Z" });
-    const dec = (await load(s.id)).courses[0].months.find((m) => m.month === 12)!;
+    const dec = (await load(s.id)).courses[0].months.find((m) => m.year === 2026 && m.month === 12)!;
     assert.equal(dec.state, "paid");
     assert.equal(dec.paidDay, 9);
   });
@@ -192,7 +202,7 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
       const s = await student([{ courseId: c.id }]);
       for (const m of paid) await settle(s.id, c.id, 2026, m);
       const card = (await load(s.id)).courses[0];
-      const firstUnpaid = card.months.find((m) => m.state === "unpaid");
+      const firstUnpaid = card.months.find((m) => m.state === "unpaid" && !m.beforeStart);
       assert.equal(card.cardMonth?.label, firstUnpaid?.label, `paid ${JSON.stringify(paid)}`);
       if (!firstUnpaid) assert.notEqual(card.paidThisMonth, null, `paid ${JSON.stringify(paid)}`);
     }
@@ -208,7 +218,7 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
       freezeClock("2026-10-31T18:30:00Z"); // 1 Nov, 00:00 Colombo
       const v = await load(s.id);
       assert.deepEqual(v.today, { year: 2026, month: 11 });
-      assert.equal(v.courses[0].months.find((m) => m.month === 11)?.owed, false);
+      assert.equal(v.courses[0].months.find((m) => m.year === 2026 && m.month === 11)?.owed, false);
     } finally {
       freezeClock(NOW);
     }
@@ -333,7 +343,7 @@ describe("payment view (new screens) against a real database", { skip: dbSkip },
     await row(8, null, "2500.00");
     await row(9, "HALF", "1250.00");
     await row(10, "NO_CHARGE", "0.00");
-    const months = (await load(s.id)).courses[0].months;
+    const months = ownMonths(await load(s.id));
     assert.deepEqual(months.slice(0, 3).map((m) => [m.month, m.state, m.paidMode]), [[8, "paid", null], [9, "paid", "HALF"], [10, "paid", "NO_CHARGE"]]);
     assert.deepEqual(months.slice(3).map((m) => m.paidMode), [null, null, null, null]); // unpaid / ahead months
   });

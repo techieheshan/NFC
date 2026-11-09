@@ -223,6 +223,22 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     arrears, not-paid and the student list follow it — while `paidAt` stays the
     day the cash arrived.
 
+    **Earlier than the enrolment: only on `/payment-new`, only after a confirm, at
+    most `BACK_MONTHS` (12, `src/lib/payment-months.ts`) before the current month,
+    ADMIN and STAFF alike, no override.** The month sheet draws those months as
+    grey "earlier" tiles (`ViewMonth.beforeStart`, absent on every other month);
+    a tap asks "Earlier month … Take payment for …?" and Yes picks it as an
+    ordinary Full month. The request then carries `backMonth: true` on those rows
+    ONLY, and `takePayment` accepts a month before the enrolment only with that
+    flag and only back to `BACK_MONTHS`; with no flag the old refusal ("That month
+    is before the student was enrolled.") is unchanged word for word — old phones
+    and terminals keep working — and the 12-month floor is also what refuses a
+    year typo. `backMonth` on a month that is not before the enrolment is ignored.
+    An earlier month is priced, combo-ed, shared and receipted like any other (no
+    fee history exists, so it is charged at today's fee) and is never "owed":
+    arrears count from the enrolment start. The old `/payment` screen and the
+    attendance counter's embedded panel do NOT offer earlier months.
+
 29. **Who may do what, and where it is enforced.** ADMIN and STAFF both do
     setup — subjects, grades, streams (and their subject links), teachers,
     courses, schedules, additional classes — because the admin is not always on

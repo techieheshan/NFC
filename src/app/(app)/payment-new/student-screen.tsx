@@ -16,6 +16,7 @@ import {
   courseComboApplied,
   lineAmountText,
   monthKey,
+  needsBackConfirm,
   setMonthMode,
   toggleCard,
   toggleMonth,
@@ -30,6 +31,7 @@ import { setVoiceEnabled, VOICE } from "@/lib/voice";
 import { ComboSheet } from "./combo-sheet";
 import { CourseCard, type PickedMonth } from "./course-card";
 import { MonthDetailSheet } from "./month-detail";
+import { BackMonthConfirm } from "./back-month-confirm";
 import { MonthSheet } from "./month-sheet";
 import { RecordedNoCharge } from "./recorded-no-charge";
 
@@ -89,6 +91,8 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
   const [decisions, setDecisions] = useState<ComboDecision[]>([]);
   const [calendarFor, setCalendarFor] = useState<number | null>(null);
   const [detail, setDetail] = useState<{ courseId: number; year: number; month: number } | null>(null);
+  // An earlier month (before registration) staff tapped and have not confirmed yet.
+  const [backAsk, setBackAsk] = useState<{ courseId: number; year: number; month: number } | null>(null);
 
   const charge: ChargeCourse[] = useMemo(() => chargeCoursesFrom(view.courses), [view.courses]);
   const chargeOf = useMemo(() => new Map(charge.map((c) => [c.courseId, c])), [charge]);
@@ -347,10 +351,30 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
           selected={selected}
           onToggle={(m) => {
             if (m.state === "paid") return;
-            setSelected((prev) => toggleMonth(prev, monthKey(calendarCourse.courseId, m.year, m.month)));
+            const key = monthKey(calendarCourse.courseId, m.year, m.month);
+            // An earlier month is never picked without the confirm; un-picking one needs none.
+            if (needsBackConfirm(selected, key, m.beforeStart)) {
+              setBackAsk({ courseId: calendarCourse.courseId, year: m.year, month: m.month });
+              return;
+            }
+            setSelected((prev) => toggleMonth(prev, key));
           }}
+          onAskBack={(m) => setBackAsk({ courseId: calendarCourse.courseId, year: m.year, month: m.month })}
           onInfo={(m) => setDetail({ courseId: calendarCourse.courseId, year: m.year, month: m.month })}
           onClose={() => setCalendarFor(null)}
+        />
+      )}
+
+      {backAsk && (
+        <BackMonthConfirm
+          key={monthKey(backAsk.courseId, backAsk.year, backAsk.month)}
+          year={backAsk.year}
+          month={backAsk.month}
+          onYes={() => {
+            setSelected((prev) => setMonthMode(prev, monthKey(backAsk.courseId, backAsk.year, backAsk.month), "FULL"));
+            setBackAsk(null);
+          }}
+          onCancel={() => setBackAsk(null)}
         />
       )}
 
@@ -369,6 +393,8 @@ export function StudentScreen({ view, takePayment, loadMonthDetail, voiceEnabled
           load={loadMonthDetail}
           onUse={(mode) => {
             if (detailMonth.state === "paid") return;
+            // Defence: an unconfirmed earlier month can only be picked through its confirm.
+            if (needsBackConfirm(selected, detailKey, detailMonth.beforeStart)) return;
             setSelected((prev) => setMonthMode(prev, detailKey, mode));
           }}
           onRemove={() =>

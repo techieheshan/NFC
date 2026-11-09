@@ -185,7 +185,10 @@ export async function loadStudentProfile(studentId: number): Promise<StudentProf
         course,
         free,
         cells: months.map((mo): MonthCell => {
-          if (idx(mo.year, mo.month) < startIndex) return "before";
+          // Display only: an earlier month the counter took payment for shows as paid, not dashed.
+          if (idx(mo.year, mo.month) < startIndex) {
+            return paidPerCourse.has(`${course}:${mo.year}:${mo.month}`) ? "paid" : "before";
+          }
           if (free) return "free";
           return paidPerCourse.has(`${course}:${mo.year}:${mo.month}`) ? "paid" : "owed";
         }),

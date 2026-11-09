@@ -11,6 +11,7 @@ import { colomboNow } from "@/lib/colombo-time";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
 import { friendlyDate } from "@/lib/friendly-date";
+import { BACK_MONTHS } from "@/lib/payment-months";
 import {
   chargeModeSuffix,
   monthLabel,
@@ -370,6 +371,9 @@ const chargeSchema = z.object({
         // Optional: absent means FULL, exactly as before. The client says WHICH mode,
         // never an amount.
         mode: z.enum(["FULL", "HALF", "NO_CHARGE"]).optional(),
+        // Optional: absent means today's behaviour. Set only when staff confirmed a month BEFORE
+        // the enrolment start (see the check below). It never carries an amount or a price.
+        backMonth: z.boolean().optional(),
       }),
     )
     .max(100),
@@ -393,7 +397,7 @@ export async function takePayment(input: {
   studentId: number;
   admission: boolean;
   smartCard: boolean;
-  classMonths: { courseId: number; year: number; month: number; mode?: PaymentMode }[];
+  classMonths: { courseId: number; year: number; month: number; mode?: PaymentMode; backMonth?: boolean }[];
   comboDecisions: ComboDecision[];
 }): Promise<ChargeResult> {
   const user = await requireOperationalAccess();
@@ -471,7 +475,16 @@ export async function takePayment(input: {
     }
     const enrolled = colomboNow(e.createdAt).date.split("-").map(Number);
     if (asked < ordinal(enrolled[0], enrolled[1])) {
-      return { ok: false, error: "That month is before the student was enrolled." };
+      // A month before the enrolment is refused unless the request says staff confirmed it
+      // (`backMonth`) — and even then only back to BACK_MONTHS before the current month, which is
+      // also the floor that refuses a year typo. A request without the flag gets today's refusal,
+      // word for word. `backMonth` on a month that is NOT before the enrolment never reaches here.
+      if (row.backMonth !== true) {
+        return { ok: false, error: "That month is before the student was enrolled." };
+      }
+      if (asked < here - BACK_MONTHS) {
+        return { ok: false, error: `Cannot charge more than ${BACK_MONTHS} months back.` };
+      }
     }
   }
 
