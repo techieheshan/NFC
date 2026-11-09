@@ -123,7 +123,7 @@ export function MoneyFlow({
         </ol>
       </div>
 
-      <div className="bg-primary/10 my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
+      <div className="bg-secondary my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
         <span className="min-w-0 break-words text-sm font-medium">Should be in the drawer</span>
         <span className="shrink-0 text-lg font-semibold tabular-nums">{formatCents(flow.shouldBe)}</span>
       </div>

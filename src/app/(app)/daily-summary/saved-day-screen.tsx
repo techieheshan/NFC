@@ -250,7 +250,7 @@ export function SavedDayScreen({
       <ReconcileNotice text={unreconciled} />
       <DetailSections report={report} staff={saved.snapshot.staff} />
 
-      <div className="bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
+      <div className="bg-background fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
         <div className="mx-auto max-w-[720px] space-y-2">
           {settled ? (
             <p role="status" className="text-muted-foreground text-center text-xs">

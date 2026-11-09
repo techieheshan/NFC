@@ -177,7 +177,7 @@ export function DayScreen({
       <DetailSections report={report} staff={staff} />
 
       {/* sticky bottom bar: Save day, then Print and Download PDF (a draft) */}
-      <div className="bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
+      <div className="bg-background fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
         <div className="mx-auto max-w-[720px] space-y-2">
           {settled ? (
             <p role="status" className="text-muted-foreground text-center text-xs">
@@ -242,7 +242,7 @@ export function DateStrip({ date, today }: { date: string; today: string }) {
           <ChevronRight className="size-5" aria-hidden />
         </Link>
       ) : (
-        <span aria-disabled="true" className="border-input text-muted-foreground/40 grid size-11 shrink-0 place-items-center rounded-md border">
+        <span aria-disabled="true" className="border-input text-muted-foreground opacity-40 grid size-11 shrink-0 place-items-center rounded-md border">
           <ChevronRight className="size-5" aria-hidden />
         </span>
       )}
