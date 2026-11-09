@@ -7,6 +7,7 @@ import { setVoiceEnabled, VOICE } from "@/lib/voice";
 
 import type {
   ActionState,
+  ChangeFeeResult,
   CoursePick,
   Identifier,
   LookupResult,
@@ -40,6 +41,9 @@ type Props = {
   updateStudent: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   updatePhoto: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   attachIdentifier: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  /** ADMIN only: shows the "Change fee" control. The action itself refuses everyone else. */
+  canChangeFee?: boolean;
+  changeFeeTier?: (enrolmentId: number, feeTierId: number) => Promise<ChangeFeeResult>;
   /** Set when Search deep-links a student; otherwise the flow starts at scan. */
   initialStudent?: StudentView | null;
   /** From the Settings voice toggle. */
@@ -93,6 +97,8 @@ export function RegistrationScreen({
   updateStudent,
   updatePhoto,
   attachIdentifier,
+  canChangeFee = false,
+  changeFeeTier,
   initialStudent = null,
   voiceEnabled = false,
 }: Props) {
@@ -193,6 +199,7 @@ export function RegistrationScreen({
         loadSubjects={loadSubjects}
         loadCourses={loadCourses}
         actions={{ removeEnrolment, addEnrolment, updateStudent, updatePhoto, attachIdentifier }}
+        changeFee={canChangeFee && changeFeeTier ? changeFeeTier : undefined}
         onChanged={refresh}
         onBack={backToScan}
       />

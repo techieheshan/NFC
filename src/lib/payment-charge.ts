@@ -32,8 +32,11 @@ export type ChargeCourse = {
    * combo, and what a caller that knows no state gets.
    */
   comboState?: ComboState | null;
-  /** Every month the screen offers for this course, oldest first. */
-  months: { year: number; month: number }[];
+  /**
+   * Every month the screen offers for this course, oldest first. `beforeStart` is present only on
+   * a month before the enrolment started: the request then carries `backMonth: true` for it.
+   */
+  months: { year: number; month: number; beforeStart?: true }[];
 };
 
 /** `off` = staff switched this combo off: normal rate, no reason (a refusal still needs one). */
@@ -69,7 +72,7 @@ export function chargeCoursesFrom(
     halfComboMonthly: string | null;
     comboId: number | null;
     combo?: { state: ComboState } | null;
-    months: { year: number; month: number; state: "paid" | "unpaid" | "ahead" }[];
+    months: { year: number; month: number; state: "paid" | "unpaid" | "ahead"; beforeStart?: true }[];
   }[],
 ): ChargeCourse[] {
   return courses.map((c) => ({
@@ -81,7 +84,9 @@ export function chargeCoursesFrom(
     halfComboMonthly: c.halfComboMonthly,
     comboId: c.comboId,
     comboState: c.combo?.state ?? null,
-    months: c.months.filter((m) => m.state !== "paid").map((m) => ({ year: m.year, month: m.month })),
+    months: c.months
+      .filter((m) => m.state !== "paid")
+      .map((m) => (m.beforeStart ? { year: m.year, month: m.month, beforeStart: true as const } : { year: m.year, month: m.month })),
   }));
 }
 
@@ -159,10 +164,16 @@ export function selectedClassMonths(courses: ChargeCourse[], selected: Selection
       : c.months.flatMap((m) => {
           const mode = selection.get(monthKey(c.courseId, m.year, m.month));
           if (mode === undefined) return [];
+          // `backMonth` only on a month before the enrolment start; every other row is exactly
+          // what it always was.
           return [
-            mode === "FULL"
-              ? { courseId: c.courseId, year: m.year, month: m.month }
-              : { courseId: c.courseId, year: m.year, month: m.month, mode },
+            {
+              courseId: c.courseId,
+              year: m.year,
+              month: m.month,
+              ...(mode === "FULL" ? {} : { mode }),
+              ...(m.beforeStart ? { backMonth: true as const } : {}),
+            },
           ];
         }),
   );
@@ -277,3 +288,13 @@ export function setMonthMode(selected: SelectionLike, key: string, mode: Payment
  */
 export const shortMoney = (amount: string | null) =>
   amount === null ? "—" : amount.replace(/\.00$/, "");
+
+/**
+ * Must tapping this month first ask "Earlier month … Take payment for …?" An earlier month (before
+ * the enrolment started) that is NOT selected does; a selected one is simply un-picked, with no
+ * second confirm; any other month never asks. Yes then picks it as Full (`setMonthMode`), Cancel
+ * changes nothing. The screen and the month sheet both read this one rule.
+ */
+export function needsBackConfirm(selected: SelectionLike, key: string, beforeStart: boolean | undefined): boolean {
+  return beforeStart === true && !asSelection(selected).has(key);
+}

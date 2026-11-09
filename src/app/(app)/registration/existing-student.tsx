@@ -28,6 +28,7 @@ import { formatCardUid } from "@/lib/card-uid";
 
 import type {
   ActionState,
+  ChangeFeeResult,
   EnrolmentView,
   CoursePick,
   Identifier,
@@ -35,6 +36,7 @@ import type {
   SubjectPick,
 } from "./actions";
 import { CardFields } from "./card-fields";
+import { ChangeFeeDialog, isChargeableTier } from "./change-fee-dialog";
 import { type FeeTierOption } from "./enrolment-picker";
 import { CourseCascade, type StreamPick } from "./course-cascade";
 import { PhotoCapture } from "./photo-capture";
@@ -57,6 +59,7 @@ export function ExistingStudent({
   loadCourses,
   feeTiers,
   actions,
+  changeFee,
   onChanged,
   onBack,
 }: {
@@ -68,10 +71,14 @@ export function ExistingStudent({
   loadCourses: (input: { subjectId?: number; all?: boolean }) => Promise<CoursePick[]>;
   feeTiers: FeeTierOption[];
   actions: Actions;
+  /** Present only for an ADMIN (the action refuses anyone else regardless). */
+  changeFee?: (enrolmentId: number, feeTierId: number) => Promise<ChangeFeeResult>;
   onChanged: () => void;
   onBack: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  // The enrolment whose fee is being changed, if any.
+  const [feeFor, setFeeFor] = useState<EnrolmentView | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   // The two pickers are controlled, so the dialog keeps what was chosen while
   // the action runs — and is keyed on `enrolling`, which resets them on reopen.
@@ -190,11 +197,25 @@ export function ExistingStudent({
                 enrolment={e}
                 onRemoved={onChanged}
                 action={actions.removeEnrolment}
+                onChangeFee={
+                  changeFee && e.status === "ACTIVE" && isChangeable(e, feeTiers) ? () => setFeeFor(e) : undefined
+                }
               />
             ))}
           </ul>
         )}
       </div>
+
+      {feeFor && changeFee && (
+        <ChangeFeeDialog
+          key={`${feeFor.id}:${feeFor.feeTierId}`}
+          enrolment={feeFor}
+          feeTiers={feeTiers}
+          changeFeeTier={changeFee}
+          onChanged={onChanged}
+          onClose={() => setFeeFor(null)}
+        />
+      )}
 
       <ActionDialog
         key={enrolling ? "enrol" : "enrol-closed"}
@@ -409,14 +430,23 @@ function ActionDialog({
  * re-checks it anyway, because this copy of the counts was fetched before
  * someone else's payment may have landed.
  */
+/** The "Change fee" button is drawn only on a course that charges something (never on a Free one). */
+function isChangeable(e: EnrolmentView, feeTiers: FeeTierOption[]): boolean {
+  const tier = feeTiers.find((t) => t.id === e.feeTierId);
+  return tier !== undefined && isChargeableTier(tier);
+}
+
 function EnrolmentRow({
   enrolment,
   action,
   onRemoved,
+  onChangeFee,
 }: {
   enrolment: EnrolmentView;
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   onRemoved: () => void;
+  /** Set only for an ADMIN, on an active course that is not Free. */
+  onChangeFee?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(action, EMPTY);
   const used = enrolment.payments > 0 || enrolment.attendance > 0;
@@ -450,6 +480,17 @@ function EnrolmentRow({
       <span className="flex shrink-0 items-center gap-2">
         <Badge variant="outline">{enrolment.feeTier}</Badge>
         {enrolment.status === "DROPPED" && <Badge variant="secondary">Dropped</Badge>}
+        {onChangeFee && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10"
+            onClick={onChangeFee}
+            aria-label={`Change fee for ${enrolment.course}`}
+          >
+            Change fee
+          </Button>
+        )}
         {!used && (
           <form action={formAction}>
             <input type="hidden" name="enrolmentId" value={enrolment.id} />

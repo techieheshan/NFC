@@ -5,6 +5,7 @@ import { colomboNow, to12Hour } from "@/lib/colombo-time";
 import { comboStates, type ComboState, type ComboWithState } from "@/lib/combos";
 import { courseDisplayName } from "@/lib/course-name";
 import { db } from "@/lib/db";
+import { BACK_MONTHS } from "@/lib/payment-months";
 import { monthLabel } from "@/lib/receipts";
 import { SETTLED_PAYMENT_WHERE, studentArrears } from "@/lib/student-arrears";
 
@@ -42,6 +43,13 @@ export type ViewMonth = {
   attended: number;
   /** Unpaid AND before the current month — shown as "Owed". */
   owed: boolean;
+  /**
+   * Before the enrolment's own start month (at most BACK_MONTHS before the current month).
+   * ABSENT on every other month, so a month from the enrolment start on is byte-identical to
+   * what it always was. Such a month is never "owed" (arrears count from the enrolment start);
+   * staff may still take it after a confirm, and `takePayment` is told with `backMonth`.
+   */
+  beforeStart?: true;
 };
 
 /**
@@ -194,7 +202,10 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
   const courses: CourseCardData[] = panel.courses.map((c) => {
     const start = startOf.get(c.courseId) ?? here;
     const months: ViewMonth[] = [];
-    for (let o = start; o <= here + ahead; o++) {
+    // From BACK_MONTHS before the current month at the earliest, or the enrolment's own start when
+    // that is earlier (a student enrolled long ago is unchanged). Months before the start are
+    // flagged `beforeStart`; the server's `takePayment` applies the same BACK_MONTHS limit.
+    for (let o = Math.min(start, here - BACK_MONTHS); o <= here + ahead; o++) {
       const { year, month } = fromOrdinal(o);
       const paidDay = paidDayOf.get(`${c.courseId}:${year}:${month}`);
       const state: ViewMonthState = paidDay !== undefined ? "paid" : o > here ? "ahead" : "unpaid";
@@ -206,7 +217,8 @@ export async function buildPaymentView(panel: PaymentPanel): Promise<PaymentView
         paidDay: paidDay ?? null,
         paidMode: paidModeOf.get(`${c.courseId}:${year}:${month}`) ?? null,
         attended: attendedIn.get(`${c.courseId}:${year}-${String(month).padStart(2, "0")}`) ?? 0,
-        owed: state === "unpaid" && o < here,
+        owed: state === "unpaid" && o < here && o >= start,
+        ...(o < start ? { beforeStart: true as const } : {}),
       });
     }
 

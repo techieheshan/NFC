@@ -16,7 +16,14 @@ import type { CourseCardData, ViewMonth } from "@/lib/payment-view";
  *   unpaid    orange, the days attended that month — tap to select;
  *   selected  purple;
  *   ahead     dashed, the word "ahead" — payable early, up to the same limit as before;
- *   not offered (before enrolment, or past the ahead limit)  dashed grey, a dash.
+ *   earlier   grey dashed, the word "earlier" — BEFORE the enrolment started (at most BACK_MONTHS
+ *             back). It IS a button: a tap asks "Earlier month … Take payment for …?" first
+ *             (`onAskBack`); once confirmed it is an ordinary purple tile, and tapping a selected
+ *             one just un-selects it — no second confirm. A PAID earlier month is green like any other;
+ *   not offered (past the ahead limit, or further back than BACK_MONTHS)  dashed grey, a dash.
+ *
+ * Twelve more tiles need no extra room: the sheet shows ONE YEAR (twelve tiles) at a time and the
+ * earlier months simply sit on the previous year's page, reached with the same year arrows.
  *
  * Press and hold a month (or tap its ⓘ) to see that month's attendance. Nothing is
  * pre-selected here: the selection belongs to the screen, this only edits it.
@@ -90,6 +97,7 @@ export function MonthSheet({
   today,
   selected,
   onToggle,
+  onAskBack,
   onInfo,
   onClose,
 }: {
@@ -98,6 +106,8 @@ export function MonthSheet({
   /** The months picked for this payment, and how each is charged. */
   selected: { get: (key: string) => PaymentMode | undefined };
   onToggle: (month: ViewMonth) => void;
+  /** An earlier month (before the enrolment) that is not selected was tapped: ask first. */
+  onAskBack: (month: ViewMonth) => void;
   /** Open the month-detail pop-up for this month. */
   onInfo: (month: ViewMonth) => void;
   onClose: () => void;
@@ -107,7 +117,8 @@ export function MonthSheet({
   const minYear = Math.min(...years, today.year);
   const maxYear = Math.max(...years, today.year);
 
-  const firstPick = course.cardMonth ?? course.months.find((m) => m.state !== "paid");
+  // The sheet opens on the oldest month that is really owed or current — never on an earlier month.
+  const firstPick = course.cardMonth ?? course.months.find((m) => m.state !== "paid" && !m.beforeStart);
   const [year, setYear] = useState(firstPick?.year ?? today.year);
 
   const chosen = course.months.filter((m) => selected.get(monthKey(course.courseId, m.year, m.month)) !== undefined);
@@ -219,6 +230,24 @@ export function MonthSheet({
               );
             }
 
+            // An earlier month that has not been confirmed: a grey dashed BUTTON. No info button and
+            // no press-and-hold here — those could pick the month without the confirm.
+            if (m.beforeStart && !picked) {
+              return (
+                <Tile
+                  key={name}
+                  className="items-center justify-center border-dashed border-[#9C96AE] bg-[#EFEDF4] text-[#4A4560]"
+                  label={`${m.label}, earlier month, before registration, not paid`}
+                  hold={{}}
+                  onClick={() => onAskBack(m)}
+                  info={null}
+                >
+                  <span className="text-[13px] font-semibold">{name}</span>
+                  <span className="text-xs">earlier</span>
+                </Tile>
+              );
+            }
+
             const days = m.state === "ahead" ? "ahead" : `${m.attended} ${m.attended === 1 ? "day" : "days"}`;
             const word = pickedMode === "HALF" ? "½ month" : pickedMode === "NO_CHARGE" ? "No charge" : days;
             const tone = picked ? "text-white" : m.state === "ahead" ? "text-[#5B5670]" : "text-[#6B3200]";
@@ -275,6 +304,14 @@ export function MonthSheet({
             <span className="h-5 w-11 rounded-md bg-primary" aria-hidden />
             Selected for this payment
           </p>
+          {course.months.some((m) => m.beforeStart) && (
+            <p className="flex items-center gap-2">
+              <span className="flex h-5 w-11 items-center justify-center rounded-md border border-dashed border-[#9C96AE] bg-[#EFEDF4] text-[10px] text-[#4A4560]">
+                earlier
+              </span>
+              Before registration, tap to take payment after a confirm
+            </p>
+          )}
           <p className="mt-1 text-[#5B5670]">Press and hold a month, or tap its info icon, to see its attendance.</p>
         </div>
 
