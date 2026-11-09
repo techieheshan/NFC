@@ -113,7 +113,7 @@ export function ReportScreen({ report }: { report: StudentListReport }) {
                 </tr>
               ))}
             </tbody>
-            <tfoot className="bg-muted/40 border-t">
+            <tfoot className="bg-muted border-t">
               <tr>
                 <td className="p-3 font-medium" colSpan={report.allCourses ? 4 : 3}>
                   <span className="flex flex-wrap items-center gap-3">

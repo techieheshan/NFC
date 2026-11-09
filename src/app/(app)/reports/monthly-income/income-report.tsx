@@ -91,7 +91,7 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
       </div>
 
       {broken && (
-        <p className="border-destructive/40 bg-destructive/10 text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
+        <p className="border-destructive bg-destructive-soft text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
           <AlertTriangle className="size-4" aria-hidden />
           {!report.reconciles.shares
             ? "Teacher shares + institute keep do not equal course collections."
@@ -131,7 +131,7 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
                 <tr><td className="text-muted-foreground p-3" colSpan={7}>No collections this month.</td></tr>
               )}
             </tbody>
-            <tfoot className="bg-muted/40 border-t">
+            <tfoot className="bg-muted border-t">
               <tr className="font-medium">
                 <td className="p-3" colSpan={2}>Totals</td>
                 <td className="p-3 text-right tabular-nums">{i.totalCollected}</td>

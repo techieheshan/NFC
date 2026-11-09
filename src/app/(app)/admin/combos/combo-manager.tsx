@@ -374,7 +374,7 @@ function ComboDialog({
             )}
 
             {picked.size > 0 && (
-              <div className="bg-muted/40 flex justify-between rounded-lg border p-3 text-sm font-medium">
+              <div className="bg-muted flex justify-between rounded-lg border p-3 text-sm font-medium">
                 <span>Combined total ({picked.size} courses)</span>
                 <span className="tabular-nums">{total.toFixed(2)}</span>
               </div>

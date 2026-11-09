@@ -67,7 +67,7 @@ export default async function ClassSchedulePage({
         {isTeacher ? (
           <div className="space-y-2">
             <span className="block text-sm font-medium">Teacher</span>
-            <p className={`${FIELD} bg-muted/50 flex items-center`}>{ownName ?? "—"}</p>
+            <p className={`${FIELD} bg-muted flex items-center`}>{ownName ?? "—"}</p>
           </div>
         ) : (
           <div className="space-y-2">

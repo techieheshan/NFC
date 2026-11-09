@@ -44,6 +44,65 @@ function stripBlocks(text, headerRx) {
 }
 
 const count = (css, rx) => (css.match(rx) ?? []).length;
+
+/**
+ * Opacity modifiers on theme colours (a slash and a number after the colour name). Tailwind v4 writes the plain colour first and the color-mix()
+ * version inside `@supports (color: color-mix(...))`. Chrome 102 skips the guarded one, so it is left with the base rule,
+ * and for a theme colour (a `var(--primary)`) that base rule is the OPAQUE colour: a "10% purple" circle is solid purple.
+ * A static colour (`bg-black/40`) is precomputed to a plain alpha colour instead and has no guarded rule, so it passes. (Do not quote a tinted class name in a comment: Tailwind scans every file, comments included.)
+ * Rules under `.dark` are skipped: the dark theme is opt-in and nothing switches it on (css-baseline.test.ts checks that).
+ */
+function flatten(css, at = [], out = []) {
+  let i = 0;
+  while (i < css.length) {
+    while (i < css.length && /\s/.test(css[i])) i++;
+    if (i >= css.length) break;
+    if (css.startsWith("/*", i)) { i = css.indexOf("*/", i) + 2; continue; }
+    const brace = css.indexOf("{", i), semi = css.indexOf(";", i);
+    if (brace === -1 || (semi !== -1 && semi < brace)) { i = semi === -1 ? css.length : semi + 1; continue; }
+    const head = css.slice(i, brace).trim();
+    let depth = 0, k = brace;
+    for (; k < css.length; k++) { if (css[k] === "{") depth++; else if (css[k] === "}" && --depth === 0) break; }
+    const inner = css.slice(brace + 1, k);
+    if (head.startsWith("@")) {
+      if (!/^@(?:-webkit-)?(?:keyframes|font-face|property)/.test(head)) flatten(inner, [...at, head], out);
+    } else out.push({ at, sel: head, body: inner });
+    i = k + 1;
+  }
+  return out;
+}
+function splitSelectors(sel) {
+  const out = []; let depth = 0, cur = "";
+  for (const ch of sel) {
+    if (ch === "(" || ch === "[") depth++;
+    if (ch === ")" || ch === "]") depth--;
+    if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+/** Selectors with an opacity modifier whose Chrome 102 value (the rule outside the color-mix guard) is an opaque colour variable or missing. */
+function opaqueModifierFallbacks(css) {
+  const guard = /^@supports\s*\(\s*color:\s*color-mix/;
+  const modifier = /\\\/(?:\d+(?:\.\d+)?|\\\[[^\]]*\\\])/;
+  const seen = new Map();
+  for (const r of flatten(css)) {
+    const guarded = r.at.some((a) => guard.test(a));
+    for (const sel of splitSelectors(r.sel)) {
+      if (!modifier.test(sel) || sel.includes(".dark")) continue;
+      const e = seen.get(sel) ?? { base: [], guarded: false };
+      if (guarded) e.guarded = true; else e.base.push(r.body);
+      seen.set(sel, e);
+    }
+  }
+  const bad = [];
+  for (const [sel, e] of seen) {
+    if (!e.guarded) continue; // precomputed alpha colour (static colour), nothing to fall back from
+    const opaque = e.base.length === 0 || e.base.some((b) => /(?:^|;)\s*[a-z-]+\s*:\s*var\(--(?!tw-)[a-z-]+\)\s*(?:;|$)/.test(b));
+    if (opaque) bad.push(sel.replace(/\\/g, ""));
+  }
+  return bad;
+}
 const FAIL = [
   ["standalone translate/scale/rotate property (Chrome 104)", /(?<![-\w])(?:translate|scale|rotate):/g],
   ["svh/dvh/lvh viewport unit (Chrome 108)", /\b\d*\.?\d+(?:svh|dvh|lvh)\b/g],
@@ -72,6 +131,14 @@ for (const file of files) {
   const { text: unguarded } = stripBlocks(css, /@supports\s*\(color:\s*(?:color-mix|lab)\([^{]*\{/);
   const loose = count(unguarded, /color-mix\(|(?<![-\w])(?:lab|lch|oklab|oklch)\(/g);
   if (loose) problems.push(`${loose} × colour function outside an @supports guard (Chrome 111)`);
+
+  const opaque = opaqueModifierFallbacks(css);
+  if (opaque.length) {
+    problems.push(
+      `${opaque.length} × opacity modifier on a theme colour that is OPAQUE on Chrome 102 (no color-mix): ${opaque.slice(0, 6).join(", ")}${opaque.length > 6 ? ", …" : ""}. ` +
+        "Use a solid token (bg-secondary, bg-muted, bg-accent, bg-destructive-soft, border-primary-line) or opacity-N.",
+    );
+  }
 
   if (/(?<![-\w])mask(?:-image|-size|-position|-repeat)?:/.test(css) && !/-webkit-mask/.test(css)) {
     problems.push("unprefixed mask without -webkit-mask (Chrome 120)");

@@ -40,7 +40,7 @@ export default async function RangePage({ searchParams }: PageProps<"/daily-summ
     <div className="mx-auto w-full max-w-[720px] space-y-4">
       <h1 className="text-xl font-semibold tracking-tight">Daily Summary</h1>
 
-      <form method="get" className="bg-muted/40 grid grid-cols-2 gap-3 rounded-xl border p-3">
+      <form method="get" className="bg-muted grid grid-cols-2 gap-3 rounded-xl border p-3">
         <div>
           <label htmlFor="from" className="block text-sm font-medium">From</label>
           <input id="from" name="from" type="date" className={`${FIELD} mt-1`} defaultValue={b.from} />
@@ -78,7 +78,7 @@ export default async function RangePage({ searchParams }: PageProps<"/daily-summ
               <span className="shrink-0 text-lg font-semibold tabular-nums">{formatMoney(d.net)}</span>
             </li>
           ))}
-          <li className="bg-primary/10 flex items-center justify-between gap-3 px-4 py-3">
+          <li className="bg-secondary flex items-center justify-between gap-3 px-4 py-3">
             <span className="min-w-0">
               <span className="block text-sm font-semibold">Total</span>
               <span className="text-muted-foreground block text-xs">Collected {formatMoney(b.byDay.total.collected)} · Deductions {formatDeduction(b.byDay.total.deductions)}</span>

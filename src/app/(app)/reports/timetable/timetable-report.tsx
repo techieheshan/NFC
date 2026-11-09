@@ -75,7 +75,7 @@ export function TimetableScreen({
 
       <div className="hidden overflow-x-auto rounded-xl border xl:block">
         <table className="w-full min-w-4xl text-sm">
-          <thead className="bg-muted/40 text-left">
+          <thead className="bg-muted text-left">
             <tr>
               <th className="p-2 font-medium">Hall</th>
               {report.days.map((d) => (
@@ -101,7 +101,7 @@ export function TimetableScreen({
                 {r.cells.map((list, i) => (
                   <td key={report.days[i].date} className="p-2">
                     {list.length === 0 ? (
-                      <span className="text-muted-foreground/40">·</span>
+                      <span className="text-muted-foreground opacity-40">·</span>
                     ) : (
                       <ul className="space-y-1.5">
                         {list.map((c) => (

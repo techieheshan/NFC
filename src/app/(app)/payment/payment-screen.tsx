@@ -447,7 +447,7 @@ export function PaymentScreen({
   return (
     <div className="mx-auto max-w-md space-y-5">
       <div className="text-center">
-        <span className="bg-primary/10 text-primary mx-auto grid size-16 place-items-center rounded-full">
+        <span className="bg-secondary text-primary mx-auto grid size-16 place-items-center rounded-full">
           <CreditCard className="size-8" aria-hidden />
         </span>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Payment</h1>
@@ -459,7 +459,7 @@ export function PaymentScreen({
       {notFound && (
         <p
           role="alert"
-          className="border-destructive/40 bg-destructive/5 text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm"
+          className="border-destructive bg-destructive-soft text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm"
         >
           <XCircle className="size-4 shrink-0" aria-hidden />
           Card not recognised. Register it first, or search by name.

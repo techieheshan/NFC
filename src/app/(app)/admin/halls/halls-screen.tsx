@@ -71,7 +71,7 @@ function HallRowForm({ row }: { row: HallRow }) {
   const [icon, setIcon] = useState(row.icon);
 
   return (
-    <li className={`space-y-3 p-4 ${row.active ? "" : "bg-muted/40"}`}>
+    <li className={`space-y-3 p-4 ${row.active ? "" : "bg-muted"}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="bg-secondary text-secondary-foreground grid size-10 shrink-0 place-items-center rounded-lg">
           <HallIcon icon={icon} className="size-5" />
@@ -123,7 +123,7 @@ function IconPicker({
             aria-pressed={selected}
             onClick={() => onChange(key)}
             className={`grid size-8 place-items-center rounded-md border ${
-              selected ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary"
+              selected ? "border-primary bg-secondary text-primary" : "text-muted-foreground hover:bg-secondary"
             }`}
           >
             <HallIcon icon={key} className="size-4" />

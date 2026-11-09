@@ -30,7 +30,7 @@ export default async function DailyAttendancePage({
   const report = await loadDailyAttendance(date);
 
   const filterUi = (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+    <form method="get" className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4">
       <div className="space-y-1.5">
         <label htmlFor="date" className="block text-sm font-medium">Day</label>
         <input id="date" name="date" type="date" className={FIELD} defaultValue={report.date} />

@@ -110,7 +110,7 @@ export function Picker({
                       disabled={o.disabled}
                       onClick={() => { onChange(o.value); setOpen(false); }}
                       className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left disabled:opacity-40 ${
-                        on ? "bg-primary/10" : "active:bg-accent"
+                        on ? "bg-secondary" : "active:bg-accent"
                       }`}
                     >
                       <span className="min-w-0 flex-1">

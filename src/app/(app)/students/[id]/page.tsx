@@ -22,7 +22,7 @@ const ARREARS_STYLE: Record<ArrearsStatus, { className: string; word: string }> 
 const CELL: Record<MonthCell, string> = {
   paid: "bg-emerald-500",
   owed: "bg-red-500",
-  free: "bg-muted-foreground/30",
+  free: "bg-muted-foreground opacity-30",
   before: "bg-transparent border border-dashed",
 };
 

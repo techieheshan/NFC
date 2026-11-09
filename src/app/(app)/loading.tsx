@@ -14,7 +14,7 @@
 export default function Loading() {
   return (
     <div role="status" aria-live="polite" className="space-y-4">
-      <div className="bg-primary/15 h-1 w-full overflow-hidden rounded-full">
+      <div className="bg-accent h-1 w-full overflow-hidden rounded-full">
         <div className="bg-primary h-full w-1/3 animate-[xenon-tap_1s_ease-in-out_infinite] rounded-full" />
       </div>
       <p className="text-muted-foreground text-sm">Loading…</p>

@@ -74,7 +74,7 @@ function StreamCard({
     });
 
   return (
-    <form action={action} className={`rounded-xl border ${stream.active ? "" : "bg-muted/40"}`}>
+    <form action={action} className={`rounded-xl border ${stream.active ? "" : "bg-muted"}`}>
       <input type="hidden" name="streamId" value={stream.id} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
         <div>

@@ -44,6 +44,10 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  /* SOLID tints. Chrome 102 (the terminals) has no color-mix(), so a /N opacity modifier on a theme
+     colour falls back to the OPAQUE colour. A tint is a token of its own (a test enforces this). */
+  --color-primary-line: var(--primary-line);
+  --color-destructive-soft: var(--destructive-soft);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -78,6 +82,9 @@
   --accent: oklch(0.95 0.035 300);
   --accent-foreground: oklch(0.38 0.16 300);
   --destructive: oklch(0.577 0.245 27.325);
+  /* solid stand-ins for "primary at 40%" (borders, focus rings) and "destructive at ~6%" (error boxes) */
+  --primary-line: oklch(0.86 0.07 300);
+  --destructive-soft: oklch(0.985 0.008 27);
   --border: oklch(0.92 0.018 300);
   --input: oklch(0.92 0.018 300);
   --ring: oklch(0.52 0.23 300);
@@ -114,6 +121,8 @@
   --accent: oklch(0.31 0.055 300);
   --accent-foreground: oklch(0.97 0.008 300);
   --destructive: oklch(0.704 0.191 22.216);
+  --primary-line: oklch(0.42 0.1 300);
+  --destructive-soft: oklch(0.27 0.05 25);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.64 0.2 300);
@@ -134,7 +143,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-primary-line;
   }
   body {
     @apply bg-background text-foreground;

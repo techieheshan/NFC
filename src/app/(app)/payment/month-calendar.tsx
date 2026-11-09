@@ -153,7 +153,7 @@ export function MonthCalendar({
                       "relative flex min-h-14 flex-col items-center justify-center rounded-lg border text-sm font-medium transition-colors",
                       !m
                         ? // Not offered for this enrolment at all.
-                          "text-muted-foreground/40 border-dashed"
+                          "text-muted-foreground opacity-40 border-dashed"
                         : m.paid
                           ? // Paid: visible, so staff can see it is settled —
                             // blurred and inert, so it cannot be charged twice.

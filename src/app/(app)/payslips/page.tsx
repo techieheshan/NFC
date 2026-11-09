@@ -45,7 +45,7 @@ export default async function PayslipsPage({ searchParams }: PageProps<"/payslip
   const thisMonth = colomboNow().date.slice(0, 7);
 
   const filterUi = view.canPickMonth ? (
-    <form method="get" className="bg-muted/40 flex flex-wrap items-end gap-3 rounded-xl border p-4">
+    <form method="get" className="bg-muted flex flex-wrap items-end gap-3 rounded-xl border p-4">
       <div className="space-y-1.5">
         <label htmlFor="month" className="block text-sm font-medium">Month</label>
         <input id="month" name="month" type="month" className={FIELD} defaultValue={current} />
