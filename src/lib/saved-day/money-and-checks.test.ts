@@ -1,0 +1,198 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import type { BankLine } from "@/lib/cash-flow";
+import { decimalToCents, formatCents } from "@/lib/cents";
+import { money } from "@/lib/daily-summary-rows";
+
+import { matchBankLines, type StoredBankLine } from "./bank-lines";
+import { classifyEdit, decideCheck } from "./check-rule";
+import { centsToDecimalString, columnToCents } from "./money";
+
+const line = (cents: number, time = "09:00", slip = "", note = ""): BankLine => ({ cents, time, slip, note });
+const T0 = new Date("2026-11-02T04:00:00Z");
+const T1 = new Date("2026-11-02T10:00:00Z");
+const stored = (l: BankLine, by: string): StoredBankLine => ({ ...l, recordedById: by, recordedByName: `${by} (name)`, recordedAt: T0 });
+const by = (id: string) => ({ id, name: `${id} (name)` });
+
+// ---- centsToDecimalString ----
+test("centsToDecimalString: integer math, two decimals, no minus on zero, same shape as the data object's own text", () => {
+  assert.equal(centsToDecimalString(125050), "1250.50");
+  assert.equal(centsToDecimalString(5), "0.05");
+  assert.equal(centsToDecimalString(0), "0.00");
+  assert.equal(centsToDecimalString(-845000), "-8450.00");
+  assert.equal(centsToDecimalString(-1), "-0.01");
+  assert.equal(centsToDecimalString(9_999_999_999), "99999999.99");
+  for (const c of [0, 1, 99, 100, 101, 12345, -12345, 9_999_999_999, -9_999_999_999, 1_234_567_890_123]) {
+    assert.equal(centsToDecimalString(c), money(c), `parity with daily-summary-rows money() for ${c}`);
+    assert.equal(decimalToCents(centsToDecimalString(c)), c, `round trip for ${c}`);
+  }
+});
+
+test("centsToDecimalString refuses a number that is not a safe integer (no float ever reaches a money column)", () => {
+  for (const bad of [1.5, NaN, Infinity, 2 ** 53, 0.1 + 0.2]) assert.throws(() => centsToDecimalString(bad), RangeError);
+});
+
+test("columnToCents reads a Decimal's exact two-decimal text", () => {
+  assert.equal(columnToCents({ toFixed: (d: number) => (12.5).toFixed(d) }), 1250);
+  assert.equal(columnToCents("99999999.99"), 9_999_999_999);
+  assert.equal(columnToCents("-0.00"), 0);
+  assert.equal(formatCents(columnToCents("76375.00")), "76,375.00");
+});
+
+// ---- matchBankLines ----
+test("matchBankLines: an identical line is the same deposit and keeps who recorded it and when", () => {
+  const prev = [stored(line(5000_00, "09:15", "S1", "Peoples"), "ann")];
+  const m = matchBankLines(prev, [line(5000_00, "09:15", "S1", "Peoples")], by("bob"), T1);
+  assert.deepEqual(m.lines.map((l) => [l.recordedById, l.recordedAt]), [["ann", T0]]);
+  assert.deepEqual([m.added, m.removed, m.edited], [[], [], []]);
+  assert.equal(m.lines[0].recordedByName, "ann (name)", "the FROZEN name travels with the line");
+});
+
+test("matchBankLines: a new line is recorded by this version's Done by (id and name), now", () => {
+  const prev = [stored(line(5000_00), "ann")];
+  const m = matchBankLines(prev, [line(5000_00), line(1500_00, "10:30")], by("bob"), T1);
+  assert.deepEqual(m.lines.map((l) => [l.recordedById, l.recordedAt]), [["ann", T0], ["bob", T1]]);
+  assert.equal(m.lines[1].recordedByName, "bob (name)");
+  assert.equal(m.added.length, 1);
+  assert.equal(m.added[0].cents, 1500_00);
+});
+
+test("matchBankLines: same amount with another time, slip or note is an EDITED line and keeps its original recorder", () => {
+  const prev = [stored(line(5000_00, "09:15", "S1"), "ann")];
+  const m = matchBankLines(prev, [line(5000_00, "09:45", "S2")], by("bob"), T1);
+  assert.deepEqual(m.lines.map((l) => [l.recordedById, l.recordedAt]), [["ann", T0]]);
+  assert.equal(m.edited.length, 1);
+  assert.deepEqual([m.added.length, m.removed.length], [0, 0]);
+});
+
+test("matchBankLines: a changed amount is a removed line plus an added one (recorded by this version's Done by)", () => {
+  const prev = [stored(line(5000_00), "ann")];
+  const m = matchBankLines(prev, [line(6000_00)], by("bob"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"]);
+  assert.deepEqual([m.added.length, m.removed.length, m.edited.length], [1, 1, 0]);
+});
+
+test("matchBankLines: a line removed, another kept; two equal amounts are not matched twice", () => {
+  const prev = [stored(line(100_00, "09:00"), "ann"), stored(line(100_00, "11:00"), "cy")];
+  const m = matchBankLines(prev, [line(100_00, "11:00")], by("bob"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["cy"], "the identical one wins over the same-amount one");
+  assert.deepEqual(m.removed.map((l) => l.time), ["09:00"]);
+});
+
+test("matchBankLines: two deposits of the SAME amount keep their own recorders when their slips are swapped or only one changes", () => {
+  const prev = [{ ...line(100_00, "09:00", "A"), recordedById: "ann", recordedByName: "ann (name)", recordedAt: T0 }, { ...line(100_00, "09:00", "B"), recordedById: "bob", recordedByName: "bob (name)", recordedAt: T1 }];
+  // swapped order: each slip finds its own line
+  const swapped = matchBankLines(prev, [line(100_00, "09:00", "B"), line(100_00, "09:00", "A")], by("cy"), new Date("2026-11-03T00:00:00Z"));
+  assert.deepEqual(swapped.lines.map((l) => [l.slip, l.recordedById]), [["B", "bob"], ["A", "ann"]]);
+  assert.deepEqual([swapped.added.length, swapped.removed.length, swapped.edited.length], [0, 0, 0]);
+  // only the first slip changes (A -> C): the line that kept B stays bob's, and the edited one is ann's, whichever order they come in
+  for (const next of [[line(100_00, "09:00", "C"), line(100_00, "09:00", "B")], [line(100_00, "09:00", "B"), line(100_00, "09:00", "C")]]) {
+    const m = matchBankLines(prev, next, by("cy"), new Date("2026-11-03T00:00:00Z"));
+    assert.deepEqual(m.lines.map((l) => [l.slip, l.recordedById]).sort(), [["B", "bob"], ["C", "ann"]]);
+    assert.equal(m.edited.length, 1);
+  }
+});
+
+test("matchBankLines: among same-amount leftovers the closest line wins (most of time, slip, note equal), the earliest on a tie", () => {
+  const prev = [
+    { ...line(100_00, "08:00", "X", "n1"), recordedById: "ann", recordedByName: "ann (name)", recordedAt: T0 },
+    { ...line(100_00, "12:00", "Y", "n2"), recordedById: "bob", recordedByName: "bob (name)", recordedAt: T0 },
+  ];
+  // time AND note match the second line (slip differs): it is the second line that was edited
+  const m = matchBankLines(prev, [line(100_00, "12:00", "Z", "n2")], by("cy"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"]);
+  assert.deepEqual(m.removed.map((l) => l.slip), ["X"], "the first line is the one that was removed");
+  // nothing in common: the earliest line is taken
+  const t = matchBankLines(prev, [line(100_00, "23:00", "Q", "q")], by("cy"), T1);
+  assert.deepEqual(t.lines.map((l) => l.recordedById), ["ann"]);
+});
+
+test("matchBankLines: the closest line is chosen by EACH of time, slip and note on its own", () => {
+  const rec = (l: BankLine, who: string) => stored(l, who);
+  // only the TIME tells them apart
+  let m = matchBankLines([rec(line(100_00, "08:00", "s", "n"), "ann"), rec(line(100_00, "12:00", "s", "n"), "bob")], [line(100_00, "12:00", "z", "z")], by("cy"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"], "time");
+  // only the SLIP tells them apart
+  m = matchBankLines([rec(line(100_00, "09:00", "A", "n"), "ann"), rec(line(100_00, "09:00", "B", "n"), "bob")], [line(100_00, "10:00", "B", "z")], by("cy"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"], "slip");
+  // only the NOTE tells them apart
+  m = matchBankLines([rec(line(100_00, "09:00", "s", "x"), "ann"), rec(line(100_00, "09:00", "s", "y"), "bob")], [line(100_00, "10:00", "z", "y")], by("cy"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["bob"], "note");
+  // the same amount in two lines, nothing else shared: the EARLIEST old line is taken, then the next
+  m = matchBankLines([rec(line(100_00, "08:00", "a", "a"), "ann"), rec(line(100_00, "09:00", "b", "b"), "bob")], [line(100_00, "20:00", "q", "q"), line(100_00, "21:00", "r", "r")], by("cy"), T1);
+  assert.deepEqual(m.lines.map((l) => l.recordedById), ["ann", "bob"]);
+});
+
+test("matchBankLines: the review's swapped-slips scenario is matched GLOBALLY (a greedy per-line pass swapped the recorders)", () => {
+  // two deposits of one amount: A = (t1, s1, n1) recorded by X, B = (t2, s2, n2) recorded by Y.
+  // The edit sends L1 = (t1, s2, nX) and L2 = (t1, s1, nY). Taken line by line, L1 grabs A (the same time, the earlier old line) and L2 is
+  // left with B: the recorders swap. Scored over every pair, L2 matches A twice (time and slip), L1 matches A once and B once, so L2 takes A.
+  const A = stored(line(100_00, "09:00", "s1", "n1"), "X");
+  const B = stored(line(100_00, "10:00", "s2", "n2"), "Y");
+  const m = matchBankLines([A, B], [line(100_00, "09:00", "s2", "nX"), line(100_00, "09:00", "s1", "nY")], by("Z"), T1);
+  assert.deepEqual(m.lines.map((l) => [l.slip, l.recordedById]), [["s2", "Y"], ["s1", "X"]], "L1 is B's edit (Y), L2 is A's edit (X)");
+  assert.deepEqual([m.added.length, m.removed.length, m.edited.length], [0, 0, 2]);
+  // an exact line later in the list wins over an earlier partial one
+  const exact = matchBankLines([A, B], [line(100_00, "09:00", "sq", "nq"), line(100_00, "10:00", "s2", "n2")], by("Z"), T1);
+  assert.deepEqual(exact.lines.map((l) => l.recordedById), ["X", "Y"], "the exact line takes B, so the partial one is left with A");
+});
+
+// ---- classifyEdit ----
+const shape = (bf: number, ...bank: BankLine[]) => ({ bringForwardCents: bf, bank });
+
+test("classifyEdit: nothing changed", () => {
+  const a = shape(100_00, line(5000_00, "09:15", "S1", "n"));
+  assert.deepEqual(classifyEdit(a, shape(100_00, line(5000_00, "09:15", "S1", "n"))), { nothingChanged: true, moneyChanged: false });
+});
+
+test("classifyEdit: bring-forward, a bank amount or the number of lines is a MONEY change", () => {
+  const base = shape(100_00, line(5000_00));
+  assert.equal(classifyEdit(base, shape(200_00, line(5000_00))).moneyChanged, true);
+  assert.equal(classifyEdit(base, shape(100_00, line(5001_00))).moneyChanged, true);
+  assert.equal(classifyEdit(base, shape(100_00, line(5000_00), line(1_00))).moneyChanged, true);
+  assert.equal(classifyEdit(base, shape(100_00, line(5000_00), line(9000_00))).moneyChanged, true, "a LARGER new line sorts last and is still a money change");
+  assert.equal(classifyEdit(shape(100_00, line(5000_00), line(9000_00)), base).moneyChanged, true, "and removing it too");
+  assert.equal(classifyEdit(base, shape(100_00)).moneyChanged, true);
+  assert.equal(classifyEdit(base, shape(100_00, line(5000_00), line(1_00))).nothingChanged, false);
+});
+
+test("classifyEdit: only slip, note, time or order changed is a change but NOT a money change", () => {
+  const base = shape(0, line(10_00, "09:00", "A", "x"), line(20_00, "10:00"));
+  for (const next of [
+    shape(0, line(10_00, "09:00", "B", "x"), line(20_00, "10:00")),
+    shape(0, line(10_00, "09:00", "A", "y"), line(20_00, "10:00")),
+    shape(0, line(10_00, "09:30", "A", "x"), line(20_00, "10:00")),
+    shape(0, line(20_00, "10:00"), line(10_00, "09:00", "A", "x")),
+  ]) {
+    assert.deepEqual(classifyEdit(base, next), { nothingChanged: false, moneyChanged: false });
+  }
+});
+
+// ---- decideCheck ----
+test("decideCheck: SAVE has no check to carry or clear", () => {
+  assert.deepEqual(decideCheck({ kind: "SAVE", hadCheck: false }), { carryCheck: false, checkCleared: false });
+});
+
+test("decideCheck: EDIT with nothing changed is refused", () => {
+  assert.deepEqual(decideCheck({ kind: "EDIT", hadCheck: true, edit: { nothingChanged: true, moneyChanged: false } }), { refuse: "nothing-changed" });
+});
+
+test("decideCheck: EDIT money change clears a check (and clears nothing when there was none)", () => {
+  assert.deepEqual(decideCheck({ kind: "EDIT", hadCheck: true, edit: { nothingChanged: false, moneyChanged: true } }), { carryCheck: false, checkCleared: true });
+  assert.deepEqual(decideCheck({ kind: "EDIT", hadCheck: false, edit: { nothingChanged: false, moneyChanged: true } }), { carryCheck: false, checkCleared: false });
+});
+
+test("decideCheck: EDIT of only slip / note / time keeps the check (carried), and carries nothing when there was none", () => {
+  assert.deepEqual(decideCheck({ kind: "EDIT", hadCheck: true, edit: { nothingChanged: false, moneyChanged: false } }), { carryCheck: true, checkCleared: false });
+  assert.deepEqual(decideCheck({ kind: "EDIT", hadCheck: false, edit: { nothingChanged: false, moneyChanged: false } }), { carryCheck: false, checkCleared: false });
+});
+
+test("decideCheck: RESAVE_LIVE with new live numbers clears the check; with identical numbers it is refused", () => {
+  assert.deepEqual(decideCheck({ kind: "RESAVE_LIVE", hadCheck: true, liveDiffers: true }), { carryCheck: false, checkCleared: true });
+  assert.deepEqual(decideCheck({ kind: "RESAVE_LIVE", hadCheck: true, liveDiffers: false }), { refuse: "nothing-changed" });
+});
+
+test("decideCheck: an EDIT without its classification is a programming error, not a silent default", () => {
+  assert.throws(() => decideCheck({ kind: "EDIT", hadCheck: false }), /classification/);
+});

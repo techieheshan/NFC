@@ -1,64 +1,76 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useReducer, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Landmark, Printer, X } from "lucide-react";
+import { useEffect, useReducer, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Download, History, Landmark, Pencil, Printer, Save, ShieldCheck } from "lucide-react";
 
-import { amountErrorText, decimalToCents, formatCents, formatMoney, parseTypedAmount } from "@/lib/cents";
+import { amountErrorText, decimalToCents, formatCents, parseTypedAmount } from "@/lib/cents";
 import { MAX_BANK_LINES, computeCashFlow, type BankLine } from "@/lib/cash-flow";
 import { dayLabelShort, shiftDay } from "@/lib/daily-summary-dates";
-import { to12Hour } from "@/lib/colombo-time";
 import type { CancelledSummary, StaffCollected } from "@/lib/daily-summary-extras";
+import type { Hint } from "@/lib/saved-day/hint";
+import { hintLabel, NOT_SAVED_CHIP, RELOAD_BUTTON, UNREADABLE_BLOCK, UNREADABLE_DAY, UPDATING_SCREEN } from "@/lib/saved-day/texts";
 import type { DailySummary } from "@/lib/reports";
 
 import { BankSheet } from "./bank-sheet";
+import { blockReason as blockReasonFor } from "./block-reason";
+import { Banner, Chip, DetailSections, MoneyFlow } from "./day-parts";
 import { ReconcileNotice } from "./reconcile-notice";
-import { cancelledLine, deductionKind } from "./document/model";
-import { ADMISSION_NOTE, ofWhichLines, reconcileWarning, smartCardLabel } from "./extra-lines";
-import { NO_ADMIN_MESSAGE, type Signer } from "./signer-lists";
+import { reconcileWarning } from "./extra-lines";
+import { SaveSheet } from "./save-sheet";
+import type { Signer } from "./signer-lists";
 import { initialTypedState, typedReducer } from "./typed-reducer";
 import { typedQuery } from "./typed-state";
 
-const SELECT = "border-input bg-background h-11 w-full rounded-md border px-3 text-base shadow-xs";
-
 /**
- * The day screen. The money flow reads top to bottom as a timeline —
+ * The day screen for a day that is NOT saved (Release 2: the saved day is `saved-day-screen.tsx`). The money flow reads top to bottom as
+ * a timeline — Bring-forward + Collected − Deductions = Should be in the drawer; − Taken to bank = Left in drawer — in integer cents
+ * (`lib/cash-flow`), with the data object's own strings only displayed.
  *
- *   Bring-forward + Collected − Deductions = Should be in the drawer;  − Taken to bank = Left in drawer
- *
- * — in integer cents (`lib/cash-flow`), with the data object's own strings only displayed (thousands separators
- * added), never recomputed. Bring-forward, the bank lines and both signers are typed here and are NOT stored: they
- * are mirrored into the URL (`history.replaceState`), which is what carries them to the A4 document and back and
- * through a reload. Release 2 will store them; this release does not.
+ * What is typed here (bring-forward, bank lines) is still a DRAFT: it is mirrored into the address (`history.replaceState`), which carries
+ * it to the A4 document and back and through a reload. It is stored only when someone taps "Save day". There are no Prepared by /
+ * Checked by selects any more: Done by is chosen in the Save sheet and the admin check is its own step on the saved day.
  */
 export function DayScreen({
-  date, today, report, cancelled, staff, signers, initial, notices,
+  date, today, dateText, report, cancelled, staff, doners, initial, notices, hint, unreadable,
 }: {
   date: string;
   today: string;
+  /** "Wed 14 Oct 2026", for the Save sheet's title. */
+  dateText: string;
   report: DailySummary;
   cancelled: CancelledSummary;
   staff: StaffCollected[];
-  signers: { prepared: Signer[]; checked: Signer[] };
-  initial: { bf: string; bank: BankLine[]; preparedId: string; checkedId: string };
+  /** Active ADMIN and STAFF accounts: the Done by choices. */
+  doners: Signer[];
+  initial: { bf: string; bank: BankLine[] };
   notices: { key: string; text: string }[];
+  hint: Hint | null;
+  /** A saved day exists but could not be read: this live view stands in for it. */
+  unreadable: boolean;
 }) {
-  // What is typed (bring-forward, bank lines, signers) and which notices are open: ONE pure state machine (typed-reducer.ts), so its
-  // transitions are tested as they run here. Initial value only, never synced from props (rule 17).
-  const [typed, dispatch] = useReducer(typedReducer, undefined, () => initialTypedState(initial, notices.map((n) => n.key)));
-  const { bfText, bank, preparedId, checkedId, openNotices } = typed;
+  // What is typed (bring-forward, bank lines) and which notices are open: ONE pure state machine (typed-reducer.ts). Initial value only,
+  // never synced from props (rule 17); the signer fields of that state are unused here.
+  const [typed, dispatch] = useReducer(typedReducer, undefined, () => initialTypedState({ ...initial, preparedId: "", checkedId: "" }, notices.map((n) => n.key)));
+  const { bfText, bank, openNotices } = typed;
   const [editingBf, setEditingBf] = useState(false);
-  const [sheet, setSheet] = useState(false);
+  const [bankSheet, setBankSheet] = useState(false);
+  const [saveSheet, setSaveSheet] = useState(false);
+  // A save went through and the screen has not shown it yet: every action stays off while the refresh is in flight, so a quick second tap
+  // cannot be a false conflict. It is the refresh's own pending state, so it ENDS with the refresh: if the day is a draft again afterwards
+  // (a saved day that crosses the retention cutoff is read as unsaved), this same screen stays and its buttons come back.
+  const router = useRouter();
+  const [settled, startRefresh] = useTransition();
 
   const bfParsed = bfText.trim() === "" ? ({ ok: true, cents: 0 } as const) : parseTypedAmount(bfText);
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
-  const prepared = signers.prepared.find((s) => s.id === preparedId) ?? null;
-  const checked = signers.checked.find((s) => s.id === checkedId) ?? null;
-
-  const flow = computeCashFlow({ bringForward: bfCents, collected: decimalToCents(report.totalCollected), deductions: decimalToCents(report.deductions.total), bank });
+  const collected = decimalToCents(report.totalCollected);
+  const deductions = decimalToCents(report.deductions.total);
+  const flow = computeCashFlow({ bringForward: bfCents, collected, deductions, bank });
 
   // Mirror what is typed into the address, so it survives the document and a reload.
-  const query = typedQuery({ bringForwardCents: bfCents, bank, preparedId: prepared?.id, checkedId: checked?.id });
+  const query = typedQuery({ bringForwardCents: bfCents, bank });
   query.set("date", date);
   const queryText = query.toString();
   useEffect(() => {
@@ -69,71 +81,48 @@ export function DayScreen({
     }
   }, [queryText]);
 
-  const noAdmin = signers.checked.length === 0;
-  const reason = noAdmin
-    ? NO_ADMIN_MESSAGE
-    : !bfParsed.ok
-    ? "Fix the bring-forward amount first."
-    : !prepared || !checked
-      ? "Choose Prepared by and Checked by first."
-      : flow.overdrawn
-        ? "Money taken to the bank is more than the drawer holds."
-        : null;
+  // An unreadable saved day: the live numbers are only shown, never saved over it, edited, checked or printed as if they were the saved ones.
+  const blockReason = unreadable ? UNREADABLE_BLOCK : blockReasonFor({ bringForwardOk: bfParsed.ok, overdrawn: flow.overdrawn });
+  const off = blockReason !== null || settled;
   const docHref = (auto: "print" | "pdf") => {
     const p = new URLSearchParams(query);
     p.set("auto", auto);
     return `/daily-summary/document?${p.toString()}`;
   };
-
-  const lines = ofWhichLines(report);
   const unreconciled = reconcileWarning(report);
-  const cancelledText = cancelledLine(cancelled);
-  const withPayments = report.courses.filter((c) => c.paidFull + c.paidHalf + c.paidQuarter > 0 || decimalToCents(c.amount) > 0);
-  const noPayments = report.courses.filter((c) => !withPayments.includes(c));
-  const lastBankTime = bank.length > 0 ? bank.map((b) => b.time).sort().at(-1)! : null;
+  const showHint = hint !== null && bfCents === 0 && !unreadable;
+  const hintWhen = hint ? (hint.daysAgo === 1 ? "Yesterday" : dayLabelShort(hint.date).replace(/ \d{4}$/, "")) : "";
 
   return (
-    <div className="mx-auto w-full max-w-[720px] space-y-4 pb-24">
-      <h1 className="text-xl font-semibold tracking-tight">Daily Summary</h1>
+    <div className={`mx-auto w-full max-w-[720px] space-y-4 ${unreadable ? "pb-72" : "pb-44"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight">Daily Summary</h1>
+        <Link href="/daily-summary/history" className="text-primary flex min-h-11 items-center gap-1.5 px-1 text-sm font-medium underline-offset-4 hover:underline">
+          <History className="size-4" aria-hidden /> History
+        </Link>
+      </div>
+      {unreadable && <Banner tone="amber" role="alert">{UNREADABLE_DAY}</Banner>}
       {notices.filter((n) => openNotices.includes(n.key)).map((n) => (
         <p key={n.key} role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{n.text}</p>
       ))}
 
-      {/* date strip */}
-      <div className="flex items-center justify-between gap-2">
-        <Link href={`/daily-summary?date=${shiftDay(date, -1)}`} aria-label="Previous day" className="border-input grid size-11 shrink-0 place-items-center rounded-md border">
-          <ChevronLeft className="size-5" aria-hidden />
-        </Link>
-        <p className="min-w-0 flex-1 text-center text-base font-semibold">{dayLabelShort(date)}</p>
-        {date < today ? (
-          <Link href={`/daily-summary?date=${shiftDay(date, 1)}`} aria-label="Next day" className="border-input grid size-11 shrink-0 place-items-center rounded-md border">
-            <ChevronRight className="size-5" aria-hidden />
-          </Link>
-        ) : (
-          <span aria-disabled="true" className="border-input text-muted-foreground opacity-40 grid size-11 shrink-0 place-items-center rounded-md border">
-            <ChevronRight className="size-5" aria-hidden />
-          </span>
-        )}
-      </div>
+      <DateStrip date={date} today={today} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href={`/daily-summary/range?from=${shiftDay(date, -6)}&to=${date}`} className="text-primary text-sm font-medium underline-offset-4 hover:underline">
+        <Link href={`/daily-summary/range?from=${shiftDay(date, -6)}&to=${date}`} className="text-primary flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline">
           Several days
         </Link>
-        {checked ? (
-          <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">Checked by {checked.name}</span>
-        ) : (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">Not checked</span>
-        )}
+        {!unreadable && <Chip tone="grey">{NOT_SAVED_CHIP}</Chip>}
       </div>
 
-      {/* money flow */}
-      <section aria-label="Money flow" className="rounded-xl border p-4">
-        <div className="relative">
-          <span aria-hidden className="bg-border absolute top-3 bottom-3 left-[9px] w-0.5" />
-          <ol className="space-y-1 pl-7">
-
-          <Step dot="open">
+      <MoneyFlow
+        report={report}
+        cancelled={cancelled}
+        flow={flow}
+        bank={bank}
+        onRemoveBank={(i) => dispatch({ type: "bankRemove", index: i })}
+        bringForward={
+          <>
             {editingBf ? (
               <div className="py-1">
                 <label htmlFor="bf" className="text-muted-foreground block text-sm">Bring-forward</label>
@@ -156,226 +145,116 @@ export function DayScreen({
               </button>
             )}
             {!bfParsed.ok && <p role="alert" className="text-destructive text-sm">{amountErrorText(bfParsed.reason)}</p>}
-          </Step>
-
-          <Step dot="plus">
-            <Expander label="+ Collected" value={formatMoney(report.totalCollected)}>
-              <Detail label="Class fees" value={formatMoney(report.classTotal)} />
-              {lines.map((l) => <Detail key={l.key} sub label={l.label} value={l.total} />)}
-              <Detail label={`Admission (${report.admission.count})`} value={formatMoney(report.admission.total)} />
-              <p className="text-muted-foreground pl-4 text-xs">{ADMISSION_NOTE}</p>
-              <Detail label={smartCardLabel(report.smartCard.count)} value={formatMoney(report.smartCard.total)} />
-              <Detail strong label="Total collected" value={formatMoney(report.totalCollected)} />
-              {cancelledText && <p className="text-muted-foreground pt-1 text-xs">{cancelledText}</p>}
-            </Expander>
-          </Step>
-
-          <Step dot="minus">
-            <Expander label="− Deductions" value={formatMoney(report.deductions.total)}>
-              {report.deductionLines.length === 0 && <p className="text-muted-foreground py-1 text-sm">No deductions.</p>}
-              <ul className="space-y-2">
-                {report.deductionLines.map((d, i) => (
-                  <li key={i} className="text-sm">
-                    <span className="flex justify-between gap-3">
-                      <span className="min-w-0 break-words">{d.person ? `${d.person} — ` : ""}{d.reason}</span>
-                      <span className="shrink-0 tabular-nums">{formatMoney(d.amount)}</span>
-                    </span>
-                    <span className="text-muted-foreground block text-xs">{deductionKind(d)} · Authorised by {d.authorizedBy}</span>
-                  </li>
-                ))}
-              </ul>
-            </Expander>
-          </Step>
-        </ol>
-        </div>
-
-        <div className="bg-secondary my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
-          <span className="min-w-0 break-words text-sm font-medium">Should be in the drawer</span>
-          <span className="shrink-0 text-lg font-semibold tabular-nums">{formatCents(flow.shouldBe)}</span>
-        </div>
-
-        <div className="relative">
-          <span aria-hidden className="bg-border absolute top-3 bottom-3 left-[9px] w-0.5" />
-          <ol className="space-y-1 pl-7">
-          <Step dot="minus">
-            <Expander
-              label="− Taken to bank"
-              sub={bank.length === 0 ? "Nothing banked yet" : `${bank.length} line${bank.length === 1 ? "" : "s"} · last ${to12Hour(lastBankTime!)}`}
-              value={formatCents(flow.bankTotal)}
-            >
-              {bank.length === 0 && <p className="text-muted-foreground py-1 text-sm">No money taken to the bank yet.</p>}
-              <ul className="space-y-2">
-                {bank.map((l, i) => (
-                  <li key={i} className="flex items-start justify-between gap-2 text-sm">
-                    <span className="min-w-0">
-                      <span className="block tabular-nums">{to12Hour(l.time)}{l.slip ? ` · slip ${l.slip}` : ""}</span>
-                      {l.note && <span className="text-muted-foreground block break-words text-xs">{l.note}</span>}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <span className="tabular-nums">{formatCents(l.cents)}</span>
-                      <button type="button" aria-label={`Remove the ${to12Hour(l.time)} bank line`} onClick={() => dispatch({ type: "bankRemove", index: i })} className="text-muted-foreground grid size-9 place-items-center rounded-md border">
-                        <X className="size-4" aria-hidden />
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Expander>
-          </Step>
-        </ol>
-        </div>
-
-        <div className={`mt-2 flex items-center justify-between gap-3 rounded-lg px-3 py-4 text-white ${flow.left < 0 ? "bg-red-700" : "bg-primary"}`}>
-          <span className="min-w-0">
-            <span className="block break-words text-sm font-medium">Left in drawer</span>
-            <span className="block break-words text-xs opacity-90">Suggested as tomorrow&rsquo;s bring-forward</span>
-          </span>
-          <span className="shrink-0 text-2xl font-semibold tabular-nums">{formatCents(flow.left)}</span>
-        </div>
-        {flow.overdrawn && <p role="alert" className="text-destructive mt-2 text-sm">The bank lines add up to more than the drawer should hold. Remove or correct a line.</p>}
-      </section>
+            {showHint && hint && (
+              <p className="text-muted-foreground pb-1 text-sm">
+                {hint.leftCents > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: "bf", text: (hint.leftCents / 100).toFixed(2) })}
+                    className="text-primary min-h-11 text-left font-medium underline underline-offset-4"
+                  >
+                    {hintLabel(hintWhen, formatCents(hint.leftCents), hint.checked)}
+                  </button>
+                ) : (
+                  <span>{hintWhen} closed with {formatCents(hint.leftCents)}{hint.checked ? "" : " (not checked yet)"}.</span>
+                )}
+              </p>
+            )}
+          </>
+        }
+      />
+      {flow.overdrawn && <p role="alert" className="text-destructive text-sm">The bank lines add up to more than the drawer should hold. Remove or correct a line.</p>}
 
       <button
-        type="button" onClick={() => setSheet(true)} disabled={bank.length >= MAX_BANK_LINES}
+        type="button" onClick={() => setBankSheet(true)} disabled={bank.length >= MAX_BANK_LINES || unreadable || settled}
         className="border-primary text-primary flex h-12 w-full items-center justify-center gap-2 rounded-md border-2 text-base font-medium disabled:opacity-50"
       >
         <Landmark className="size-5" aria-hidden /> Take money to bank
       </button>
       {bank.length >= MAX_BANK_LINES && <p className="text-muted-foreground text-center text-xs">The list holds up to {MAX_BANK_LINES} bank lines.</p>}
 
-      {/* who signs */}
-      <section className="space-y-3 rounded-xl border p-4">
-        <div>
-          <label htmlFor="prepared" className="block text-sm font-medium">Prepared by <span className="text-destructive">*</span></label>
-          <select id="prepared" className={`${SELECT} mt-1`} value={prepared?.id ?? ""} onChange={(e) => dispatch({ type: "prepared", id: e.target.value })}>
-            <option value="">Select staff…</option>
-            {signers.prepared.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.role === "ADMIN" ? "Admin" : "Staff"})</option>)}
-          </select>
-        </div>
-        <div>
-          {noAdmin ? (
-            <>
-              {/* No control exists, so no <label for>: plain text names the message, which a screen reader reads with it. */}
-              <p id="checked-label" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></p>
-              <p role="alert" aria-labelledby="checked-label" className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{NO_ADMIN_MESSAGE}</p>
-            </>
-          ) : (
-            <>
-              <label htmlFor="checked" className="block text-sm font-medium">Checked by (admin) <span className="text-destructive">*</span></label>
-              <select id="checked" className={`${SELECT} mt-1`} value={checked?.id ?? ""} onChange={(e) => dispatch({ type: "checked", id: e.target.value })}>
-                <option value="">Select an admin…</option>
-                {signers.checked.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </>
-          )}
-        </div>
-      </section>
-
       <ReconcileNotice text={unreconciled} />
+      <DetailSections report={report} staff={staff} />
 
-      {/* detail rows */}
-      <section className="divide-y rounded-xl border">
-        <Expander label="By course" row>
-          <ul className="space-y-3 pt-1">
-            {withPayments.map((c) => (
-              <li key={c.courseId} className="flex items-start justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="block break-words text-sm font-medium">{c.course}</span>
-                  <span className="text-muted-foreground block break-words text-xs">{c.teacher}</span>
-                  <span className="text-muted-foreground block text-xs">
-                    {c.paidFull + c.paidHalf + c.paidQuarter} paid · Full {c.paidFull}
-                    {c.paidHalf > 0 ? ` · Half ${c.paidHalf}` : ""} · 25% {c.paidQuarter} · {c.free} free
-                  </span>
-                </span>
-                <span className="shrink-0 text-sm font-medium tabular-nums">{formatMoney(c.amount)}</span>
-              </li>
-            ))}
-            {withPayments.length === 0 && <li className="text-muted-foreground text-sm">No course took a payment.</li>}
-            {noPayments.length > 0 && <li className="text-muted-foreground break-words text-xs">No payments: {noPayments.map((c) => c.course).join(", ")}</li>}
-          </ul>
-        </Expander>
-        <Expander label="Admission and smart card replacement" row>
-          <Detail label={`Admission (${report.admission.count})`} value={formatMoney(report.admission.total)} />
-          <p className="text-muted-foreground pl-4 text-xs">{ADMISSION_NOTE}</p>
-          <Detail label={smartCardLabel(report.smartCard.count)} value={formatMoney(report.smartCard.total)} />
-        </Expander>
-        <Expander label="Collected by staff" row>
-          {staff.length === 0 && <p className="text-muted-foreground py-1 text-sm">No receipts.</p>}
-          {staff.map((r) => (
-            <Detail key={r.userId} label={`${r.name} · ${r.receipts} receipt${r.receipts === 1 ? "" : "s"}`} value={formatMoney(r.collected)} />
-          ))}
-          {staff.length > 0 && <Detail strong label={`Total · ${staff.reduce((s, r) => s + r.receipts, 0)} receipts`} value={formatMoney(report.totalCollected)} />}
-        </Expander>
-      </section>
-
-      {/* sticky bottom bar */}
+      {/* sticky bottom bar: Save day, then Print and Download PDF (a draft) */}
       <div className="bg-background fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 backdrop-blur lg:left-64">
-        <div className="mx-auto max-w-[720px]">
-          {reason && <p className="text-muted-foreground mb-2 text-center text-xs">{reason}</p>}
+        <div className="mx-auto max-w-[720px] space-y-2">
+          {settled ? (
+            <p role="status" className="text-muted-foreground text-center text-xs">
+              {UPDATING_SCREEN}{" "}
+              <button type="button" onClick={() => window.location.reload()} className="text-primary min-h-11 px-2 font-medium underline underline-offset-4">{RELOAD_BUTTON}</button>
+            </p>
+          ) : (
+            blockReason && <p role="alert" className="text-muted-foreground text-center text-xs">{blockReason}</p>
+          )}
+          <button
+            type="button" disabled={off} onClick={() => setSaveSheet(true)}
+            className="bg-primary text-primary-foreground flex h-12 w-full items-center justify-center gap-2 rounded-md text-base font-medium disabled:opacity-50"
+          >
+            <Save className="size-5" aria-hidden /> Save day
+          </button>
+          {unreadable && (
+            <div className="grid grid-cols-2 gap-3">
+              <Action href={null} icon={<Pencil className="size-5" aria-hidden />} label="Edit" variant="outline" />
+              <Action href={null} icon={<ShieldCheck className="size-5" aria-hidden />} label="Admin check" variant="outline" />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            <Action href={reason ? null : docHref("print")} icon={<Printer className="size-5" aria-hidden />} label="Print" variant="outline" />
-            <Action href={reason ? null : docHref("pdf")} icon={<Download className="size-5" aria-hidden />} label="Download PDF" variant="solid" />
+            <Action href={off ? null : docHref("print")} icon={<Printer className="size-5" aria-hidden />} label="Print" variant="outline" />
+            <Action href={off ? null : docHref("pdf")} icon={<Download className="size-5" aria-hidden />} label="Download PDF" variant="outline" />
           </div>
         </div>
       </div>
 
-      {sheet && (
+      {bankSheet && (
         <BankSheet
           inDrawerCents={flow.shouldBe - flow.bankTotal}
-          onClose={() => setSheet(false)}
+          onClose={() => setBankSheet(false)}
           onAdd={(line) => {
             dispatch({ type: "bankAdd", line });
-            setSheet(false);
+            setBankSheet(false);
           }}
+        />
+      )}
+      {saveSheet && (
+        <SaveSheet
+          mode="save" date={date} dateText={dateText} baseVersion={0}
+          numbers={{ collected, deductions, shouldBe: flow.shouldBe, bankTotal: flow.bankTotal, left: flow.left }}
+          bankCount={bank.length} doners={doners}
+          bringForward={bfCents > 0 ? (bfCents / 100).toFixed(2) : ""} bank={bank}
+          onClose={() => setSaveSheet(false)}
+          onSaved={() => startRefresh(() => router.refresh())}
         />
       )}
     </div>
   );
 }
 
-function Action({ href, icon, label, variant }: { href: string | null; icon: ReactNode; label: string; variant: "outline" | "solid" }) {
+export function DateStrip({ date, today }: { date: string; today: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Link href={`/daily-summary?date=${shiftDay(date, -1)}`} aria-label="Previous day" className="border-input grid size-11 shrink-0 place-items-center rounded-md border">
+        <ChevronLeft className="size-5" aria-hidden />
+      </Link>
+      <p className="min-w-0 flex-1 text-center text-base font-semibold">{dayLabelShort(date)}</p>
+      {date < today ? (
+        <Link href={`/daily-summary?date=${shiftDay(date, 1)}`} aria-label="Next day" className="border-input grid size-11 shrink-0 place-items-center rounded-md border">
+          <ChevronRight className="size-5" aria-hidden />
+        </Link>
+      ) : (
+        <span aria-disabled="true" className="border-input text-muted-foreground opacity-40 grid size-11 shrink-0 place-items-center rounded-md border">
+          <ChevronRight className="size-5" aria-hidden />
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function Action({ href, icon, label, variant }: { href: string | null; icon: ReactNode; label: string; variant: "outline" | "solid" }) {
   const cls = `flex h-12 items-center justify-center gap-2 rounded-md text-base font-medium ${variant === "solid" ? "bg-primary text-primary-foreground" : "border-input bg-background border"}`;
   return href ? (
     <Link href={href} className={cls}>{icon}{label}</Link>
   ) : (
     <button type="button" disabled className={`${cls} opacity-50`}>{icon}{label}</button>
-  );
-}
-
-function Step({ dot, children }: { dot: "open" | "plus" | "minus"; children: ReactNode }) {
-  const color = dot === "plus" ? "border-green-600" : dot === "minus" ? "border-red-600" : "border-primary";
-  return (
-    <li className="relative">
-      <span aria-hidden className={`bg-background absolute top-3.5 left-[-28px] size-[18px] rounded-full border-2 ${color}`} />
-      {children}
-    </li>
-  );
-}
-
-function Expander({ label, value, sub, children, row }: { label: string; value?: string; sub?: string; children: ReactNode; row?: boolean }) {
-  return (
-    <details className={`group ${row ? "px-4" : ""}`}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-1 [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0">
-          <span className="block text-sm font-medium">{label}</span>
-          {sub && <span className="text-muted-foreground block text-xs">{sub}</span>}
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          {value !== undefined && <span className="text-lg font-semibold tabular-nums">{value}</span>}
-          <ChevronDown className="text-muted-foreground size-4 group-open:hidden" aria-hidden />
-          <ChevronUp className="text-muted-foreground hidden size-4 group-open:block" aria-hidden />
-        </span>
-      </summary>
-      <div className="space-y-1 pb-3">{children}</div>
-    </details>
-  );
-}
-
-function Detail({ label, value, sub, strong }: { label: string; value: string; sub?: boolean; strong?: boolean }) {
-  return (
-    <div className={`flex justify-between gap-3 text-sm ${sub ? "text-muted-foreground pl-4" : ""} ${strong ? "border-t pt-1 font-semibold" : ""}`}>
-      <span className="min-w-0 break-words">{label}</span>
-      <span className="shrink-0 tabular-nums">{value}</span>
-    </div>
   );
 }

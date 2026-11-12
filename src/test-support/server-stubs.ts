@@ -46,6 +46,10 @@ internals._load = function (this: unknown, request: string, ...rest: unknown[]) 
       return { revalidatePath() {}, revalidateTag() {}, unstable_cache: (fn: unknown) => fn };
     case "next/navigation":
       return {
+        // client components that call these render on the server in the tests; nothing here navigates
+        useRouter: () => ({ refresh() {}, push() {}, replace() {}, back() {}, forward() {}, prefetch() {} }),
+        usePathname: () => "/",
+        useSearchParams: () => new URLSearchParams(),
         notFound() {
           throw new Error("NEXT_NOT_FOUND");
         },

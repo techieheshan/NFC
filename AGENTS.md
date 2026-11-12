@@ -163,27 +163,96 @@ These carry over from the Phase 0 brief and apply to **every** feature tag:
     only narrow. Validate an enum filter (a day, a month) ONCE and use that one
     value for both the query and the grouping — junk in the URL must be
     ignored, not silently render an empty report.
-24. **The Daily Summary cash flow is typed, never stored (Release 1), and signed.**
-    Bring-forward, the money taken to the bank (up to 10 lines: amount, time, optional
-    slip no. and note), Prepared by and Checked by are TYPED on the screen and are NOT
-    in the database — no table, no carry-over, no auto-fill from yesterday. They are
-    carried in the URL (`typed-state.ts`: first value wins, amounts re-parsed as integer
-    cents, ids only as lookup keys into the offered lists), which is what brings them to
-    the A4 document and back and through a reload. The flow is
-    Bring-forward + Collected − Deductions = **Should be in the drawer**; minus **Money
-    taken to the bank** = **Left in drawer**, the suggested bring-forward for tomorrow
-    (`lib/cash-flow.ts`, cents). It replaces the old "Drawer total" and is still NOT Net
-    (the institute's profit). All collected money is cash; the person preparing the
-    summary is the one who banks it, so a bank line has no "taken by". A bank line that
-    pushes Left in drawer below zero is refused, and a document with such lines is not
-    built; a day whose deductions exceed its cash with nothing banked is NOT over-banking
-    and prints with a negative Left. Both signatures are mandatory for a single day,
-    before it can be printed or downloaded: **Prepared by is any active ADMIN or STAFF
-    account; Checked by is an active ADMIN ONLY**, enforced in `listSigners` /
-    `splitSigners` and again when the document is built (`pickSigner` against the
-    ADMIN-only list). Nothing else in the Daily Summary is admin-only. A range ("Several
-    days", view only) has no cash book and no signatures. Release 2 (a separate job) is
-    where saved days, history and stored bank deposits go; do not add them here.
+24. **The Daily Summary is a typed DRAFT until someone SAVES it; a saved day is immutable
+    versions (Release 2).** An unsaved day is Release 1's draft: bring-forward and the money
+    taken to the bank (up to 10 lines: amount, time, optional slip no. and note) are TYPED and
+    carried in the URL (`typed-state.ts`: first value wins, amounts re-parsed as integer cents)
+    to the A4 document and back and through a reload; that URL state exists ONLY for a draft
+    (a saved day is read from the database, its document links carry no typed values, and the
+    Release 1 `prep` / `chk` parameters are ignored). Nothing auto-fills: "Yesterday closed
+    with … Use this" (newest saved day within 7 days, its date named) is offered, never put in
+    the field. The flow is Bring-forward + Collected − Deductions = **Should be in the drawer**;
+    minus **Money taken to the bank** = **Left in drawer**, the suggested bring-forward for
+    tomorrow (`lib/cash-flow.ts`, integer cents). It is NOT Net (the institute's profit). All
+    collected money is cash and the person preparing the summary banks it, so a bank line has
+    no "taken by".
+
+    **Saving.** "Save day" stores `DailySummaryDay` (one per Colombo date) and a
+    `DailySummaryVersion` (a FULL frozen snapshot, never diffs). A version is written once and
+    NEVER updated or deleted by hand: every later save, edit or re-save is a new version, with
+    its bank deposits copied (`DailySummaryBankLine`) and at most one `DailySummaryCheck`.
+    **Done by is required on every version** (first save, every edit, every re-save): an ACTIVE
+    ADMIN or STAFF account looked up on the server; `savedById` is the signed-in user (audit);
+    Prepared by is the Done by of version 1, carried unchanged. **The server takes its own
+    snapshot** (`dailySummary()` untouched, read BEFORE the transaction, never through `db`
+    inside it); the sheet's `seen` figures are only a stale check ("The numbers moved…") and
+    are never stored. One per-day advisory lock (`DS_LOCK_NAMESPACE` 7410, never the payment
+    lock 7301), `lock_timeout` 4 s, `baseVersion` compared under the lock (a second saver gets
+    "…saved this day (version N) while you were working. Your changes were NOT saved."), every
+    guard before the first write; a request that cannot finish in time is answered, not thrown.
+    Guard every action separately (rule 10): `saved-actions.ts` calls `requireRole` first and
+    the store (`lib/saved-day/store.ts`) checks the role again.
+
+    **The check.** ADMIN or STAFF may tap "Admin check"; the person tapping must be an active
+    ADMIN or STAFF, and the account they NAME must be an active ADMIN (looked up on the
+    server). It attaches to the exact version the person was looking at and a version is
+    checked once. **Any money change clears it** (a new version has no check): bring-forward,
+    a bank amount, the number of bank lines, or a re-save with new live numbers. Slip, note,
+    time or order edits CARRY the check (`carriedFromVersion`). A save that changes nothing is
+    refused ("Nothing changed."). The check is refused while the day is over-banked.
+
+    **Over-bank.** Derived from the stored columns, never stored: `bankTotal > 0` and
+    `leftInDrawer < 0` (a day whose deductions exceed its cash with nothing banked is NOT
+    over-banked). A first save and an edit REFUSE it and name the amount; a re-save with live
+    numbers is always allowed (a receipt cancelled after saving can push it over) and the
+    version is shown flagged (red banner, negative Left in drawer) until the bank lines or the
+    bring-forward are put right.
+
+    **Frozen names, money, schema.** Every name on a saved day is TEXT frozen at write time
+    (`doneByName`, `preparedByName`, `savedByName`, `checkedByName`, `markedByName`, and
+    `recordedByName` on each deposit; a deposit carried into a new version keeps its recorder
+    and time). A rename in Setup never changes a saved day. `diffSummaries` compares names too
+    (course, teacher, staff, a deduction's person and authoriser): the snapshot holds names
+    only, never ids, so a rename cannot be told from a reassignment; a names-only difference
+    is marked `textOnly` (own banner text, own note in "See what changed"), and re-saving after
+    it counts as a money change, so it clears the check and an admin looks again; the
+    check-cleared change item carries an optional `reason` (`names`; absent means money) so the
+    chip and the change log say "names were corrected" instead of "the money changed". Money columns are `Decimal(12,2)`, written from integer cents by integer
+    arithmetic (`lib/saved-day/money.ts`, never a float). `snapshotSchema` is a CONTRACT: a
+    stored snapshot is read through `parseSnapshot(json, schema)`, which refuses an unknown
+    schema or a wrong shape; never edit a stored snapshot, change the shape only with a NEW
+    schema number and a reader for the old one. A saved day that cannot be read shows "This
+    saved day can't be read. Showing the live numbers." with the live numbers, and Save day,
+    Edit, Admin check, Print and Download PDF OFF (and the reason beside them); the document
+    route refuses it too ("This saved day can't be read." with a link back, no sheets, no
+    Print, no PDF, never the draft).
+
+    **Retention (lazy, no cron).** Saved days are kept 3 months after their DATE (cutoff =
+    today in Colombo minus 3 calendar months, clamped to the month's end; the boundary day is
+    kept). `purgeExpired` runs after a save commits (a separate statement) and when History
+    opens (BEFORE it reads); a failure is logged and ignored. Its scope is exactly one
+    statement: `DailySummaryDay` rows older than the cutoff, and by cascade their versions,
+    deposits and checks. It never touches payments or anything else. A day older than the
+    cutoff cannot be saved or checked and opens as an unsaved day with live data, like History.
+    While Release 1 code is live (after a rollback) nothing purges.
+
+    **Wording.** Draft: grey "Not saved"; the document says "Draft, not saved" with **"—" for
+    Prepared by and for Checked by** and empty signature boxes. Saved: "Saved · version N ·
+    <Done by> · <time>", "Edited · version N" from version 2 with a change log (newest first),
+    document status "Saved, version N, not checked" / "checked"; "Not checked" is ONLY for a
+    saved day nobody has checked; checked reads "Checked by <admin>, recorded by <tapper>"
+    (the printed signature box shows only the admin); after a money change "Check cleared…".
+    A yellow banner appears when the live data differs from what was saved (e.g. a cancelled
+    receipt): "The live numbers are different from the saved ones" when any number or flag
+    differs, or "Some names or wording differ from the saved day" when ONLY printed text
+    differs (a rename in Setup, a deduction given to someone else, a corrected authoriser, a
+    reworded deduction reason: the reason is free text, so it is wording, never a figure). The saved day
+    never changes by itself; "See what changed" and "Re-save with live numbers" are the two
+    ways forward. After any write the screen's actions stay OFF until the
+    new version is on screen. **History** (`/daily-summary/history`, ADMIN + STAFF) is linked
+    from the day screens (there is no second menu entry, rule 7); a range ("Several days",
+    view only) has no cash book and no saved days.
+
 25. **One hall resolver: `hallForClassOnDate` / `classesForDate` in
     `src/lib/halls.ts`.** Where a class meets on a date is "the override for
     that class on that date, else its own default (`Schedule.defaultHallId` /
@@ -513,11 +582,38 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   its own `visibility` rules; under print emulation the sheet measures 0 px wide. A later
   job on the print path should reconcile the two.
 
-**The Daily Summary, Release 1 (screens, A4 document, Print and Download PDF; no database change):**
+**The Daily Summary (Release 1: screens, A4 document, Print and Download PDF, no database change; Release 2: saved days, History, the admin check):**
+
+- **Release 2 (saved days; rule 24 is the contract).** Four tables and one enum, ADDITIVE ONLY
+  (`prisma/migrations/20261102175857_daily_summary_saved_days`, 19 statements, `SET lock_timeout = '3s'`
+  first; it touches no existing table). The migration reaches a database BEFORE the code that reads it:
+  demo, then production, then merge and deploy. Production uses `~/xenon-release/r2-prod-backup-dump.sh`
+  and `r2-prod-migrate.sh` (checksum of the migration file, one transaction, the exact schema verified
+  read-only, `--dry-run`), never `migrate deploy`. The code is `src/lib/saved-day/` (store, snapshot,
+  diff, bank-lines, check-rule, retention, hint, texts) behind `daily-summary/saved-actions.ts` (every
+  action guarded first, rule 10) and the screens `day-screen.tsx` (the DRAFT), `saved-day-screen.tsx`
+  (a saved day), `save-sheet.tsx`, `check-sheet.tsx`, `live-diff-sheet.tsx`, `history/page.tsx`. The
+  page keys the saved screen on date + version + checked (rule 17). Bank-line limits (10 lines, slip 30,
+  note 80 characters) have ONE definition (`lib/bank-limits.ts`, `lib/cash-flow.ts`). Carry-over of a
+  deposit's recorder across an edit is matched GLOBALLY (`bank-lines.ts`: every same-amount pair scored
+  by equal time, slip and note, best pairs first, ties to the earlier old line). The data object, the
+  golden masters and the whole PDF step are untouched by Release 2. Tests: `saved-day-*.test.ts` (the
+  race file is run x20), `edit-session.test.ts`, `settle-after-save.test.ts` (structural: every write
+  settles the screen); each database test builds its own days and passes alone. The release scripts
+  refuse `--dump-dir` on any host but the local throw-away one. ONLY `r2-prod-backup-dump.sh` checks the
+  dump folder (default `~/xenon-secrets`): it refuses one inside a git work tree or readable by group or
+  others (mode 700), and the check FAILS CLOSED (git or find unable to answer is a refusal; `GIT_*` in the
+  shell is dropped); `r2-prod-migrate.sh` only looks for a verified dump marker in the folder and does not
+  check its mode. Both scripts have two modes: no flag is PRODUCTION (the env file's host must be the
+  production host in `~/xenon-release/r2-hosts`, never the demo host) and `--rehearsal <full host>` is
+  REHEARSAL (the demo host in that file, or a local throw-away host, never the production host).
+  `--dry-run` opens no connection and starts no container (it makes and removes a temporary folder, and
+  asks git for the checkout state with `--no-optional-locks`).
 
 - **Routes.** `/daily-summary?date=` (the day screen; the old `?from=&to=` links still work: the same
   day opens the day screen, a real range redirects to the range screen), `/daily-summary/range`
-  (view only), `/daily-summary/document` (the A4 document). All ADMIN + STAFF through the nav guard
+  (view only), `/daily-summary/document` (the A4 document), `/daily-summary/history` (Release 2: the saved days
+  of a month). All ADMIN + STAFF through the nav guard
   (TEACHER: not-found); the data comes from the guarded loaders in `daily-summary/bundle.ts`.
 - **The data object is untouched.** `dailySummary()` and what it returns are pinned byte for byte by
   `reports-golden.test.ts` (six "Daily Summary:" keys); every new figure comes from a NEW read-only
@@ -553,20 +649,22 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   (unparseable, negative, above 99,999,999.99, longer than 20 characters — never truncated before parsing), a junk bank
   line, or an 11th bank line makes the document route redirect to the day screen (`notice=bf` / `notice=bank`, texts in
   `daily-summary/notices.ts`), keeping what WAS valid: the bring-forward when it was fine, the first ten valid bank lines,
-  `prep`, and `chk` re-resolved against the ADMIN list (a STAFF id does not survive the round trip). The day screen shows
-  the same notices for a hand-edited address; the bring-forward notice goes away when a valid amount is typed, the bank
-  notice when a line is added or removed. With NO active admin the Checked by place shows "No active admin account. Ask an
-  owner to activate one." (plain text named by aria-labelledby, no `<label for>`), and Print and Download PDF stay disabled.
+  the Release 1 `prep` and `chk` parameters are IGNORED (Release 2 has no signer selects; a name never comes from the
+  address). The day screen shows the same notices for a hand-edited address; the bring-forward notice goes away when a
+  valid amount is typed, the bank notice when a line is added or removed. With NO active admin the Check sheet shows
+  "No active admin account. Ask an owner to activate one." (plain text named by aria-labelledby, no `<label for>`) and
+  its button stays off; Print and Download PDF are not affected. The draft's Save day, Print and Download PDF are off for
+  an unparseable bring-forward or an over-banked list, with the reason shown beside them (`block-reason.ts`).
 - **The reconcile warning is back, and says what it can say.** "N row(s) do not reconcile. A payment used a tier outside
   Full/Half/25%, or a student's enrolment changed. Check these courses." — only when N > 0, from each course's existing
   `reconciles` flag (`reconcileWarning` in `extra-lines.ts`; the data object is not touched), on the day screen, the range
   screen and both documents. It is true for those two causes (and for a student who paid under two tiers in a range);
   it does not say which course, so staff check the By course list.
-- **Names print exactly as stored.** The document does not trim or decorate a name (there is no `plainName`): signers are
-  `Staff.name ?? username`, deduction people are teacher / staff names, and the collected-by-staff table is
-  `Staff.name ?? username`. `daily-summary-document-names.test.ts` sends real stored names (a Sinhala one, one with a bracket,
+- **Names print exactly as stored.** The document does not trim or decorate a name (there is no `plainName`): a saved day
+  prints the FROZEN names (rule 24); names taken at the moment of saving are `Staff.name ?? username`, deduction people are
+  teacher / staff names, and the collected-by-staff table is `Staff.name ?? username`. `daily-summary-document-names.test.ts` sends real stored names (a Sinhala one, one with a bracket,
   a login with no Staff record) through the real loaders and requires the same strings on the model. The screens' Prepared
-  by list adds "(Admin)" / "(Staff)" to the option text only.
+  by list adds "(Admin)" / "(Staff)" to the option text only (in Release 2 that is the Done by list).
 - **The sheet's numbers live in ONE file, `document/sheet-geometry.ts`** (794 x 1123 px, padding, the 713 px measuring width
   that a 210 mm print can hold, the 20 px page margin, A4 in mm). The stylesheet, the paginator (`paginate-document.ts`)
   and the PDF step import them; a test fails if one of them writes 794, 1123 or 713 itself. Do NOT name a file in these
@@ -616,14 +714,18 @@ real-device checks (Terminal 1, Chrome 102). What job 5 did, and what must stay:
   (which added each page as it went).
 - **Known limit: a deadline can only fire between tasks.** `withDeadline` fires at a macrotask boundary: a long synchronous parse or
   render is never cut off in the middle, only noticed at the next real wait.
-- **Small pure units behind the day screen, so they can be tested without a browser.** What is typed (bring-forward, bank lines,
-  signers) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen only
-  dispatches). Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`
+- **Small pure units behind the day screen, so they can be tested without a browser.** What is typed on a draft (bring-forward,
+  bank lines) and which notices are open is ONE reducer (`daily-summary/typed-reducer.ts`, used with `useReducer`; the screen
+  only dispatches; its signer fields are unused since Release 2). One EDIT of a saved day (edit mode, what is typed, Done by) is
+  ONE reducer too (`edit-session.ts`; Cancel returns to the saved numbers with Done by empty and clears the refusal; a refusal
+  that arrives after a Cancel carries an old epoch and is ignored; Cancel is off while a save is pending), and the sentence beside a
+  disabled button comes from `block-reason.ts`. Names come from `displayName` (`lib/display-name.ts`) and the collected-by-staff mapping from `aggregateStaff`
   (`lib/daily-summary-rows.ts`); `daily-summary-names-pure.test.ts` runs them on fake rows with no database and fails if any name
   gets a role hint. The "one source for the sheet's numbers" test reads the real imports with the TypeScript parser, so an alias
   (`import { CONTENT_H as H }`) or a namespace import cannot get round it.
-- **Follow-ups, not in this release.** Release 2: saved days, history, stored bank deposits (a schema
-  change, its own job and migration). Other-income entry (income that is not a payment) is its own later job.
+- **Follow-ups, not in this release.** Other-income entry (income that is not a payment) is its own later job. A "History"
+  menu entry would be a second menu item for one module (rule 7): it is a link on the day screens until the owner decides
+  otherwise. Saved days past 3 months are not exported anywhere before the purge deletes them.
 
 **Rules for the money rules (job 3A) that later work must keep:**
 

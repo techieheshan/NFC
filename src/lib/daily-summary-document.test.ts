@@ -160,18 +160,21 @@ test("the document prints names EXACTLY as given: nothing is trimmed, not even a
   for (const stored of ["Sadun (Staff)", "Kumari (Maths)", "Chathura (Staff)", "Ruwan (Admin)"]) assert.ok(text.includes(stored), stored);
 });
 
-test("the info grid has three rows a side: Date, Prepared by, Checked by (admin) | Document no., Status, Generated", () => {
-  const text = makeBlocks(dayModel()).find((b) => b.id === "header")!.render();
+test("the info grid (a draft): Date, Prepared by, Checked by (admin) | Document no., Status — no Generated row (the footer carries it)", () => {
+  const draft = buildDocModel({ report: base, cancelled: { receipts: 0, total: "0.00" }, generated, generatedBy: "Nadeesha", day: { staff, bringForwardCents: 0, bank: [], preparedBy: null, checkedBy: null } });
+  const text = makeBlocks(draft).find((b) => b.id === "header")!.render();
   const out = renderToStaticMarkup(createElement("div", null, text));
   const mid = out.indexOf("<span>Document no.</span>");
   const left = out.slice(out.indexOf('class="ds-info"'), mid);
   const right = out.slice(mid);
   const order = (s: string, labels: string[]) => labels.map((l) => s.indexOf(`<span>${l}</span>`));
   const l = order(left, ["Date", "Prepared by", "Checked by (admin)"]);
-  const r = order(right, ["Document no.", "Status", "Generated"]);
+  const r = order(right, ["Document no.", "Status"]);
   assert.ok(l.every((i) => i >= 0) && l[0] < l[1] && l[1] < l[2], "left column order");
-  assert.ok(r.every((i) => i >= 0) && r[0] < r[1] && r[1] < r[2], "right column order");
-  assert.ok(!left.includes("<span>Status</span>") && !left.includes("<span>Generated</span>"));
+  assert.ok(r.every((i) => i >= 0) && r[0] < r[1], "right column order");
+  assert.ok(!left.includes("<span>Status</span>") && !out.includes("<span>Generated</span>"));
+  assert.ok(out.includes("<b>Draft, not saved</b>"));
+  assert.ok(out.includes("<span>Prepared by</span><b>—</b>") && out.includes("<span>Checked by (admin)</span><b>—</b>") && !out.includes("Not checked"), "a draft shows a dash for both, never 'Not checked'");
 });
 
 test("the document carries the reconcile warning in the course note when some course does not reconcile, and not otherwise", () => {
