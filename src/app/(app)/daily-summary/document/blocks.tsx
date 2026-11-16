@@ -133,6 +133,12 @@ function IncomeBlock({ m }: { m: DocModel }) {
           <Kv label="Teacher advances" value={m.teacherAdvances} />
           <Kv label="Xenon expenses" value={m.xenonExpenses} />
           <Kv cls="strong" label="Net" value={m.net} />
+          {m.otherIn && (
+            <>
+              <Kv label="Other cash in (not part of Net)" value={m.otherIn.rows.some((r) => r.how === "Cash") ? m.otherIn.cash : "0.00"} />
+              {m.otherIn.rows.some((r) => r.how !== "Cash") && <Kv label="Other income by bank transfer (not in the drawer)" value={m.otherIn.bank} />}
+            </>
+          )}
           <p className="ds-note">Staff advances are inside Xenon expenses and counted once.</p>
         </div>
         {f && (
@@ -140,10 +146,12 @@ function IncomeBlock({ m }: { m: DocModel }) {
             <h3 className="ds-h">3 Cash book</h3>
             <Kv label="Bring-forward" value={f.bringForward} />
             <Kv label="+ Collected" value={f.collected} />
+            {f.otherIn !== undefined && <Kv label="+ Other cash in" value={f.otherIn} />}
             <Kv label="− Deductions" value={f.deductions} />
             <Kv cls="strong" label="Should be in the drawer" value={f.shouldBe} />
             <Kv label={`− Taken to bank (${f.bankCount})`} value={f.bankTotal} />
             <div className="ds-box"><Kv label="Left in drawer" value={f.left} /></div>
+            {m.otherIn && m.otherIn.rows.some((r) => r.how !== "Cash") && <Kv label="Other income by bank transfer (not in the drawer)" value={m.otherIn.bank} />}
             <p className="ds-note">
               All money collected is cash. Bank deposits are listed below. The amount left in the drawer is
               tomorrow&rsquo;s bring-forward.
@@ -185,10 +193,18 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
     blocks.push({
       id: "dayByDay", table: true,
       render: (s) => (
-        <DocTable id="dayByDay" title="Day by day" slice={s}
-          cols={[{ label: "Day", w: 213 }, { label: "Collected", w: 166, right: true }, { label: "Deductions", w: 166, right: true }, { label: "Net", w: 168, right: true }]}
-          rows={m.dayByDay.map((d) => [d.date, d.collected, d.deductions, d.net])}
-          foot={["Total", m.dayByDayTotal!.collected, m.dayByDayTotal!.deductions, m.dayByDayTotal!.net]} />
+        m.dayByDayTotal?.otherCash !== undefined ? (
+          // With other income in the range: two more columns (cash into the drawer, bank transfer). Without it: the table below, unchanged.
+          <DocTable id="dayByDay" title="Day by day" slice={s}
+            cols={[{ label: "Day", w: 133 }, { label: "Collected", w: 120, right: true }, { label: "Deductions", w: 120, right: true }, { label: "Net", w: 120, right: true }, { label: "Other cash", w: 110, right: true }, { label: "Other bank", w: 110, right: true }]}
+            rows={m.dayByDay.map((d) => [d.date, d.collected, d.deductions, d.net, d.otherCash ?? "0.00", d.otherBank ?? "0.00"])}
+            foot={["Total", m.dayByDayTotal!.collected, m.dayByDayTotal!.deductions, m.dayByDayTotal!.net, m.dayByDayTotal!.otherCash!, m.dayByDayTotal!.otherBank!]} />
+        ) : (
+          <DocTable id="dayByDay" title="Day by day" slice={s}
+            cols={[{ label: "Day", w: 213 }, { label: "Collected", w: 166, right: true }, { label: "Deductions", w: 166, right: true }, { label: "Net", w: 168, right: true }]}
+            rows={m.dayByDay.map((d) => [d.date, d.collected, d.deductions, d.net])}
+            foot={["Total", m.dayByDayTotal!.collected, m.dayByDayTotal!.deductions, m.dayByDayTotal!.net]} />
+        )
       ),
     });
   }
@@ -226,6 +242,18 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
           : m.deductions.map((d) => [d.date, d.kind, d.person, d.reason, d.authorizedBy, d.amount])} />
     ),
   });
+
+  if (m.otherIn) {
+    const o = m.otherIn;
+    blocks.push({
+      id: "otherIn", table: true,
+      render: (s) => (
+        <DocTable id="otherIn" title="Other income" slice={s}
+          cols={[{ label: "Date", w: 83 }, { label: "Category", w: 150 }, { label: "From", w: 140 }, { label: "Received by", w: 130 }, { label: "How", w: 90 }, { label: "Amount", w: 120, right: true }]}
+          rows={o.rows.map((r) => [r.date, r.category, r.source, r.receivedBy, r.how, r.amount])} />
+      ),
+    });
+  }
 
   if (day && m.bank.length > 0) {
     blocks.push({

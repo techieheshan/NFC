@@ -5,6 +5,7 @@ import type { BankLine } from "@/lib/cash-flow";
 import { decimalToCents, formatCents, formatMoney } from "@/lib/cents";
 import { to12Hour } from "@/lib/colombo-time";
 import type { CancelledSummary, StaffCollected } from "@/lib/daily-summary-extras";
+import type { OtherInSnap } from "@/lib/other-in-snap";
 import type { DailySummary } from "@/lib/reports";
 
 import { cancelledLine, deductionKind } from "./document/model";
@@ -70,11 +71,30 @@ export function Detail({ label, value, sub, strong }: { label: string; value: st
   );
 }
 
+/** The rows of other income under their expander: category, who gave it, who received it, amount. */
+export function OtherRows({ rows }: { rows: OtherInSnap["rows"] }) {
+  return (
+    <ul className="space-y-2">
+      {rows.map((r) => (
+        <li key={r.id} className="text-sm">
+          <span className="flex justify-between gap-3">
+            <span className="min-w-0 break-words">{r.category}{r.source ? ` — ${r.source}` : ""}</span>
+            <span className="shrink-0 tabular-nums">{formatMoney(r.amount)}</span>
+          </span>
+          <span className="text-muted-foreground block text-xs">Received by {r.receivedBy}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The R1 money timeline: Bring-forward + Collected − Deductions = Should be in the drawer; − Taken to bank = Left in drawer. */
 export function MoneyFlow({
-  report, cancelled, flow, bank, bringForward, onRemoveBank,
+  report, cancelled, flow, bank, bringForward, onRemoveBank, otherIn,
 }: {
   report: DailySummary;
+  /** Other income of the day. Omit (undefined) on a day with none: nothing is drawn then, and the flow is exactly the old one. */
+  otherIn?: OtherInSnap;
   cancelled: CancelledSummary;
   flow: FlowNumbers;
   bank: readonly BankLineView[];
@@ -83,6 +103,8 @@ export function MoneyFlow({
   onRemoveBank?: (index: number) => void;
 }) {
   const lines = ofWhichLines(report);
+  const otherCash = otherIn && otherIn.rows.some((r) => r.method === "CASH") ? otherIn.rows.filter((r) => r.method === "CASH") : null;
+  const otherBank = otherIn && otherIn.rows.some((r) => r.method === "BANK") ? otherIn.rows.filter((r) => r.method === "BANK") : null;
   const cancelledText = cancelledLine(cancelled);
   const lastBankTime = bank.length > 0 ? bank.map((b) => b.time).sort().at(-1)! : null;
   return (
@@ -104,6 +126,15 @@ export function MoneyFlow({
             </Expander>
           </Step>
 
+          {otherCash && (
+            <Step dot="plus">
+              <Expander label="+ Other cash in" sub="Other incomes, taken in cash" value={formatMoney(otherIn!.cash)}>
+                <OtherRows rows={otherCash} />
+                <Detail strong label="Other cash in" value={formatMoney(otherIn!.cash)} />
+              </Expander>
+            </Step>
+          )}
+
           <Step dot="minus">
             <Expander label="− Deductions" value={formatMoney(report.deductions.total)}>
               {report.deductionLines.length === 0 && <p className="text-muted-foreground py-1 text-sm">No deductions.</p>}
@@ -122,6 +153,15 @@ export function MoneyFlow({
           </Step>
         </ol>
       </div>
+
+      {otherBank && (
+        <div className="mt-1">
+          <Expander label="Other income by bank transfer" sub="Not in the drawer" value={formatMoney(otherIn!.bank)}>
+            <OtherRows rows={otherBank} />
+            <Detail strong label="Other income by bank transfer" value={formatMoney(otherIn!.bank)} />
+          </Expander>
+        </div>
+      )}
 
       <div className="bg-secondary my-2 flex items-center justify-between gap-3 rounded-lg px-3 py-3">
         <span className="min-w-0 break-words text-sm font-medium">Should be in the drawer</span>

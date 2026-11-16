@@ -49,6 +49,46 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
   num("cancelled.receipts", "Cancelled receipts", saved.cancelled.receipts, live.cancelled.receipts);
   money("cancelled.total", "Cancelled (not counted)", saved.cancelled.total, live.cancelled.total);
 
+  // Other income (Other incomes module). A day without any has no block on either side, and an absent block counts as zero: an income
+  // added or cancelled after the day was saved is a MONEY difference (it moves the drawer or the bank figure), so a re-save clears the check.
+  money("otherIn.cash", "Other cash in", saved.otherIn?.cash, live.otherIn?.cash);
+  money("otherIn.bank", "Other income by bank transfer", saved.otherIn?.bank, live.otherIn?.bank);
+  type OtherRow = NonNullable<Snapshot["otherIn"]>["rows"][number];
+  const otherKey = (r: OtherRow) => JSON.stringify([r.date, r.method, cents(r.amount)]);
+  const otherWording = (r: OtherRow) => `${r.category}${r.source ? `, from ${r.source}` : ""}, received by ${r.receivedBy}`;
+  const otherTally = (rows: readonly OtherRow[]) => {
+    const m = new Map<string, { n: number; r: OtherRow; who: string[] }>();
+    for (const r of rows) {
+      const k = otherKey(r);
+      const cur = m.get(k) ?? { n: 0, r, who: [] };
+      cur.n += 1;
+      cur.who.push(otherWording(r));
+      m.set(k, cur);
+    }
+    return m;
+  };
+  const so = otherTally(saved.otherIn?.rows ?? []);
+  const lo = otherTally(live.otherIn?.rows ?? []);
+  for (const k of [...new Set([...so.keys(), ...lo.keys()])].sort()) {
+    const a = so.get(k);
+    const b = lo.get(k);
+    const r = (b ?? a)!.r;
+    const kind = r.method === "CASH" ? "Other cash in" : "Other income by bank transfer";
+    if ((a?.n ?? 0) !== (b?.n ?? 0)) {
+      out.push({
+        key: `other:${k}`,
+        label: `${kind}: ${r.category}${r.source ? ` (${r.source})` : ""}`,
+        saved: (a?.n ?? 0) === 0 ? "none" : `${a!.n} × ${formatCents(cents(r.amount))}`,
+        live: (b?.n ?? 0) === 0 ? "none" : `${b!.n} × ${formatCents(cents(r.amount))}`,
+      });
+    } else if (a && b) {
+      const sw = [...a.who].sort().join("; ");
+      const lw = [...b.who].sort().join("; ");
+      // a category renamed in Setup, or a corrected name: wording only, never a numbers difference
+      if (sw !== lw) out.push({ key: `other-names:${k}`, label: `${kind} of ${formatCents(cents(r.amount))} on ${r.date}: wording or names`, saved: sw, live: lw, textOnly: true });
+    }
+  }
+
   // courses, matched by id; a missing row is the same as a row of zeros
   const byId = (rows: Snapshot["report"]["courses"]) => new Map(rows.map((r) => [r.courseId, r]));
   const sc = byId(s.courses);

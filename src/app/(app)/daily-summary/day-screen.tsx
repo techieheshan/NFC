@@ -9,6 +9,7 @@ import { amountErrorText, decimalToCents, formatCents, parseTypedAmount } from "
 import { MAX_BANK_LINES, computeCashFlow, type BankLine } from "@/lib/cash-flow";
 import { dayLabelShort, shiftDay } from "@/lib/daily-summary-dates";
 import type { CancelledSummary, StaffCollected } from "@/lib/daily-summary-extras";
+import { otherBankCents, otherCashCents, type OtherInSnap } from "@/lib/other-in-snap";
 import type { Hint } from "@/lib/saved-day/hint";
 import { hintLabel, NOT_SAVED_CHIP, RELOAD_BUTTON, UNREADABLE_BLOCK, UNREADABLE_DAY, UPDATING_SCREEN } from "@/lib/saved-day/texts";
 import type { DailySummary } from "@/lib/reports";
@@ -33,7 +34,7 @@ import { typedQuery } from "./typed-state";
  * Checked by selects any more: Done by is chosen in the Save sheet and the admin check is its own step on the saved day.
  */
 export function DayScreen({
-  date, today, dateText, report, cancelled, staff, doners, initial, notices, hint, unreadable,
+  date, today, dateText, report, cancelled, staff, otherIn, doners, initial, notices, hint, unreadable,
 }: {
   date: string;
   today: string;
@@ -42,6 +43,8 @@ export function DayScreen({
   report: DailySummary;
   cancelled: CancelledSummary;
   staff: StaffCollected[];
+  /** Other income of the day; ABSENT on a day with none. */
+  otherIn?: OtherInSnap;
   /** Active ADMIN and STAFF accounts: the Done by choices. */
   doners: Signer[];
   initial: { bf: string; bank: BankLine[] };
@@ -67,7 +70,8 @@ export function DayScreen({
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
   const collected = decimalToCents(report.totalCollected);
   const deductions = decimalToCents(report.deductions.total);
-  const flow = computeCashFlow({ bringForward: bfCents, collected, deductions, bank });
+  const otherCash = otherCashCents(otherIn);
+  const flow = computeCashFlow({ bringForward: bfCents, collected, deductions, otherIn: otherCash, bank });
 
   // Mirror what is typed into the address, so it survives the document and a reload.
   const query = typedQuery({ bringForwardCents: bfCents, bank });
@@ -119,6 +123,7 @@ export function DayScreen({
         report={report}
         cancelled={cancelled}
         flow={flow}
+        otherIn={otherIn}
         bank={bank}
         onRemoveBank={(i) => dispatch({ type: "bankRemove", index: i })}
         bringForward={
@@ -219,7 +224,7 @@ export function DayScreen({
       {saveSheet && (
         <SaveSheet
           mode="save" date={date} dateText={dateText} baseVersion={0}
-          numbers={{ collected, deductions, shouldBe: flow.shouldBe, bankTotal: flow.bankTotal, left: flow.left }}
+          numbers={{ collected, deductions, shouldBe: flow.shouldBe, bankTotal: flow.bankTotal, left: flow.left, ...(otherIn ? { otherCash, otherBank: otherBankCents(otherIn) } : {}) }}
           bankCount={bank.length} doners={doners}
           bringForward={bfCents > 0 ? (bfCents / 100).toFixed(2) : ""} bank={bank}
           onClose={() => setSaveSheet(false)}

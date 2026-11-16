@@ -23,7 +23,7 @@ const rawSchema = z.object({
   doneById: z.string().max(64),
   bringForward: z.string().max(20).default(""),
   bank: z.array(z.object({ time: z.string().max(5), amount: z.string().max(20), slip: z.string().max(1000), note: z.string().max(2000) })).max(50).default([]),
-  seen: z.object({ collected: z.number().int().min(-MAX_CENTS * 10).max(MAX_CENTS * 10), deductions: z.number().int().min(-MAX_CENTS * 10).max(MAX_CENTS * 10) }).optional(),
+  seen: z.object({ collected: z.number().int().min(-MAX_CENTS * 10).max(MAX_CENTS * 10), deductions: z.number().int().min(-MAX_CENTS * 10).max(MAX_CENTS * 10), otherCash: z.number().int().min(0).max(MAX_CENTS * 10).optional(), otherBank: z.number().int().min(0).max(MAX_CENTS * 10).optional() }).optional(),
 });
 
 export type SaveMode = "save" | "edit" | "resave";
@@ -45,7 +45,7 @@ export type ParsedSave = {
   bringForwardCents: number;
   bank: BankLine[];
   /** What the sheet showed, in cents. Only a stale check: never stored. */
-  seen: { collected: number; deductions: number } | null;
+  seen: { collected: number; deductions: number; otherCash?: number; otherBank?: number } | null;
 };
 
 export type SaveParse =

@@ -14,7 +14,16 @@ import { BottomSheet, SheetRow } from "./bottom-sheet";
 import { SELECT } from "./day-parts";
 import type { Signer } from "./signer-lists";
 
-export type SheetNumbers = { collected: number; deductions: number; shouldBe: number; bankTotal: number; left: number };
+export type SheetNumbers = {
+  collected: number;
+  deductions: number;
+  shouldBe: number;
+  bankTotal: number;
+  left: number;
+  /** Other income (cents): present only on a day that has some. Cash is in `shouldBe`; bank is never in the drawer. */
+  otherCash?: number;
+  otherBank?: number;
+};
 
 /**
  * "Save day" and "Re-save with live numbers": the bottom sheet that freezes the numbers. Everything on it is DISPLAY: the server takes its
@@ -53,7 +62,7 @@ export function SaveSheet({
         doneById,
         bringForward,
         bank: bank.map((l) => ({ time: l.time, amount: (l.cents / 100).toFixed(2), slip: l.slip, note: l.note })),
-        seen: { collected: numbers.collected, deductions: numbers.deductions },
+        seen: { collected: numbers.collected, deductions: numbers.deductions, ...(numbers.otherCash ? { otherCash: numbers.otherCash } : {}), ...(numbers.otherBank ? { otherBank: numbers.otherBank } : {}) },
       });
       if (r.ok) {
         onSaved();
@@ -76,6 +85,7 @@ export function SaveSheet({
 
       <div className="mt-3 divide-y rounded-lg border px-3">
         <SheetRow label="Collected" value={formatCents(numbers.collected)} />
+        {numbers.otherCash ? <SheetRow label="Other cash in" value={formatCents(numbers.otherCash)} /> : null}
         <SheetRow label="Deductions" value={formatCents(numbers.deductions)} />
         <SheetRow label="Should be in the drawer" value={formatCents(numbers.shouldBe)} strong />
         <SheetRow label={`Taken to bank (${bankCount})`} value={formatCents(numbers.bankTotal)} />

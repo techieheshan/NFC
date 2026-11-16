@@ -48,7 +48,7 @@ export function SavedDayScreen({
   liveDiffs: FigureDiff[];
   liveUnreadable: boolean;
   /** The live collected and deductions in cents, from the data the page already loaded. */
-  live: { collected: number; deductions: number };
+  live: { collected: number; deductions: number; otherCash?: number; otherBank?: number };
   doners: Signer[];
   admins: Signer[];
 }) {
@@ -77,7 +77,7 @@ export function SavedDayScreen({
   const bfCents = bfParsed.ok ? bfParsed.cents : 0;
   const collected = cash.collected;
   const deductions = cash.deductions;
-  const editFlow = computeCashFlow({ bringForward: bfCents, collected, deductions, bank: typed.bank });
+  const editFlow = computeCashFlow({ bringForward: bfCents, collected, deductions, otherIn: cash.otherCash, bank: typed.bank });
   const viewFlow = { shouldBe: cash.shouldBeInDrawer, bankTotal: cash.bankTotal, left: cash.leftInDrawer, overdrawn: saved.overBankedBy !== null };
   const flow = editing ? { shouldBe: editFlow.shouldBe, bankTotal: editFlow.bankTotal, left: editFlow.left, overdrawn: editFlow.overdrawn } : viewFlow;
   const shownBank: BankLineView[] = editing ? typed.bank : bankLines;
@@ -100,7 +100,8 @@ export function SavedDayScreen({
     });
   };
 
-  const liveLeft = cash.bringForward + live.collected - live.deductions - cash.bankTotal;
+  const liveOtherCash = live.otherCash ?? 0;
+  const liveLeft = cash.bringForward + live.collected + liveOtherCash - live.deductions - cash.bankTotal;
   const savedTime = formatClock(saved.savedAt);
   const log = changeLogNewestFirst(saved.log);
   const unreconciled = reconcileWarning(report);
@@ -163,6 +164,7 @@ export function SavedDayScreen({
       <MoneyFlow
         report={report}
         cancelled={saved.snapshot.cancelled}
+        otherIn={saved.snapshot.otherIn}
         flow={flow}
         bank={shownBank}
         onRemoveBank={editing ? (i) => dispatch({ type: "bankRemove", index: i }) : undefined}
@@ -309,7 +311,7 @@ export function SavedDayScreen({
       {sheet === "resave" && (
         <SaveSheet
           mode="resave" date={date} dateText={dateText} baseVersion={saved.version}
-          numbers={{ collected: live.collected, deductions: live.deductions, shouldBe: cash.bringForward + live.collected - live.deductions, bankTotal: cash.bankTotal, left: liveLeft }}
+          numbers={{ collected: live.collected, deductions: live.deductions, shouldBe: cash.bringForward + live.collected + liveOtherCash - live.deductions, bankTotal: cash.bankTotal, left: liveLeft, ...(live.otherCash || live.otherBank ? { otherCash: liveOtherCash, otherBank: live.otherBank ?? 0 } : {}) }}
           bankCount={saved.bank.length} doners={doners}
           bringForward={cash.bringForward > 0 ? (cash.bringForward / 100).toFixed(2) : ""}
           bank={saved.bank.map((b) => ({ cents: b.cents, time: b.time, slip: b.slip, note: b.note }))}
