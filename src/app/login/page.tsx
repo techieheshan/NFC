@@ -70,11 +70,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (session?.user) {
     // Right after "Switch user" a session that is still here is the previous person's, renewed by a request that was in flight: sign out
     // again (a few times at most) instead of sending the NEXT person into it.
-    const switched = switchedCount(params.switched);
-    if (switched !== null && switched < MAX_SIGN_OUTS) {
+    // The "password needed" screen (/login?pw=1&u=…) is only ever reached from the card panel, so a session there is the previous person's too.
+    const afterSwitch = switchedCount(params.switched) !== null || "pw" in params;
+    const n = switchedCount(params.switched) ?? 0;
+    if (afterSwitch && n < MAX_SIGN_OUTS) {
       return (
         <div className="flex min-h-screen items-center justify-center px-4 py-12">
-          <div className="w-full max-w-sm"><SettleSignOut attempt={switched} active /></div>
+          <div className="w-full max-w-sm"><SettleSignOut attempt={n} active passwordFor={typeof params.u === "string" ? params.u : undefined} /></div>
         </div>
       );
     }
@@ -104,7 +106,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </div>
         </div>
 
-        {switchedCount(params.switched) !== null && <SettleSignOut attempt={switchedCount(params.switched)!} active={false} />}
+        {(switchedCount(params.switched) !== null || passwordNeeded) && <SettleSignOut attempt={switchedCount(params.switched) ?? 0} active={false} passwordFor={passwordNeeded ? prefill : undefined} />}
         {registered && !passwordNeeded && <QuickLoginPanel />}
         {quickOn && !registered && (
           <p className="text-muted-foreground mb-4 text-center text-xs">Staff: sign in with your password once on this device to turn on card sign-in here.</p>
