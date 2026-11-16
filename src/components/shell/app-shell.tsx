@@ -4,6 +4,7 @@ import type { UserRole } from "@prisma/client";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { NavLink } from "@/components/shell/nav-link";
 import { SignOutButton } from "@/components/shell/sign-out-button";
+import { SwitchUserButton } from "@/components/shell/switch-user-button";
 import { navSectionsFor } from "@/config/nav";
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -22,10 +23,13 @@ const ROLE_LABEL: Record<UserRole, string> = {
 export function AppShell({
   role,
   username,
+  canSwitchUser = false,
   children,
 }: {
   role: UserRole;
   username: string;
+  /** Staff quick login is on and this is a STAFF login: show "Switch user" next to Sign out. */
+  canSwitchUser?: boolean;
   children: React.ReactNode;
 }) {
   const sections = navSectionsFor(role);
@@ -87,6 +91,7 @@ export function AppShell({
                 anyone on a password screen mid-queue. Changing your own
                 password lives in Settings; /change-password itself still
                 exists, and a forced change still routes straight to it. */}
+            {canSwitchUser && <SwitchUserButton />}
             <SignOutButton />
           </div>
         </header>

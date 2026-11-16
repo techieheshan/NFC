@@ -53,6 +53,13 @@ export async function saveSetting(
     }
   }
 
+  if (spec.kind === "integer") {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 9999) {
+      return { ok: false, error: "Enter a whole number from 1 to 9999.", values: echo };
+    }
+  }
+
   if (spec.kind === "toggle" && raw !== "on" && raw !== "off") {
     return { ok: false, error: "Invalid toggle value.", values: echo };
   }

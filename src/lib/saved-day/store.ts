@@ -6,8 +6,10 @@ import { decimalToCents } from "@/lib/cents";
 import { colomboDateValue, colomboNow } from "@/lib/colombo-time";
 import { parseRealDate, resolveDay } from "@/lib/daily-summary-dates";
 import { cancelledReceipts, collectedByStaff } from "@/lib/daily-summary-extras";
+import { NO_OTHER_IN, otherInFor } from "@/lib/daily-summary-other-in";
 import { db } from "@/lib/db";
 import { displayName } from "@/lib/display-name";
+import { otherBankCents, otherCashCents, otherInSnap } from "@/lib/other-in-snap";
 import { dailySummary } from "@/lib/reports";
 
 import { matchBankLines, type StoredBankLine } from "./bank-lines";
@@ -21,7 +23,7 @@ import { DS_LOCK_NAMESPACE, LOCK_WAIT_MS, lockKey, TX_MAX_WAIT_MS, TX_TIMEOUT_MS
 import { centsToDecimalString, columnToCents } from "./money";
 import { overBankedBanner, overBankedBy, overBankRefusal } from "./over-bank";
 import { isExpired, retentionCutoff } from "./retention";
-import { buildSnapshot, cashBookColumns, cashBookOf, parseSnapshot, SNAPSHOT_SCHEMA, SnapshotError, type CashBook, type Snapshot } from "./snapshot";
+import { buildSnapshot, cashBookColumns, cashBookOf, parseSnapshot, schemaOf, SNAPSHOT_SCHEMA, SnapshotError, type CashBook, type Snapshot } from "./snapshot";
 import { echoValues, parseSaveInput, type SaveValues } from "./validate";
 
 /**
@@ -139,8 +141,8 @@ const conflictInfo = (v: VersionRow): ConflictInfo => ({
   changes: parseChanges(v.changes),
 });
 
-export type LiveLoaders = { dailySummary: typeof dailySummary; cancelledReceipts: typeof cancelledReceipts; collectedByStaff: typeof collectedByStaff };
-const defaultLoaders: LiveLoaders = { dailySummary, cancelledReceipts, collectedByStaff };
+export type LiveLoaders = { dailySummary: typeof dailySummary; cancelledReceipts: typeof cancelledReceipts; collectedByStaff: typeof collectedByStaff; otherIn?: typeof otherInFor };
+const defaultLoaders: LiveLoaders = { dailySummary, cancelledReceipts, collectedByStaff, otherIn: otherInFor };
 
 /**
  * The numbers as they are right now: `dailySummary()` untouched plus the two read-only helpers, or `null` when they do not fit the
@@ -148,16 +150,22 @@ const defaultLoaders: LiveLoaders = { dailySummary, cancelledReceipts, collected
  */
 export async function liveOrNull(date: string, loaders: LiveLoaders | undefined = defaultLoaders): Promise<Snapshot | null> {
   const l = loaders ?? defaultLoaders;
-  const [report, cancelled, staff] = await Promise.all([l.dailySummary(date, date), l.cancelledReceipts(date, date), l.collectedByStaff(date, date)]);
+  const [report, cancelled, staff, other] = await Promise.all([l.dailySummary(date, date), l.cancelledReceipts(date, date), l.collectedByStaff(date, date), l.otherIn ? l.otherIn(date, date) : Promise.resolve(NO_OTHER_IN)]);
   try {
-    return buildSnapshot({ report, cancelled, staff });
+    // `otherIn` is added only when the day has other income: a day without it is the schema-1 snapshot, exactly as before.
+    return buildSnapshot({ report, cancelled, staff, otherIn: otherInSnap(other) });
   } catch (e) {
     if (e instanceof SnapshotError) return null;
     throw e;
   }
 }
 
-const figures = (s: Snapshot) => ({ collected: decimalToCents(s.report.totalCollected), deductions: decimalToCents(s.report.deductions.total) });
+/** The figures a sheet is checked against. The two other-income ones exist only on a day that has some, so a day without keeps its old shape. */
+const figures = (s: Snapshot) => ({
+  collected: decimalToCents(s.report.totalCollected),
+  deductions: decimalToCents(s.report.deductions.total),
+  ...(s.otherIn ? { otherCash: otherCashCents(s.otherIn), otherBank: otherBankCents(s.otherIn) } : {}),
+});
 
 /** An ACTIVE ADMIN or STAFF user, looked up on the server. A client-supplied id is only ever a key into this. */
 async function findDoneBy(id: string): Promise<DoneBy | null> {
@@ -219,7 +227,9 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
     fresh = await liveOrNull(p.date, loaders);
     if (fresh === null) return refuse("snapshot", MESSAGE.snapshot);
     const f = figures(fresh);
-    if (!p.seen || p.seen.collected !== f.collected || p.seen.deductions !== f.deductions) return refuse("numbers-moved", MESSAGE.numbersMoved, { fresh: f });
+    // The two other-income figures are optional in what a sheet sends: an old sheet (no field) means "no other income", so it is refused
+    // the moment a day has some, never saved over it.
+    if (!p.seen || p.seen.collected !== f.collected || p.seen.deductions !== f.deductions || (p.seen.otherCash ?? 0) !== (f.otherCash ?? 0) || (p.seen.otherBank ?? 0) !== (f.otherBank ?? 0)) return refuse("numbers-moved", MESSAGE.numbersMoved, { fresh: f });
   }
 
   const dateValue = colomboDateValue(p.date);
@@ -261,6 +271,7 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
           kind = "SAVE";
           snapshot = fresh!;
           snapshotJson = snapshot as unknown as Prisma.InputJsonValue;
+          snapshotSchema = schemaOf(snapshot); // 2 only when the day has other income, else 1
           bringForwardCents = p.bringForwardCents;
           lines = matchBankLines([], p.bank, doneBy, now).lines;
           items = changesForSave(doneBy.name);
@@ -305,6 +316,7 @@ export async function saveDayAs(actor: Actor, raw: unknown, loaders?: LiveLoader
             if (d.refuse) return refuse("nothing-changed", MESSAGE.nothing);
             snapshot = fresh!;
             snapshotJson = snapshot as unknown as Prisma.InputJsonValue;
+            snapshotSchema = schemaOf(snapshot); // 2 only when the live day has other income, else 1
             bringForwardCents = prevShape.bringForwardCents; // a re-save refreshes the numbers only; it keeps what was typed
             lines = prevLines;
             // a re-save whose differences are ALL text (names or wording) says so; anything with a number in it is a money change (the default)
@@ -544,7 +556,7 @@ export async function loadSavedDayAs(actor: Actor, rawDate: unknown, live?: Snap
       unreadable = true;
     } else {
       const cash = {
-        bringForward: columnToCents(v.bringForward), collected: columnToCents(v.collected), deductions: columnToCents(v.deductions),
+        bringForward: columnToCents(v.bringForward), collected: columnToCents(v.collected), ...(snapshot.otherIn ? { otherCash: otherCashCents(snapshot.otherIn) } : {}), deductions: columnToCents(v.deductions),
         shouldBeInDrawer: columnToCents(v.shouldBeInDrawer), bankTotal: columnToCents(v.bankTotal), leftInDrawer: columnToCents(v.leftInDrawer), net: columnToCents(v.net),
       };
       const over = overBankedBy(cash.bankTotal, cash.leftInDrawer);

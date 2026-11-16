@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { requireNavAccess } from "@/lib/authz";
 import { computeCashFlow } from "@/lib/cash-flow";
+import { otherCashCents } from "@/lib/other-in-snap";
 import { decimalToCents } from "@/lib/cents";
 import { colomboNow } from "@/lib/colombo-time";
 import { resolveRange } from "@/lib/daily-summary-dates";
@@ -51,7 +52,7 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
 
   if (isRange) {
     const b = await loadRangeBundle(range.from, range.to);
-    const model = buildDocModel({ report: b.report, cancelled: b.cancelled, generated: now, generatedBy: b.generatedBy, byDay: b.byDay });
+    const model = buildDocModel({ report: b.report, cancelled: b.cancelled, generated: now, generatedBy: b.generatedBy, byDay: b.byDay, otherIn: b.otherIn, otherByDay: b.otherByDay });
     return (
       <div className={sinhala.variable}>
         <DocumentView
@@ -82,6 +83,7 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
       cancelled: sv.snapshot.cancelled,
       generated: now,
       generatedBy: b.generatedBy,
+      otherIn: sv.snapshot.otherIn,
       day: {
         staff: sv.snapshot.staff,
         bringForwardCents: sv.cash.bringForward,
@@ -120,6 +122,7 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
     bringForward: typed.bringForwardCents,
     collected: decimalToCents(b.report.totalCollected),
     deductions: decimalToCents(b.report.deductions.total),
+    otherIn: otherCashCents(b.otherIn),
     bank: typed.bank,
   });
   const blocked = flow.overdrawn ? "The money taken to the bank is more than the drawer should hold. Go back and correct it." : null;
@@ -129,6 +132,7 @@ export default async function DocumentPage({ searchParams }: PageProps<"/daily-s
     cancelled: b.cancelled,
     generated: now,
     generatedBy: b.generatedBy,
+    otherIn: b.otherIn,
     day: { staff: b.staff, bringForwardCents: typed.bringForwardCents, bank: typed.bank, preparedBy: null, checkedBy: null },
   });
   const back = typedQuery({ bringForwardCents: typed.bringForwardCents, bank: typed.bank });

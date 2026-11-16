@@ -20,6 +20,8 @@ test("dashboard tiles show the agreed order, with Hall Allocation last", () => {
     "reports",
     "my-students",
     "receipts",
+    "other-incomes",
+    "extra-payments",
     "payslips",
     "settings",
     "hall-allocation",

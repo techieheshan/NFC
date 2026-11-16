@@ -81,7 +81,7 @@ export default async function VoucherPage({ searchParams }: PageProps<"/payslips
   const sheets = teachers
     .map((t) => ({ teacher: t, slip: report.slips.find((s) => s.teacherId === t.id) }))
     .filter((x) => x.slip !== undefined)
-    .filter((x) => teacherId !== null || x.slip!.lines.length > 0);
+    .filter((x) => teacherId !== null || x.slip!.lines.length > 0 || (x.slip!.adjustmentLines?.length ?? 0) > 0);
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">

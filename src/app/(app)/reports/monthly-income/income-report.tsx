@@ -43,7 +43,10 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
               ["Institute share (kept)", i.totalInstituteShare],
               ["Admission income", i.admissionIncome],
               ["Smart-card income", i.smartCardIncome],
+              ...(i.otherIncome ? [["Other income", i.otherIncome]] : []),
+              ...(i.extraPayments ? [["Extra payments", i.extraPayments]] : []),
               ["Xenon expenses", `-${i.xenonExpenses}`],
+              ...(i.adjustments ? [["Recovered from teachers and staff (salary adjustments)", i.adjustments.recovered], ["Bonuses paid (salary adjustments)", `-${i.adjustments.bonuses}`]] : []),
               ["Institute profit", i.instituteProfit],
             ],
           },
@@ -79,8 +82,9 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
           <p className="text-muted-foreground text-sm">Institute profit for {report.label}</p>
           <p className="text-3xl font-semibold tabular-nums">{i.instituteProfit}</p>
           <p className="text-muted-foreground mt-1 text-xs">
-            Institute share + admission + smart card − Xenon expenses. Teacher
-            advances are not in it: they reduce a teacher&rsquo;s own salary, not
+            Institute share + admission + smart card − Xenon expenses (+ other
+            income and extra payments, and salary adjustments, when the month
+            has them). Teacher advances are not in it: they reduce a teacher&rsquo;s own salary, not
             institute profit.
           </p>
         </div>
@@ -169,7 +173,15 @@ export function IncomeScreen({ report }: { report: MonthlyIncome }) {
           <Line label="Institute share (kept)" value={i.totalInstituteShare} />
           <Line label="Admission income" value={i.admissionIncome} />
           <Line label="Smart-card income" value={i.smartCardIncome} />
+          {i.otherIncome && <Line label="Other income" value={i.otherIncome} />}
+          {i.extraPayments && <Line label="Extra payments" value={i.extraPayments} />}
           <Line label="Xenon expenses" value={`-${i.xenonExpenses}`} muted />
+          {i.adjustments && (
+            <>
+              <Line label="Recovered from teachers and staff (salary adjustments)" value={i.adjustments.recovered} />
+              <Line label="Bonuses paid (salary adjustments)" value={`-${i.adjustments.bonuses}`} muted />
+            </>
+          )}
           <li className="flex justify-between gap-3 p-3 text-base font-semibold">
             <span>Institute profit</span>
             <span className="tabular-nums">{i.instituteProfit}</span>

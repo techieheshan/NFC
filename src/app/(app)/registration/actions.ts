@@ -324,7 +324,7 @@ async function clashMessage(
 ): Promise<string | null> {
   const other = exceptStudentId ? { id: { not: exceptStudentId } } : {};
 
-  const [uidTaken, numberTaken] = await Promise.all([
+  const [uidTaken, numberTaken, staffCardTaken] = await Promise.all([
     candidate.cardUid
       ? db.student.findFirst({
           where: { cardUid: candidate.cardUid, ...other },
@@ -337,8 +337,13 @@ async function clashMessage(
           select: { id: true },
         })
       : null,
+    // A staff card (staff quick login) is never a student's card, so a student can never be registered with its UID.
+    candidate.cardUid
+      ? db.staffCredential.findFirst({ where: { nfcUid: candidate.cardUid }, select: { id: true } })
+      : null,
   ]);
 
+  if (staffCardTaken) return "That card UID belongs to a staff card. Use the student's own card.";
   if (uidTaken && numberTaken) {
     return "That card UID and card number are both already assigned to other students.";
   }
@@ -447,6 +452,11 @@ export async function attachIdentifier(
     };
   }
 
+  if (kind === "cardUid") {
+    const staffCard = await clashMessage({ cardUid: parsed.data });
+    if (staffCard?.startsWith("That card UID belongs to a staff card")) return fail(formData, staffCard);
+  }
+
   try {
     await db.student.update({
       where: { id: studentId.data },
@@ -521,6 +531,11 @@ export async function createStudent(
 
   const refError = await assertEnrolmentRefs(rows.data);
   if (refError) return fail(formData, refError);
+
+  if (parsed.data.cardUid) {
+    const staffCard = await clashMessage({ cardUid: parsed.data.cardUid });
+    if (staffCard?.startsWith("That card UID belongs to a staff card")) return fail(formData, staffCard);
+  }
 
   const photo = await readPhoto(formData);
   if (typeof photo === "string") return fail(formData, photo);

@@ -109,6 +109,21 @@ export type PayslipAdvanceRow = {
   authorizedBy: string;
 };
 
+/**
+ * One Salary adjustment on a slip: a shared expense is MINUS (the teacher paid part of it), a bonus is PLUS. `amount` is the positive
+ * figure; `sign` says which way it moved the pay. Read from the adjustment's own stored line: nothing is recomputed here.
+ */
+export type PayslipAdjustmentRow = {
+  adjustmentId: number;
+  kind: "SHARED_EXPENSE" | "BONUS";
+  title: string;
+  amount: string;
+  sign: "-" | "+";
+  consentNote: string;
+  /** "YYYY-MM-DD", the day they agreed. */
+  consentOn: string;
+};
+
 export type Payslip = {
   teacherId: number;
   teacher: string;
@@ -131,6 +146,13 @@ export type Payslip = {
   halfMonths?: { cards: number; gross: string };
   /** The advances behind the `advances` total. */
   advanceLines: PayslipAdvanceRow[];
+  /**
+   * Salary adjustments placed in THIS payroll month (teachers only; staff have a monthly list instead). ABSENT when there are none, so a
+   * slip for a month without any has exactly the keys it always had. `finalSalary` already includes them.
+   */
+  adjustmentLines?: PayslipAdjustmentRow[];
+  /** The signed total of `adjustmentLines` ("-25000.00" or "5000.00"). ABSENT with them. */
+  adjustmentsNet?: string;
   totalCollected: string;
   totalInstituteShare: string;
   totalTeacherShare: string;
@@ -148,6 +170,19 @@ export type InstituteSummary = {
   smartCardIncome: string;
   teacherAdvances: string;
   xenonExpenses: string;
+  /**
+   * Salary adjustments placed in this payroll month, for ALL teachers and staff: what Xenon recovered from people (a shared expense: it
+   * ADDS to profit, so Xenon's true cost of a 100,000 expense shared 50,000 is 50,000) and the bonuses it paid out (they REDUCE profit).
+   * ABSENT for a month with none, so that month's roll-up is exactly what it was.
+   */
+  adjustments?: { recovered: string; bonuses: string };
+  /**
+   * Other incomes dated in this month (cash AND bank transfer — it is the institute's income either way; cancelled ones are not read).
+   * ABSENT for a month with none, so that month's roll-up is exactly what it was. Adds to profit.
+   */
+  otherIncome?: string;
+  /** Extra payments (bills for things that are not class fees) taken in this month by `paidAt`, cancelled ones excluded. ABSENT when none. Adds to profit. */
+  extraPayments?: string;
   instituteProfit: string;
 };
 
@@ -247,6 +282,21 @@ export async function buildPayslips(options: {
       authorizedBy: { select: { username: true, staff: { select: { name: true } } } },
     },
     orderBy: [{ date: "asc" }, { id: "asc" }],
+  });
+
+  // Salary adjustments placed in this PAYROLL month for the teachers in scope (cancelled ones are not read). One extra query; for a month
+  // without any it returns nothing and no slip changes.
+  const adjustmentRows = await db.salaryAdjustmentLine.findMany({
+    where: {
+      teacherId: teacherIds ? { in: teacherIds } : { not: null },
+      adjustment: { cancelled: false, applyYear: year, applyMonth: month },
+    },
+    select: {
+      teacherId: true,
+      amount: true,
+      adjustment: { select: { id: true, kind: true, title: true, consentNote: true, consentOn: true } },
+    },
+    orderBy: [{ adjustmentId: "asc" }, { id: "asc" }],
   });
 
   const slips: Payslip[] = teachers.map((teacher) => {
@@ -364,6 +414,12 @@ export async function buildPayslips(options: {
     const advance = advances
       .filter((a) => a.teacherId === teacher.id)
       .reduce((s, a) => s + num(a.amount), 0);
+    // In cents so the sum is exact: minus for a shared expense, plus for a bonus.
+    const mineAdjusted = adjustmentRows.filter((a) => a.teacherId === teacher.id);
+    const adjustedCents = mineAdjusted.reduce((s, a) => {
+      const cents = Math.round(num(a.amount) * 100);
+      return s + (a.adjustment.kind === "SHARED_EXPENSE" ? -cents : cents);
+    }, 0);
 
     return {
       teacherId: teacher.id,
@@ -384,6 +440,20 @@ export async function buildPayslips(options: {
           amount: money(num(a.amount)),
           authorizedBy: a.authorizedBy.staff?.name ?? a.authorizedBy.username,
         })),
+      ...(mineAdjusted.length > 0
+        ? {
+            adjustmentLines: mineAdjusted.map((a) => ({
+              adjustmentId: a.adjustment.id,
+              kind: a.adjustment.kind,
+              title: a.adjustment.title,
+              amount: money(num(a.amount)),
+              sign: a.adjustment.kind === "SHARED_EXPENSE" ? ("-" as const) : ("+" as const),
+              consentNote: a.adjustment.consentNote,
+              consentOn: a.adjustment.consentOn.toISOString().slice(0, 10),
+            })),
+            adjustmentsNet: money(adjustedCents / 100),
+          }
+        : {}),
       tierCounts: [...perTier]
         .map(([code, v]) => ({ code, label: v.label, students: v.students.size }))
         .sort((a, b) => b.students - a.students || a.label.localeCompare(b.label)),
@@ -391,7 +461,7 @@ export async function buildPayslips(options: {
       totalInstituteShare: money(totalInstituteShare),
       totalTeacherShare: money(totalTeacherShare),
       advances: money(advance),
-      finalSalary: money(totalTeacherShare - advance),
+      finalSalary: money(totalTeacherShare - advance + adjustedCents / 100),
     };
   });
 
@@ -453,6 +523,22 @@ export async function buildPayslips(options: {
       .filter((e) => e.type.code === "XENON")
       .reduce((s, e) => s + num(e.amount), 0);
 
+    // Salary adjustments of this payroll month, teachers AND staff (a staff share is still money Xenon recovers or pays out).
+    const adjusted = await db.salaryAdjustmentLine.findMany({
+      where: { adjustment: { cancelled: false, applyYear: year, applyMonth: month } },
+      select: { amount: true, adjustment: { select: { kind: true } } },
+    });
+    const recoveredCents = adjusted.filter((a) => a.adjustment.kind === "SHARED_EXPENSE").reduce((sum, a) => sum + Math.round(num(a.amount) * 100), 0);
+    const bonusCents = adjusted.filter((a) => a.adjustment.kind === "BONUS").reduce((sum, a) => sum + Math.round(num(a.amount) * 100), 0);
+
+    // Other incomes (by their own calendar day) and extra payments (by `paidAt`), read only here, only for the institute summary.
+    const [otherRows, extraRows] = await Promise.all([
+      db.otherIncome.findMany({ where: { cancelled: false, date: dateWindow }, select: { amount: true } }),
+      db.extraPayment.findMany({ where: { cancelled: false, paidAt: paidWindow }, select: { total: true } }),
+    ]);
+    const otherCents = otherRows.reduce((sum, r) => sum + Math.round(num(r.amount) * 100), 0);
+    const extraCents = extraRows.reduce((sum, r) => sum + Math.round(num(r.total) * 100), 0);
+
     report.institute = {
       totalCollected: money(collected),
       totalInstituteShare: money(institute),
@@ -464,7 +550,10 @@ export async function buildPayslips(options: {
       // Course share + income the institute keeps whole, less Xenon costs.
       // Teacher advances are deliberately NOT subtracted — they reduce a
       // teacher's own salary, not institute profit.
-      instituteProfit: money(institute + admissionIncome + smartCardIncome - xenon),
+      ...(adjusted.length > 0 ? { adjustments: { recovered: money(recoveredCents / 100), bonuses: money(bonusCents / 100) } } : {}),
+      ...(otherRows.length > 0 ? { otherIncome: money(otherCents / 100) } : {}),
+      ...(extraRows.length > 0 ? { extraPayments: money(extraCents / 100) } : {}),
+      instituteProfit: money(institute + admissionIncome + smartCardIncome - xenon + recoveredCents / 100 - bonusCents / 100 + otherCents / 100 + extraCents / 100),
     };
   }
 

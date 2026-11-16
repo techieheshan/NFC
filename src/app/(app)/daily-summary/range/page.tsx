@@ -88,6 +88,22 @@ export default async function RangePage({ searchParams }: PageProps<"/daily-summ
         </ul>
       </section>
 
+      {b.otherIn && (
+        <section aria-label="Other incomes" className="space-y-1 rounded-xl border p-4">
+          <h2 className="pb-1 text-sm font-semibold">Other incomes (not part of Net)</h2>
+          <Row label="Other cash in" value={formatMoney(b.otherIn.cash)} />
+          <Row label="Other income by bank transfer (not in the drawer)" value={formatMoney(b.otherIn.bank)} />
+          <ul className="divide-y pt-1">
+            {Object.entries(b.otherByDay ?? {}).filter(([, v]) => v.cash !== "0.00" || v.bank !== "0.00").sort(([x], [y]) => x.localeCompare(y)).map(([day, v]) => (
+              <li key={day} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span>{dayLabelShort(day)}</span>
+                <span className="text-muted-foreground text-xs">Cash {formatMoney(v.cash)} · Bank {formatMoney(v.bank)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="space-y-1 rounded-xl border p-4">
         <h2 className="pb-1 text-sm font-semibold">Other income and totals</h2>
         <Row label="Class fees" value={formatMoney(r.classTotal)} />

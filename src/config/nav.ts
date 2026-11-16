@@ -9,10 +9,12 @@ import {
   LayoutDashboard,
   Layers,
   Receipt,
+  Scale,
   ScanLine,
   School,
   Search,
   Settings,
+  ShoppingBag,
   ShieldCheck,
   Undo2,
   UserPlus,
@@ -193,6 +195,24 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["desktop", "terminal"],
   },
   {
+    key: "other-incomes",
+    label: "Other incomes",
+    href: "/other-incomes",
+    icon: Banknote,
+    // Money in with no bill. Recording is ADMIN + STAFF; cancelling and the categories are ADMIN-only inside the actions.
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "extra-payments",
+    label: "Extra payments",
+    href: "/extra-payments",
+    icon: ShoppingBag,
+    // Things sold with a bill that are not class fees. ADMIN + STAFF sell and reprint; the price list and cancelling are ADMIN-only inside the actions.
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
     key: "payslips",
     label: "Payslips",
     href: "/payslips",
@@ -201,6 +221,15 @@ export const NAV_ITEMS: NavItem[] = [
     // profit block, TEACHER sees only their own last-completed month.
     roles: ALL_ROLES,
     surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "salary-adjustments",
+    label: "Salary adjustments",
+    href: "/salary-adjustments",
+    icon: Scale,
+    // Share an expense with teachers or staff, or pay them a bonus. Pay data: ADMIN only, and every action checks the role itself.
+    roles: ADMIN_ONLY,
+    surfaces: ["desktop"],
   },
   {
     key: "settings",

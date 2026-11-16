@@ -253,6 +253,25 @@ model User {
   dsChecksAsChecker   DailySummaryCheck[]    @relation("DsCheckedBy")
   dsChecksMarked      DailySummaryCheck[]    @relation("DsCheckMarkedBy")
 
+  // Other incomes (back-relations only: no column on "User")
+  otherIncomesRecorded  OtherIncome[] @relation("OtherIncomeRecordedBy")
+  otherIncomesReceived  OtherIncome[] @relation("OtherIncomeReceivedBy")
+  otherIncomesCancelled OtherIncome[] @relation("OtherIncomeCancelledBy")
+
+  // Extra payments (back-relations only: no column on "User")
+  extraPaymentsTaken     ExtraPayment[] @relation("ExtraPaymentTakenBy")
+  extraPaymentsCancelled ExtraPayment[] @relation("ExtraPaymentCancelledBy")
+
+  // Salary adjustments (back-relations only: no column on "User")
+  salaryAdjustmentsCreated   SalaryAdjustment[] @relation("SalaryAdjustmentCreatedBy")
+  salaryAdjustmentsCancelled SalaryAdjustment[] @relation("SalaryAdjustmentCancelledBy")
+
+  // Staff quick login (back-relations only: no column on "User")
+  staffCredentials        StaffCredential[]    @relation("StaffCredentialHolder")
+  staffCredentialsCreated StaffCredential[]    @relation("StaffCredentialCreatedBy")
+  staffCredentialsRevoked StaffCredential[]    @relation("StaffCredentialRevokedBy")
+  quickTerminalsRevoked   QuickLoginTerminal[] @relation("QuickTerminalRevokedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -270,6 +289,8 @@ model Teacher {
   combos   Combo[]
   advances Expense[] // TEACHER_ADVANCE rows pointing at this teacher
 
+  adjustmentLines SalaryAdjustmentLine[] // Salary adjustments (back-relation only: no column on "Teacher")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -285,6 +306,8 @@ model Staff {
 
   user     User?
   advances Expense[] // XENON rows flagged isStaffAdvance, pointing here
+
+  adjustmentLines SalaryAdjustmentLine[] // Salary adjustments (back-relation only: no column on "Staff")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -302,6 +325,7 @@ model Student {
   cardNumber    String? @unique // printed on the card + encoded in its QR, e.g. "0186-0001-2000"
   admissionPaid Boolean @default(false) // one-time admission fee flag
 
+  extraPayments ExtraPayment[] // Extra payments (back-relation only: no column on "Student")
   enrollments Enrollment[]
   attendances Attendance[]
   payments    Payment[]
@@ -345,6 +369,7 @@ model Course {
   enrollments       Enrollment[]
   comboItems        ComboItem[]
   attendances       Attendance[]
+  extraPayments     ExtraPayment[] // Extra payments (back-relation only: no column on "Course")
   payments          Payment[]
 
   createdAt DateTime @default(now())
@@ -604,6 +629,8 @@ model Expense {
   authorizedBy   User   @relation("ExpenseAuthorizedBy", fields: [authorizedById], references: [id])
   authorizedById String
 
+  salaryAdjustments SalaryAdjustment[] // Salary adjustments (back-relation only: no column on "Expense")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -722,4 +749,313 @@ model DailySummaryCheck {
   checkedAt    DateTime @default(now())
   // Set when a later version kept the same money (only slip, note, time or order changed) and the check was carried over.
   carriedFromVersion Int?
+}
+
+// ----------------------------------------------------------------------------
+// OTHER INCOMES — money that came in with no bill (donation, rent, a refund...).
+// Not a Payment: a Payment always belongs to a student. Never hard-deleted; a
+// cancelled row stays (like a payment) and every report excludes it.
+// ----------------------------------------------------------------------------
+
+// Reference data (AGENTS 2 and 9): the starter rows are inserted by the migration as DATA,
+// editable on a screen, soft-deleted (`active = false`), never listed in code.
+model IncomeCategory {
+  id        Int           @id @default(autoincrement())
+  code      String        @unique
+  label     String
+  active    Boolean       @default(true)
+  incomes   OtherIncome[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+// CASH goes into the drawer (Daily Summary "Other cash in"); BANK does not.
+enum IncomeMethod {
+  CASH
+  BANK
+}
+
+model OtherIncome {
+  id         Int            @id @default(autoincrement())
+  category   IncomeCategory @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  amount     Decimal        @db.Decimal(12, 2) // > 0, enforced in code
+  // The Colombo calendar day the money came in.
+  date       DateTime       @db.Date
+  source     String? // who gave it
+  note       String         @default("")
+  method     IncomeMethod   @default(CASH)
+
+  // Who took or confirmed the money, and who typed the row (usually the same person).
+  receivedBy   User   @relation("OtherIncomeReceivedBy", fields: [receivedById], references: [id])
+  receivedById String
+  recordedBy   User   @relation("OtherIncomeRecordedBy", fields: [recordedById], references: [id])
+  recordedById String
+
+  // Cancellation (ADMIN only). The amount is never edited: cancel and enter again.
+  cancelled     Boolean   @default(false)
+  cancelledBy   User?     @relation("OtherIncomeCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  salaryAdjustments SalaryAdjustment[] // Salary adjustments (back-relation only)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([categoryId])
+}
+
+// ----------------------------------------------------------------------------
+// EXTRA PAYMENTS — things sold or charged WITH a bill that are not class fees
+// (a t-shirt, a book, an exam fee). NOT a Payment: dailySummary(), payslips,
+// arrears and every report read Payment by kind and course, and none of that
+// may change. One bill = one ExtraPayment = one receipt "XA-<id>".
+// ----------------------------------------------------------------------------
+
+// The ADMIN's price list (reference data, rule 2): never listed in code, soft-deleted (rule 9).
+model ExtraItem {
+  id           Int                @id @default(autoincrement())
+  label        String
+  defaultPrice Decimal            @db.Decimal(10, 2)
+  active       Boolean            @default(true)
+  sortOrder    Int                @default(0)
+  lines        ExtraPaymentLine[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
+
+model ExtraPayment {
+  id        Int      @id @default(autoincrement())
+  // A double tap or a retry returns the SAME bill (the same idea as Attendance.clientRef).
+  clientRef String   @unique
+  student   Student? @relation(fields: [studentId], references: [id])
+  studentId Int?
+  course    Course?  @relation(fields: [courseId], references: [id])
+  courseId  Int?
+  note      String?
+  total     Decimal  @db.Decimal(12, 2) // a snapshot: never recomputed
+  paidAt    DateTime @default(now())
+
+  takenBy   User   @relation("ExtraPaymentTakenBy", fields: [takenById], references: [id])
+  takenById String
+
+  // Cancellation (ADMIN only): never deleted, amounts never touched.
+  cancelled     Boolean   @default(false)
+  cancelledBy   User?     @relation("ExtraPaymentCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  lines     ExtraPaymentLine[]
+  createdAt DateTime           @default(now())
+
+  @@index([paidAt])
+  @@index([studentId])
+}
+
+model ExtraPaymentLine {
+  id        Int          @id @default(autoincrement())
+  payment   ExtraPayment @relation(fields: [paymentId], references: [id])
+  paymentId Int
+  // Null for a one-off line (staff typed the label and the price).
+  item      ExtraItem?   @relation(fields: [itemId], references: [id])
+  itemId    Int?
+  label     String // frozen text
+  quantity  Int
+  unitPrice Decimal      @db.Decimal(10, 2) // frozen
+  amount    Decimal      @db.Decimal(10, 2) // quantity x unitPrice, stored
+  custom    Boolean      @default(false) // a one-off price typed at the counter
+  position  Int
+
+  @@index([paymentId])
+}
+
+// ----------------------------------------------------------------------------
+// SALARY ADJUSTMENTS — share an expense with named teachers and/or staff (they
+// pay part of it), or pay them part of an income as a bonus. ADMIN only.
+//
+// Teachers: a line on the payslip, read INSIDE buildPayslips (the one payroll
+// calculation, AGENTS 26). Staff: there is no staff salary in this system, so
+// their lines are a monthly list with a printable sheet for whoever pays staff.
+//
+// The expense itself stays an ordinary XENON expense (cash out on its day); the
+// recovery or the bonus is PAYROLL, by the payroll month it applies to. The two
+// clocks never meet in one figure. A month that has started to close is locked:
+// an adjustment may only target the current month or a later one, and an
+// adjustment is cancelled (never edited, never deleted) only while its month is
+// still current or ahead, so a past month's payslip never changes.
+// ----------------------------------------------------------------------------
+
+enum SalaryAdjustmentKind {
+  SHARED_EXPENSE // people pay part of an expense: minus on their pay
+  BONUS // people are paid part of an income: plus on their pay
+}
+
+enum SplitMode {
+  EQUAL
+  CUSTOM
+}
+
+model SalaryAdjustment {
+  id    Int                  @id @default(autoincrement())
+  kind  SalaryAdjustmentKind
+  title String
+
+  // The PAYROLL month it appears in: chosen explicitly, never derived from the expense date.
+  applyYear  Int
+  applyMonth Int
+
+  // totalAmount = instituteAmount + the sum of the lines (checked in cents on the server).
+  totalAmount     Decimal @db.Decimal(12, 2)
+  instituteAmount Decimal @db.Decimal(12, 2)
+  splitMode       SplitMode
+
+  // SHARED_EXPENSE points at a XENON expense, BONUS at an other income (a CHECK in the migration keeps exactly one).
+  expense       Expense?     @relation(fields: [expenseId], references: [id])
+  expenseId     Int?
+  otherIncome   OtherIncome? @relation(fields: [otherIncomeId], references: [id])
+  otherIncomeId Int?
+
+  // Who agreed, when and how: required text, printed on the notice and on the pay line.
+  consentNote String
+  consentOn   DateTime @db.Date
+
+  createdBy   User     @relation("SalaryAdjustmentCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+
+  // Cancellation (ADMIN only, and only while the payroll month is still current or ahead).
+  cancelled     Boolean   @default(false)
+  cancelledBy   User?     @relation("SalaryAdjustmentCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  lines SalaryAdjustmentLine[]
+
+  @@index([applyYear, applyMonth])
+  @@index([expenseId])
+  @@index([otherIncomeId])
+}
+
+model SalaryAdjustmentLine {
+  id           Int              @id @default(autoincrement())
+  adjustment   SalaryAdjustment @relation(fields: [adjustmentId], references: [id])
+  adjustmentId Int
+  // Exactly one of the two (a CHECK in the migration): a teacher's pay line or a staff member's list line.
+  teacher   Teacher? @relation(fields: [teacherId], references: [id])
+  teacherId Int?
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+  staffId   Int?
+  // Above zero; the sign comes from the adjustment's kind.
+  amount    Decimal  @db.Decimal(12, 2)
+
+  @@unique([adjustmentId, teacherId])
+  @@unique([adjustmentId, staffId])
+  @@index([teacherId])
+  @@index([staffId])
+}
+
+// ----------------------------------------------------------------------------
+// STAFF QUICK LOGIN — a STAFF member taps a staff card or scans a staff QR to sign
+// in, instead of typing a password, on a REGISTERED terminal only.
+//
+// A staff card lives HERE and never in Student: a student card can never sign
+// anyone in. A device becomes a terminal when someone signs in there with a
+// password (a cookie whose hash is stored here); without it quick login is
+// refused, so a copied UID or a photographed QR is useless on its own. After
+// `quick_login_max_in_a_row` quick sign-ins in a row the terminal asks for a
+// password, which resets the count. Every attempt is an audit row that never
+// holds the raw UID or token. Off unless the Setting quick_login_enabled is on.
+// ----------------------------------------------------------------------------
+
+enum StaffCredentialKind {
+  NFC
+  QR
+}
+
+enum QuickLoginOutcome {
+  SUCCESS
+  UNKNOWN_CREDENTIAL
+  STUDENT_CARD_REFUSED
+  REVOKED
+  USER_INACTIVE
+  NOT_STAFF_ROLE
+  MUST_CHANGE_PASSWORD
+  PASSWORD_REQUIRED
+  NO_TERMINAL
+  RATE_LIMITED
+  DISABLED
+}
+
+enum QuickLoginMethod {
+  NFC
+  QR
+  PASSWORD
+}
+
+model StaffCredential {
+  id     Int                 @id @default(autoincrement())
+  user   User                @relation("StaffCredentialHolder", fields: [userId], references: [id])
+  userId String
+  kind   StaffCredentialKind
+
+  // NFC: the card's UID, normalised with normalizeCardUid. QR: the SHA-256 of a 32-byte random token (shown once when printed, never stored).
+  nfcUid      String? @unique
+  qrTokenHash String? @unique
+  label       String?
+
+  createdBy   User     @relation("StaffCredentialCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+
+  // Revoked, never deleted: the audit rows still point at it, and a lost card's later taps are logged as REVOKED.
+  revokedAt    DateTime?
+  revokedBy    User?     @relation("StaffCredentialRevokedBy", fields: [revokedById], references: [id])
+  revokedById  String?
+  revokeReason String?
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+model QuickLoginTerminal {
+  id        Int      @id @default(autoincrement())
+  // SHA-256 of the random value held in an httpOnly cookie on the device.
+  tokenHash String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  // Successful quick sign-ins since the last PASSWORD sign-in on this terminal.
+  consecutiveQuick Int       @default(0)
+  // Refused taps in the current window, and the short lock they can cause.
+  failedTaps        Int       @default(0)
+  failedWindowStart DateTime?
+  lockedUntil       DateTime?
+
+  revokedAt   DateTime?
+  revokedBy   User?     @relation("QuickTerminalRevokedBy", fields: [revokedById], references: [id])
+  revokedById String?
+}
+
+// The audit trail. Never the raw UID or token. No foreign keys on purpose: the trail must survive whatever happens to the rows it names.
+model QuickLoginEvent {
+  id           Int               @id @default(autoincrement())
+  at           DateTime          @default(now())
+  outcome      QuickLoginOutcome
+  method       QuickLoginMethod
+  userId       String?
+  credentialId Int?
+  terminalId   Int?
+  ip           String?
+  userAgent    String?
+  note         String?
+
+  @@index([at])
+  @@index([ip, at])
+  @@index([terminalId, at])
 }

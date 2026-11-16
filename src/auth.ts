@@ -6,6 +6,8 @@ import { z } from "zod";
 import { authConfig } from "@/auth.config";
 import { colomboNow, to12Hour } from "@/lib/colombo-time";
 import { db } from "@/lib/db";
+import { attemptQuickLogin, quickConfig, quickSessionStillValid } from "@/lib/quick-login";
+import { firstHop, publicCode, quickSessionExpired, readCookie, TERMINAL_COOKIE } from "@/lib/quick-login-rules";
 
 const credentialsSchema = z.object({
   username: z.string().min(1),
@@ -32,9 +34,56 @@ export class AccountLockedError extends CredentialsSignin {
   }
 }
 
+/**
+ * A refused staff card or QR. The `code` carries what the screen may say ("quick:no-terminal", "quick:password:<username>"...): coarse on
+ * purpose, so a stranger never learns whether a card is a student's, a revoked one or an unknown one (the audit trail has the real reason).
+ */
+export class QuickLoginRefusal extends CredentialsSignin {
+  code: string;
+  constructor(code: string) {
+    super("quick");
+    this.code = `quick:${code}`;
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
+    /**
+     * Staff quick login: a second, separate provider. The password provider below is untouched. Everything it decides lives in
+     * `src/lib/quick-login.ts` (registered terminal, STAFF-only, counter, audit); this only reads the request and hands the result to Auth.js.
+     */
+    Credentials({
+      id: "quick",
+      name: "Staff card",
+      credentials: { kind: { label: "Kind" }, value: { label: "Value" } },
+      async authorize(raw, request) {
+        const kind = raw?.kind === "NFC" ? "NFC" : raw?.kind === "QR" ? "QR" : null;
+        const value = typeof raw?.value === "string" ? raw.value.slice(0, 300) : "";
+        if (!kind || value === "") return null;
+        const h = request?.headers;
+        const result = await attemptQuickLogin({
+          kind,
+          value,
+          terminalToken: readCookie(h?.get("cookie"), TERMINAL_COOKIE),
+          ip: firstHop(h?.get("x-forwarded-for")),
+          userAgent: h?.get("user-agent") ?? null,
+        });
+        if (result.outcome !== "SUCCESS") throw new QuickLoginRefusal(publicCode(result.outcome, result.outcome === "PASSWORD_REQUIRED" ? result.username : undefined));
+        const u = result.user;
+        return {
+          id: u.id,
+          username: u.username,
+          role: u.role,
+          name: u.username,
+          tokenVersion: u.tokenVersion,
+          mustChangePassword: false,
+          via: kind === "NFC" ? ("nfc" as const) : ("qr" as const),
+          credentialId: u.credentialId,
+          terminalId: u.terminalId,
+        };
+      },
+    }),
     Credentials({
       credentials: {
         username: { label: "Username", type: "text" },
@@ -116,6 +165,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role;
         token.ver = user.tokenVersion;
         token.mustChange = user.mustChangePassword;
+        // A password sign-in leaves these absent, exactly as before this provider existed.
+        if (user.via) {
+          token.via = user.via;
+          token.qAt = Date.now();
+          token.cred = user.credentialId;
+          token.term = user.terminalId;
+        }
         return token;
       }
 
@@ -133,6 +189,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // off, or every token issued before a revocation point.
       if (!current || !current.active || current.tokenVersion !== token.ver) {
         return null;
+      }
+
+      // A session that started with a staff card or QR is only as good as that card and that terminal, only while the person is still STAFF,
+      // and only for the Setting's hours. A password session (no `via`) never enters this branch, so it is exactly what it was.
+      if (token.via === "nfc" || token.via === "qr") {
+        const cfg = await quickConfig();
+        if (
+          current.role !== "STAFF" ||
+          !cfg.enabled ||
+          quickSessionExpired(token, Date.now(), cfg.sessionHours) ||
+          !(await quickSessionStillValid(token.cred, token.term))
+        ) {
+          return null;
+        }
       }
 
       // Role and the forced-change flag can change mid-session, so they are

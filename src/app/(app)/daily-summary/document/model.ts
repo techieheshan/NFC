@@ -4,6 +4,7 @@ import { dayLabelLong, dayLabelShort, documentNumber } from "@/lib/daily-summary
 import type { DayFigures, CancelledSummary, StaffCollected } from "@/lib/daily-summary-extras";
 import { friendlyDate } from "@/lib/friendly-date";
 import { to12Hour } from "@/lib/colombo-time";
+import { otherCashCents, type OtherInSnap } from "@/lib/other-in-snap";
 import type { DailySummary } from "@/lib/reports";
 import { changeLogRows, formatWhen, type LogRow } from "@/lib/saved-day/log-rows";
 import { overBankedBanner } from "@/lib/saved-day/over-bank";
@@ -61,6 +62,8 @@ export type DocModel = {
   flow: null | {
     bringForward: string;
     collected: string;
+    /** Cash other income; ABSENT on a day with none. */
+    otherIn?: string;
     deductions: string;
     shouldBe: string;
     bankCount: number;
@@ -68,14 +71,16 @@ export type DocModel = {
     left: string;
     overdrawn: boolean;
   };
+  /** Other income (cash and bank transfer) with its rows. ABSENT when the day or range has none. */
+  otherIn?: { cash: string; bank: string; rows: { date: string; category: string; source: string; receivedBy: string; how: string; amount: string }[] };
   deductions: { date: string; kind: string; person: string; reason: string; authorizedBy: string; amount: string }[];
   bank: { time: string; slip: string; note: string; amount: string }[];
   bankTotal: string;
   staff: { name: string; receipts: number; collected: string }[];
   staffTotal: { receipts: number; collected: string };
   cancelledLine: string | null;
-  dayByDay: { date: string; collected: string; deductions: string; net: string }[];
-  dayByDayTotal: { collected: string; deductions: string; net: string } | null;
+  dayByDay: { date: string; collected: string; deductions: string; net: string; otherCash?: string; otherBank?: string }[];
+  dayByDayTotal: { collected: string; deductions: string; net: string; otherCash?: string; otherBank?: string } | null;
 };
 
 /** What the document says about a saved version: the status, who saved and last edited it, the change log and any over-bank flag. */
@@ -119,6 +124,10 @@ export function buildDocModel(input: {
   };
   /** Range only. */
   byDay?: { days: readonly DayFigures[]; total: DayFigures };
+  /** Other income of the day or range; omit on a day with none. Cash is in the cash book; bank transfers are listed apart. */
+  otherIn?: OtherInSnap;
+  /** Range only, with `otherIn`: cash and bank per day, as the data object's own 2-decimal text. */
+  otherByDay?: Record<string, { cash: string; bank: string }>;
 }): DocModel {
   const { report } = input;
   const isDay = input.day !== undefined;
@@ -136,6 +145,7 @@ export function buildDocModel(input: {
         bringForward: input.day.bringForwardCents,
         collected: decimalToCents(report.totalCollected),
         deductions: decimalToCents(report.deductions.total),
+        otherIn: otherCashCents(input.otherIn),
         bank,
       })
     : null;
@@ -175,6 +185,7 @@ export function buildDocModel(input: {
     flow: flow && {
       bringForward: formatCents(flow.bringForward),
       collected: formatCents(flow.collected),
+      ...(flow.otherIn !== undefined ? { otherIn: formatCents(flow.otherIn) } : {}),
       deductions: formatCents(flow.deductions),
       shouldBe: formatCents(flow.shouldBe),
       bankCount: bank.length,
@@ -182,6 +193,18 @@ export function buildDocModel(input: {
       left: formatCents(flow.left),
       overdrawn: flow.overdrawn,
     },
+    ...(input.otherIn
+      ? {
+          otherIn: {
+            cash: formatMoney(input.otherIn.cash),
+            bank: formatMoney(input.otherIn.bank),
+            rows: input.otherIn.rows.map((r) => ({
+              date: dayLabelShort(r.date), category: r.category, source: r.source ?? "—", receivedBy: r.receivedBy,
+              how: r.method === "CASH" ? "Cash" : "Bank transfer", amount: formatMoney(r.amount),
+            })),
+          },
+        }
+      : {}),
     deductions: report.deductionLines.map((d) => ({
       date: d.date, kind: deductionKind(d), person: d.person ?? "—", reason: d.reason, authorizedBy: d.authorizedBy, amount: formatMoney(d.amount),
     })),
@@ -190,9 +213,15 @@ export function buildDocModel(input: {
     staff: staff.map((r) => ({ name: r.name, receipts: r.receipts, collected: formatMoney(r.collected) })),
     staffTotal: { receipts: staffReceipts, collected: formatCents(staffCents) },
     cancelledLine: cancelledLine(input.cancelled),
-    dayByDay: (input.byDay?.days ?? []).map((d) => ({ date: dayLabelShort(d.date), collected: formatMoney(d.collected), deductions: formatDeduction(d.deductions), net: formatMoney(d.net) })),
+    dayByDay: (input.byDay?.days ?? []).map((d) => ({
+      date: dayLabelShort(d.date), collected: formatMoney(d.collected), deductions: formatDeduction(d.deductions), net: formatMoney(d.net),
+      ...(input.otherByDay ? { otherCash: formatMoney(input.otherByDay[d.date]?.cash ?? "0.00"), otherBank: formatMoney(input.otherByDay[d.date]?.bank ?? "0.00") } : {}),
+    })),
     dayByDayTotal: input.byDay
-      ? { collected: formatMoney(input.byDay.total.collected), deductions: formatDeduction(input.byDay.total.deductions), net: formatMoney(input.byDay.total.net) }
+      ? {
+          collected: formatMoney(input.byDay.total.collected), deductions: formatDeduction(input.byDay.total.deductions), net: formatMoney(input.byDay.total.net),
+          ...(input.otherIn && input.otherByDay ? { otherCash: formatMoney(input.otherIn.cash), otherBank: formatMoney(input.otherIn.bank) } : {}),
+        }
       : null,
   };
 }

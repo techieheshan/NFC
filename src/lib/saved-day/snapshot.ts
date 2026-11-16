@@ -4,6 +4,7 @@ import { computeCashFlow, type BankLine } from "@/lib/cash-flow";
 import { decimalToCents } from "@/lib/cents";
 import type { CancelledSummary } from "@/lib/daily-summary-extras";
 import type { StaffCollected } from "@/lib/daily-summary-rows";
+import { otherCashCents, type OtherInSnap } from "@/lib/other-in-snap";
 import type { DailySummary } from "@/lib/reports";
 
 import { centsToDecimalString } from "./money";
@@ -18,6 +19,12 @@ import { centsToDecimalString } from "./money";
  */
 
 export const SNAPSHOT_SCHEMA = 1;
+/**
+ * Schema 2 = schema 1 plus an `otherIn` block (Other incomes: cash and bank-transfer rows of that day). It is written ONLY for a day that
+ * has other income; a day without it stays schema 1 and is stored byte for byte as before, and re-saving such a day keeps schema 1.
+ * Code from before this schema refuses to read a schema-2 row ("This saved day can't be read"): nothing is lost, the row is untouched.
+ */
+export const SNAPSHOT_SCHEMA_OTHER_IN = 2;
 
 const money = z.string().regex(/^-?\d+(\.\d{1,2})?$/);
 const count = z.number().int().nonnegative();
@@ -64,13 +71,29 @@ const reportSchema = z.object({
 
 const staffRow = z.object({ userId: z.string(), name: z.string(), receipts: count, collected: money });
 
+const otherInRow = z.object({
+  kind: z.enum(["INCOME", "EXTRA"]),
+  id: z.number().int().positive(),
+  date: z.string(),
+  category: z.string(),
+  source: z.string().nullable(),
+  receivedBy: z.string(),
+  amount: money,
+  method: z.enum(["CASH", "BANK"]),
+});
+const otherInSchema = z.object({ cash: money, bank: money, rows: z.array(otherInRow).min(1) });
+
 const snapshotSchema = z.object({
   report: reportSchema,
   cancelled: z.object({ receipts: count, total: money }),
   staff: z.array(staffRow),
 });
+const snapshotSchemaV2 = snapshotSchema.extend({ otherIn: otherInSchema });
 
-export type Snapshot = { report: DailySummary; cancelled: CancelledSummary; staff: StaffCollected[] };
+export type Snapshot = { report: DailySummary; cancelled: CancelledSummary; staff: StaffCollected[]; otherIn?: OtherInSnap };
+
+/** The schema number a snapshot is stored under: 2 when it carries other income, else 1. */
+export const schemaOf = (s: Snapshot): number => (s.otherIn ? SNAPSHOT_SCHEMA_OTHER_IN : SNAPSHOT_SCHEMA);
 
 export class SnapshotError extends Error {
   constructor(message: string) {
@@ -83,16 +106,21 @@ export class SnapshotError extends Error {
  * Validates and copies what the loaders returned into the stored shape. Keys the schema does not know are dropped, so what is
  * frozen is exactly schema 1, whatever the data object grows into later.
  */
-export function buildSnapshot(input: { report: DailySummary; cancelled: CancelledSummary; staff: readonly StaffCollected[] }): Snapshot {
-  const r = snapshotSchema.safeParse({ report: input.report, cancelled: input.cancelled, staff: input.staff });
+export function buildSnapshot(input: { report: DailySummary; cancelled: CancelledSummary; staff: readonly StaffCollected[]; otherIn?: OtherInSnap }): Snapshot {
+  // `otherIn` is part of the input ONLY when the day has other income: for a day with none the object is exactly the schema-1 one.
+  const withOther = input.otherIn !== undefined && input.otherIn.rows.length > 0;
+  const r = withOther
+    ? snapshotSchemaV2.safeParse({ report: input.report, cancelled: input.cancelled, staff: input.staff, otherIn: input.otherIn })
+    : snapshotSchema.safeParse({ report: input.report, cancelled: input.cancelled, staff: input.staff });
   if (!r.success) throw new SnapshotError(`not a valid daily summary snapshot: ${r.error.issues[0]?.path.join(".")} ${r.error.issues[0]?.message}`);
   return r.data as Snapshot;
 }
 
 /** Reads a stored snapshot. A schema number this code does not know, or a shape that does not fit, is refused. */
 export function parseSnapshot(raw: unknown, schema: number): Snapshot {
-  if (schema !== SNAPSHOT_SCHEMA) throw new SnapshotError(`unknown snapshot schema ${schema}`);
-  const r = snapshotSchema.safeParse(raw);
+  if (schema !== SNAPSHOT_SCHEMA && schema !== SNAPSHOT_SCHEMA_OTHER_IN) throw new SnapshotError(`unknown snapshot schema ${schema}`);
+  // A schema-1 row is read exactly as before (an unknown key is dropped); a schema-2 row must carry its other income.
+  const r = (schema === SNAPSHOT_SCHEMA_OTHER_IN ? snapshotSchemaV2 : snapshotSchema).safeParse(raw);
   if (!r.success) throw new SnapshotError(`stored snapshot does not fit schema ${schema}: ${r.error.issues[0]?.path.join(".")} ${r.error.issues[0]?.message}`);
   return r.data as Snapshot;
 }
@@ -102,6 +130,8 @@ export function parseSnapshot(raw: unknown, schema: number): Snapshot {
 export type CashBook = {
   bringForward: number;
   collected: number;
+  /** Cash other income; ABSENT on a day with none. It is part of `shouldBeInDrawer`; there is no column for it. */
+  otherCash?: number;
   deductions: number;
   shouldBeInDrawer: number;
   bankTotal: number;
@@ -117,11 +147,13 @@ export function cashBookOf(snapshot: Snapshot, bringForwardCents: number, bank: 
     bringForward: bringForwardCents,
     collected: decimalToCents(snapshot.report.totalCollected),
     deductions: decimalToCents(snapshot.report.deductions.total),
+    otherIn: otherCashCents(snapshot.otherIn),
     bank,
   });
   return {
     bringForward: flow.bringForward,
     collected: flow.collected,
+    ...(flow.otherIn !== undefined ? { otherCash: flow.otherIn } : {}),
     deductions: flow.deductions,
     shouldBeInDrawer: flow.shouldBe,
     bankTotal: flow.bankTotal,

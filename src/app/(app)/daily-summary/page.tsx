@@ -4,6 +4,7 @@ import { requireNavAccess } from "@/lib/authz";
 import { decimalToCents, formatCents } from "@/lib/cents";
 import { colomboNow } from "@/lib/colombo-time";
 import { dayLabelShort, resolveRange } from "@/lib/daily-summary-dates";
+import { otherBankCents, otherCashCents } from "@/lib/other-in-snap";
 import { liveFromBundle } from "@/lib/saved-day/live";
 import { loadSavedDayAs } from "@/lib/saved-day/store";
 
@@ -57,7 +58,7 @@ export default async function DailySummaryPage({ searchParams }: PageProps<"/dai
         saved={read.saved}
         liveDiffs={read.liveDiffs}
         liveUnreadable={read.liveUnreadable}
-        live={{ collected: decimalToCents(b.report.totalCollected), deductions: decimalToCents(b.report.deductions.total) }}
+        live={{ collected: decimalToCents(b.report.totalCollected), deductions: decimalToCents(b.report.deductions.total), otherCash: otherCashCents(b.otherIn), otherBank: otherBankCents(b.otherIn) }}
         doners={b.signers.prepared}
         admins={b.signers.checked}
       />
@@ -75,6 +76,7 @@ export default async function DailySummaryPage({ searchParams }: PageProps<"/dai
       report={b.report}
       cancelled={b.cancelled}
       staff={b.staff}
+      otherIn={b.otherIn}
       doners={b.signers.prepared}
       notices={noticeKeys(typed, q.notice).map((k) => ({ key: k, text: NOTICE_TEXT[k] }))}
       initial={{
