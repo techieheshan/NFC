@@ -253,6 +253,11 @@ model User {
   dsChecksAsChecker   DailySummaryCheck[]    @relation("DsCheckedBy")
   dsChecksMarked      DailySummaryCheck[]    @relation("DsCheckMarkedBy")
 
+  // Other incomes (back-relations only: no column on "User")
+  otherIncomesRecorded  OtherIncome[] @relation("OtherIncomeRecordedBy")
+  otherIncomesReceived  OtherIncome[] @relation("OtherIncomeReceivedBy")
+  otherIncomesCancelled OtherIncome[] @relation("OtherIncomeCancelledBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -722,4 +727,59 @@ model DailySummaryCheck {
   checkedAt    DateTime @default(now())
   // Set when a later version kept the same money (only slip, note, time or order changed) and the check was carried over.
   carriedFromVersion Int?
+}
+
+// ----------------------------------------------------------------------------
+// OTHER INCOMES — money that came in with no bill (donation, rent, a refund...).
+// Not a Payment: a Payment always belongs to a student. Never hard-deleted; a
+// cancelled row stays (like a payment) and every report excludes it.
+// ----------------------------------------------------------------------------
+
+// Reference data (AGENTS 2 and 9): the starter rows are inserted by the migration as DATA,
+// editable on a screen, soft-deleted (`active = false`), never listed in code.
+model IncomeCategory {
+  id        Int           @id @default(autoincrement())
+  code      String        @unique
+  label     String
+  active    Boolean       @default(true)
+  incomes   OtherIncome[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+// CASH goes into the drawer (Daily Summary "Other cash in"); BANK does not.
+enum IncomeMethod {
+  CASH
+  BANK
+}
+
+model OtherIncome {
+  id         Int            @id @default(autoincrement())
+  category   IncomeCategory @relation(fields: [categoryId], references: [id])
+  categoryId Int
+  amount     Decimal        @db.Decimal(12, 2) // > 0, enforced in code
+  // The Colombo calendar day the money came in.
+  date       DateTime       @db.Date
+  source     String? // who gave it
+  note       String         @default("")
+  method     IncomeMethod   @default(CASH)
+
+  // Who took or confirmed the money, and who typed the row (usually the same person).
+  receivedBy   User   @relation("OtherIncomeReceivedBy", fields: [receivedById], references: [id])
+  receivedById String
+  recordedBy   User   @relation("OtherIncomeRecordedBy", fields: [recordedById], references: [id])
+  recordedById String
+
+  // Cancellation (ADMIN only). The amount is never edited: cancel and enter again.
+  cancelled     Boolean   @default(false)
+  cancelledBy   User?     @relation("OtherIncomeCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([categoryId])
 }
