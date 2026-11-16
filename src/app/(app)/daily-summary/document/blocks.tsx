@@ -90,13 +90,14 @@ function Header({ m }: { m: DocModel }) {
           <>
             <div>
               <div><span>Date</span><b>{m.dateText}</b></div>
-              <div><span>Prepared by</span><b>{m.preparedBy}</b></div>
-              <div><span>Checked by (admin)</span><b>{m.checkedBy}</b></div>
+              <div><span>Prepared by</span><b>{m.preparedBy ?? "—"}</b></div>
+              <div><span>Checked by (admin)</span><b>{m.checkedBy ?? (m.savedLine !== null ? "Not checked" : "—")}</b></div>
             </div>
             <div>
               <div><span>Document no.</span><b>{m.docNo}</b></div>
-              <div><span>Status</span><b>Draft, not saved</b></div>
-              <div><span>Generated</span><b>{m.generatedText} by {m.generatedBy}</b></div>
+              <div><span>Status</span><b>{m.status}</b></div>
+              {m.savedLine && <div><span>Saved</span><b>{m.savedLine.replace(/^Saved /, "")}</b></div>}
+              {m.lastEditedLine && <div><span>Last edited</span><b>{m.lastEditedLine.replace(/^Last edited /, "")}</b></div>}
             </div>
           </>
         ) : (
@@ -147,6 +148,7 @@ function IncomeBlock({ m }: { m: DocModel }) {
               All money collected is cash. Bank deposits are listed below. The amount left in the drawer is
               tomorrow&rsquo;s bring-forward.
             </p>
+            {m.overBankedNote && <p className="ds-note"><b>{m.overBankedNote}</b></p>}
           </div>
         )}
       </div>
@@ -253,5 +255,16 @@ export function makeBlocks(m: DocModel): DocBlockDef[] {
     blocks.push({ id: "cancelled", table: false, render: () => <section className="ds-sec" data-block="cancelled"><p className="ds-note" style={{ marginTop: 0 }}>{m.cancelledLine}</p></section> });
   }
   if (day) blocks.push({ id: "signatures", table: false, render: () => <Signatures m={m} /> });
+  if (day && m.changeLog) {
+    const rows = m.changeLog;
+    blocks.push({
+      id: "changeLog", table: true,
+      render: (s) => (
+        <DocTable id="changeLog" title="8 Change log" slice={s}
+          cols={[{ label: "Version", w: 62 }, { label: "When", w: 150 }, { label: "By", w: 120 }, { label: "What changed", w: 381 }]}
+          rows={rows.map((r) => [`v${r.version}`, r.when, r.by, r.what])} />
+      ),
+    });
+  }
   return blocks;
 }

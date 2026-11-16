@@ -18,8 +18,9 @@ import { pickSigner, type Signer } from "./signer-lists";
 
 type Query = Record<string, string | string[] | undefined>;
 
-export const SLIP_MAX = 30;
-export const NOTE_MAX = 80;
+import { NOTE_MAX, SLIP_MAX } from "@/lib/bank-limits";
+
+export { NOTE_MAX, SLIP_MAX };
 
 const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
 const clean = (s: string, max: number) => s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
