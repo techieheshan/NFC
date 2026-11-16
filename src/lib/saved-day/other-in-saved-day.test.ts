@@ -228,8 +228,8 @@ describe("snapshot schema 1 and 2 (no database)", () => {
     const otherIn = {
       cash: "250.50", bank: "40.00",
       rows: [
-        { id: 1, date: "2026-10-14", category: "Rent received", source: "Mr Silva", receivedBy: "Sadun", amount: "250.50", method: "CASH" as const },
-        { id: 2, date: "2026-10-14", category: "Donation", source: null, receivedBy: "Sadun", amount: "40.00", method: "BANK" as const },
+        { kind: "INCOME" as const, id: 1, date: "2026-10-14", category: "Rent received", source: "Mr Silva", receivedBy: "Sadun", amount: "250.50", method: "CASH" as const },
+        { kind: "INCOME" as const, id: 2, date: "2026-10-14", category: "Donation", source: null, receivedBy: "Sadun", amount: "40.00", method: "BANK" as const },
       ],
     };
     const snap = buildSnapshot({ report: summaryOf(), cancelled: { receipts: 0, total: "0.00" }, staff: [], otherIn });

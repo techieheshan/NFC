@@ -97,6 +97,13 @@ export const SETTING_SPECS: SettingSpec[] = [
     fallback: "0",
   },
   {
+    key: "extra_one_off_max_price",
+    label: "Extra payments: highest price for a one-off item",
+    help: "Staff may add a one-off item (a name and a price they type) to an extra payment, up to this price. 0 means one-off items are not allowed; the admin's item list is always allowed.",
+    kind: "money",
+    fallback: "0",
+  },
+  {
     key: "institute_share_presets",
     label: "Institute share presets",
     help: "The percentages offered as one-click choices on the course form, comma separated (e.g. 20,25,30).",

@@ -8,6 +8,7 @@ import { centsToDecimalString } from "@/lib/saved-day/money";
  * omits the lines and a day without other income is byte for byte what it was before. Pure: safe in client components.
  */
 export type OtherInSnapRow = {
+  kind: "INCOME" | "EXTRA";
   id: number;
   date: string;
   category: string;
@@ -23,7 +24,7 @@ export function otherInSnap(o: OtherIn | null | undefined): OtherInSnap | undefi
   return {
     cash: centsToDecimalString(o.cash),
     bank: centsToDecimalString(o.bank),
-    rows: o.rows.map((r) => ({ id: r.id, date: r.date, category: r.category, source: r.source, receivedBy: r.receivedBy, amount: centsToDecimalString(r.cents), method: r.method })),
+    rows: o.rows.map((r) => ({ kind: r.kind, id: r.id, date: r.date, category: r.category, source: r.source, receivedBy: r.receivedBy, amount: centsToDecimalString(r.cents), method: r.method })),
   };
 }
 

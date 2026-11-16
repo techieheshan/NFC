@@ -72,6 +72,7 @@ const reportSchema = z.object({
 const staffRow = z.object({ userId: z.string(), name: z.string(), receipts: count, collected: money });
 
 const otherInRow = z.object({
+  kind: z.enum(["INCOME", "EXTRA"]),
   id: z.number().int().positive(),
   date: z.string(),
   category: z.string(),

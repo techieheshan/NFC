@@ -54,7 +54,7 @@ export function diffSummaries(saved: Snapshot, live: Snapshot): FigureDiff[] {
   money("otherIn.cash", "Other cash in", saved.otherIn?.cash, live.otherIn?.cash);
   money("otherIn.bank", "Other income by bank transfer", saved.otherIn?.bank, live.otherIn?.bank);
   type OtherRow = NonNullable<Snapshot["otherIn"]>["rows"][number];
-  const otherKey = (r: OtherRow) => JSON.stringify([r.date, r.method, cents(r.amount)]);
+  const otherKey = (r: OtherRow) => JSON.stringify([r.date, r.kind, r.method, cents(r.amount)]);
   const otherWording = (r: OtherRow) => `${r.category}${r.source ? `, from ${r.source}` : ""}, received by ${r.receivedBy}`;
   const otherTally = (rows: readonly OtherRow[]) => {
     const m = new Map<string, { n: number; r: OtherRow; who: string[] }>();

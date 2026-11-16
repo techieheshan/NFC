@@ -76,7 +76,7 @@ export function OtherRows({ rows }: { rows: OtherInSnap["rows"] }) {
   return (
     <ul className="space-y-2">
       {rows.map((r) => (
-        <li key={r.id} className="text-sm">
+        <li key={`${r.kind}-${r.id}`} className="text-sm">
           <span className="flex justify-between gap-3">
             <span className="min-w-0 break-words">{r.category}{r.source ? ` — ${r.source}` : ""}</span>
             <span className="shrink-0 tabular-nums">{formatMoney(r.amount)}</span>
