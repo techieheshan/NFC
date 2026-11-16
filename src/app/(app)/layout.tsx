@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { AppShell } from "@/components/shell/app-shell";
+import { getToggle } from "@/lib/settings";
 
 /**
  * Everything inside the (app) group is behind the shell and behind auth.
@@ -25,8 +26,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     redirect("/change-password");
   }
 
+  // "Switch user" only for a STAFF login, and only while staff quick login is switched on (a cached Setting read).
+  const canSwitchUser = session.user.role === "STAFF" && (await getToggle("quick_login_enabled"));
+
   return (
-    <AppShell role={session.user.role} username={session.user.username}>
+    <AppShell role={session.user.role} username={session.user.username} canSwitchUser={canSwitchUser}>
       {children}
     </AppShell>
   );
