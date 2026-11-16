@@ -11,7 +11,10 @@ import { registerTerminalOnPasswordLogin } from "@/lib/quick-login";
 import { firstHop, PASSWORD_NEEDED_TEXT, TERMINAL_COOKIE } from "@/lib/quick-login-rules";
 import { getToggle } from "@/lib/settings";
 
+import { MAX_SIGN_OUTS, switchedCount } from "@/components/shell/switch-user-rules";
+
 import { QuickLoginPanel } from "./quick-panel";
+import { SettleSignOut } from "./settle-sign-out";
 
 export const metadata = { title: "Sign in" };
 
@@ -63,11 +66,21 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   // callback, so a revoked or deactivated session lands on the form instead of
   // being bounced to a page that would bounce it straight back here.
   const session = await auth();
+  const params = await searchParams;
   if (session?.user) {
+    // Right after "Switch user" a session that is still here is the previous person's, renewed by a request that was in flight: sign out
+    // again (a few times at most) instead of sending the NEXT person into it.
+    const switched = switchedCount(params.switched);
+    if (switched !== null && switched < MAX_SIGN_OUTS) {
+      return (
+        <div className="flex min-h-screen items-center justify-center px-4 py-12">
+          <div className="w-full max-w-sm"><SettleSignOut attempt={switched} active /></div>
+        </div>
+      );
+    }
     redirect(session.user.mustChangePassword ? "/change-password" : "/");
   }
 
-  const params = await searchParams;
   const failed = "error" in params;
   const lockedUntil = typeof params.locked === "string" ? params.locked : null;
   const revoked = "revoked" in params;
@@ -91,6 +104,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </div>
         </div>
 
+        {switchedCount(params.switched) !== null && <SettleSignOut attempt={switchedCount(params.switched)!} active={false} />}
         {registered && !passwordNeeded && <QuickLoginPanel />}
         {quickOn && !registered && (
           <p className="text-muted-foreground mb-4 text-center text-xs">Staff: sign in with your password once on this device to turn on card sign-in here.</p>

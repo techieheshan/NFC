@@ -28,7 +28,6 @@ export function QuickLoginPanel() {
       const r = await quickLogin(kind, value);
       if (r.ok) {
         router.replace("/");
-        router.refresh();
         return;
       }
       if (r.code.startsWith("password:")) {
