@@ -266,6 +266,12 @@ model User {
   salaryAdjustmentsCreated   SalaryAdjustment[] @relation("SalaryAdjustmentCreatedBy")
   salaryAdjustmentsCancelled SalaryAdjustment[] @relation("SalaryAdjustmentCancelledBy")
 
+  // Staff quick login (back-relations only: no column on "User")
+  staffCredentials        StaffCredential[]    @relation("StaffCredentialHolder")
+  staffCredentialsCreated StaffCredential[]    @relation("StaffCredentialCreatedBy")
+  staffCredentialsRevoked StaffCredential[]    @relation("StaffCredentialRevokedBy")
+  quickTerminalsRevoked   QuickLoginTerminal[] @relation("QuickTerminalRevokedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -951,4 +957,105 @@ model SalaryAdjustmentLine {
   @@unique([adjustmentId, staffId])
   @@index([teacherId])
   @@index([staffId])
+}
+
+// ----------------------------------------------------------------------------
+// STAFF QUICK LOGIN — a STAFF member taps a staff card or scans a staff QR to sign
+// in, instead of typing a password, on a REGISTERED terminal only.
+//
+// A staff card lives HERE and never in Student: a student card can never sign
+// anyone in. A device becomes a terminal when someone signs in there with a
+// password (a cookie whose hash is stored here); without it quick login is
+// refused, so a copied UID or a photographed QR is useless on its own. After
+// `quick_login_max_in_a_row` quick sign-ins in a row the terminal asks for a
+// password, which resets the count. Every attempt is an audit row that never
+// holds the raw UID or token. Off unless the Setting quick_login_enabled is on.
+// ----------------------------------------------------------------------------
+
+enum StaffCredentialKind {
+  NFC
+  QR
+}
+
+enum QuickLoginOutcome {
+  SUCCESS
+  UNKNOWN_CREDENTIAL
+  STUDENT_CARD_REFUSED
+  REVOKED
+  USER_INACTIVE
+  NOT_STAFF_ROLE
+  MUST_CHANGE_PASSWORD
+  PASSWORD_REQUIRED
+  NO_TERMINAL
+  RATE_LIMITED
+  DISABLED
+}
+
+enum QuickLoginMethod {
+  NFC
+  QR
+  PASSWORD
+}
+
+model StaffCredential {
+  id     Int                 @id @default(autoincrement())
+  user   User                @relation("StaffCredentialHolder", fields: [userId], references: [id])
+  userId String
+  kind   StaffCredentialKind
+
+  // NFC: the card's UID, normalised with normalizeCardUid. QR: the SHA-256 of a 32-byte random token (shown once when printed, never stored).
+  nfcUid      String? @unique
+  qrTokenHash String? @unique
+  label       String?
+
+  createdBy   User     @relation("StaffCredentialCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+
+  // Revoked, never deleted: the audit rows still point at it, and a lost card's later taps are logged as REVOKED.
+  revokedAt    DateTime?
+  revokedBy    User?     @relation("StaffCredentialRevokedBy", fields: [revokedById], references: [id])
+  revokedById  String?
+  revokeReason String?
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+model QuickLoginTerminal {
+  id        Int      @id @default(autoincrement())
+  // SHA-256 of the random value held in an httpOnly cookie on the device.
+  tokenHash String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  // Successful quick sign-ins since the last PASSWORD sign-in on this terminal.
+  consecutiveQuick Int       @default(0)
+  // Refused taps in the current window, and the short lock they can cause.
+  failedTaps        Int       @default(0)
+  failedWindowStart DateTime?
+  lockedUntil       DateTime?
+
+  revokedAt   DateTime?
+  revokedBy   User?     @relation("QuickTerminalRevokedBy", fields: [revokedById], references: [id])
+  revokedById String?
+}
+
+// The audit trail. Never the raw UID or token. No foreign keys on purpose: the trail must survive whatever happens to the rows it names.
+model QuickLoginEvent {
+  id           Int               @id @default(autoincrement())
+  at           DateTime          @default(now())
+  outcome      QuickLoginOutcome
+  method       QuickLoginMethod
+  userId       String?
+  credentialId Int?
+  terminalId   Int?
+  ip           String?
+  userAgent    String?
+  note         String?
+
+  @@index([at])
+  @@index([ip, at])
+  @@index([terminalId, at])
 }
