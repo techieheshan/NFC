@@ -193,6 +193,15 @@ export const NAV_ITEMS: NavItem[] = [
     surfaces: ["desktop", "terminal"],
   },
   {
+    key: "other-incomes",
+    label: "Other incomes",
+    href: "/other-incomes",
+    icon: Banknote,
+    // Money in with no bill. Recording is ADMIN + STAFF; cancelling and the categories are ADMIN-only inside the actions.
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
     key: "payslips",
     label: "Payslips",
     href: "/payslips",
