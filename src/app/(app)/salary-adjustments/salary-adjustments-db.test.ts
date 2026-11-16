@@ -199,7 +199,9 @@ describe("salary adjustments (database)", { skip: dbSkip }, () => {
     const after = await slips();
     assert.equal(Number(slipOf(after, t1).finalSalary) - Number(slipOf(before, t1).finalSalary), 5000);
     assert.equal(slipOf(after, t1).adjustmentLines?.at(-1)?.sign, "+");
-    assert.equal(Number(after.institute!.instituteProfit) - Number(before.institute!.instituteProfit), -5000);
+    // The 20,000.00 income itself is now profit (other income counts in the roll-up); the bonus paid out of it takes 5,000.00 back.
+    assert.equal(Number(after.institute!.instituteProfit) - Number(before.institute!.instituteProfit), 20000 - 5000);
+    assert.equal(after.institute!.otherIncome, "20000.00");
     assert.equal(after.institute!.adjustments!.bonuses, "5000.00");
     assert.equal((await A.createSalaryAdjustment({ kind: "BONUS", sourceId: i.id, title: "Again", month: "2026-11", splitMode: "CUSTOM", people: [{ key: `t${t2}`, amount: "1000" }], consentNote: "Approved", consentOn: TODAY })).ok, false);
   });
