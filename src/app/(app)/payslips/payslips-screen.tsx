@@ -56,6 +56,8 @@ export function PayslipsScreen({
               ["Admission income (kept in full)", i.admissionIncome],
               ["Smart-card income (kept in full)", i.smartCardIncome],
               ["Teacher advances (not in profit)", i.teacherAdvances],
+              ...(i.otherIncome ? [["Other income", i.otherIncome]] : []),
+              ...(i.extraPayments ? [["Extra payments", i.extraPayments]] : []),
               ["Xenon expenses", `-${i.xenonExpenses}`],
               ...(i.adjustments ? [["Recovered from teachers and staff (salary adjustments)", i.adjustments.recovered], ["Bonuses paid (salary adjustments)", `-${i.adjustments.bonuses}`]] : []),
               ["INSTITUTE PROFIT", i.instituteProfit],
@@ -203,6 +205,8 @@ export function PayslipsScreen({
           <Row label="Teacher shares (paid out)" value={report.institute.totalTeacherShare} muted />
           <Row label="Admission income" value={report.institute.admissionIncome} />
           <Row label="Smart-card income" value={report.institute.smartCardIncome} />
+          {report.institute.otherIncome && <Row label="Other income" value={report.institute.otherIncome} />}
+          {report.institute.extraPayments && <Row label="Extra payments" value={report.institute.extraPayments} />}
           <Row label="Xenon expenses" value={`-${report.institute.xenonExpenses}`} muted />
           {report.institute.adjustments && (
             <>
@@ -216,7 +220,8 @@ export function PayslipsScreen({
           </div>
           <p className="text-muted-foreground pt-1 text-xs">
             Profit = institute share of class fees + admission + smart-card
-            income − Xenon expenses. Admission and smart-card money is kept whole
+            income − Xenon expenses (+ other income, extra payments and salary
+            adjustments, when the month has them). Admission and smart-card money is kept whole
             (no teacher split). Teacher advances ({report.institute.teacherAdvances})
             are deliberately excluded — they reduce a teacher&apos;s own salary, not
             institute profit. Staff advances sit inside Xenon expenses, counted once.

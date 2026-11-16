@@ -176,6 +176,13 @@ export type InstituteSummary = {
    * ABSENT for a month with none, so that month's roll-up is exactly what it was.
    */
   adjustments?: { recovered: string; bonuses: string };
+  /**
+   * Other incomes dated in this month (cash AND bank transfer — it is the institute's income either way; cancelled ones are not read).
+   * ABSENT for a month with none, so that month's roll-up is exactly what it was. Adds to profit.
+   */
+  otherIncome?: string;
+  /** Extra payments (bills for things that are not class fees) taken in this month by `paidAt`, cancelled ones excluded. ABSENT when none. Adds to profit. */
+  extraPayments?: string;
   instituteProfit: string;
 };
 
@@ -524,6 +531,14 @@ export async function buildPayslips(options: {
     const recoveredCents = adjusted.filter((a) => a.adjustment.kind === "SHARED_EXPENSE").reduce((sum, a) => sum + Math.round(num(a.amount) * 100), 0);
     const bonusCents = adjusted.filter((a) => a.adjustment.kind === "BONUS").reduce((sum, a) => sum + Math.round(num(a.amount) * 100), 0);
 
+    // Other incomes (by their own calendar day) and extra payments (by `paidAt`), read only here, only for the institute summary.
+    const [otherRows, extraRows] = await Promise.all([
+      db.otherIncome.findMany({ where: { cancelled: false, date: dateWindow }, select: { amount: true } }),
+      db.extraPayment.findMany({ where: { cancelled: false, paidAt: paidWindow }, select: { total: true } }),
+    ]);
+    const otherCents = otherRows.reduce((sum, r) => sum + Math.round(num(r.amount) * 100), 0);
+    const extraCents = extraRows.reduce((sum, r) => sum + Math.round(num(r.total) * 100), 0);
+
     report.institute = {
       totalCollected: money(collected),
       totalInstituteShare: money(institute),
@@ -536,7 +551,9 @@ export async function buildPayslips(options: {
       // Teacher advances are deliberately NOT subtracted — they reduce a
       // teacher's own salary, not institute profit.
       ...(adjusted.length > 0 ? { adjustments: { recovered: money(recoveredCents / 100), bonuses: money(bonusCents / 100) } } : {}),
-      instituteProfit: money(institute + admissionIncome + smartCardIncome - xenon + recoveredCents / 100 - bonusCents / 100),
+      ...(otherRows.length > 0 ? { otherIncome: money(otherCents / 100) } : {}),
+      ...(extraRows.length > 0 ? { extraPayments: money(extraCents / 100) } : {}),
+      instituteProfit: money(institute + admissionIncome + smartCardIncome - xenon + recoveredCents / 100 - bonusCents / 100 + otherCents / 100 + extraCents / 100),
     };
   }
 

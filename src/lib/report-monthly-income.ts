@@ -148,7 +148,11 @@ export async function buildMonthlyIncome(year: number, month: number): Promise<M
     Number(institute.totalInstituteShare) +
     Number(institute.admissionIncome) +
     Number(institute.smartCardIncome) -
-    Number(institute.xenonExpenses);
+    Number(institute.xenonExpenses) +
+    Number(institute.adjustments?.recovered ?? 0) -
+    Number(institute.adjustments?.bonuses ?? 0) +
+    Number(institute.otherIncome ?? 0) +
+    Number(institute.extraPayments ?? 0);
 
   return {
     year,
