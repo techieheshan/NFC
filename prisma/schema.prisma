@@ -262,6 +262,10 @@ model User {
   extraPaymentsTaken     ExtraPayment[] @relation("ExtraPaymentTakenBy")
   extraPaymentsCancelled ExtraPayment[] @relation("ExtraPaymentCancelledBy")
 
+  // Salary adjustments (back-relations only: no column on "User")
+  salaryAdjustmentsCreated   SalaryAdjustment[] @relation("SalaryAdjustmentCreatedBy")
+  salaryAdjustmentsCancelled SalaryAdjustment[] @relation("SalaryAdjustmentCancelledBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -279,6 +283,8 @@ model Teacher {
   combos   Combo[]
   advances Expense[] // TEACHER_ADVANCE rows pointing at this teacher
 
+  adjustmentLines SalaryAdjustmentLine[] // Salary adjustments (back-relation only: no column on "Teacher")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -294,6 +300,8 @@ model Staff {
 
   user     User?
   advances Expense[] // XENON rows flagged isStaffAdvance, pointing here
+
+  adjustmentLines SalaryAdjustmentLine[] // Salary adjustments (back-relation only: no column on "Staff")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -615,6 +623,8 @@ model Expense {
   authorizedBy   User   @relation("ExpenseAuthorizedBy", fields: [authorizedById], references: [id])
   authorizedById String
 
+  salaryAdjustments SalaryAdjustment[] // Salary adjustments (back-relation only: no column on "Expense")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -783,6 +793,8 @@ model OtherIncome {
   cancelledAt   DateTime?
   cancelReason  String?
 
+  salaryAdjustments SalaryAdjustment[] // Salary adjustments (back-relation only)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -853,4 +865,90 @@ model ExtraPaymentLine {
   position  Int
 
   @@index([paymentId])
+}
+
+// ----------------------------------------------------------------------------
+// SALARY ADJUSTMENTS — share an expense with named teachers and/or staff (they
+// pay part of it), or pay them part of an income as a bonus. ADMIN only.
+//
+// Teachers: a line on the payslip, read INSIDE buildPayslips (the one payroll
+// calculation, AGENTS 26). Staff: there is no staff salary in this system, so
+// their lines are a monthly list with a printable sheet for whoever pays staff.
+//
+// The expense itself stays an ordinary XENON expense (cash out on its day); the
+// recovery or the bonus is PAYROLL, by the payroll month it applies to. The two
+// clocks never meet in one figure. A month that has started to close is locked:
+// an adjustment may only target the current month or a later one, and an
+// adjustment is cancelled (never edited, never deleted) only while its month is
+// still current or ahead, so a past month's payslip never changes.
+// ----------------------------------------------------------------------------
+
+enum SalaryAdjustmentKind {
+  SHARED_EXPENSE // people pay part of an expense: minus on their pay
+  BONUS // people are paid part of an income: plus on their pay
+}
+
+enum SplitMode {
+  EQUAL
+  CUSTOM
+}
+
+model SalaryAdjustment {
+  id    Int                  @id @default(autoincrement())
+  kind  SalaryAdjustmentKind
+  title String
+
+  // The PAYROLL month it appears in: chosen explicitly, never derived from the expense date.
+  applyYear  Int
+  applyMonth Int
+
+  // totalAmount = instituteAmount + the sum of the lines (checked in cents on the server).
+  totalAmount     Decimal @db.Decimal(12, 2)
+  instituteAmount Decimal @db.Decimal(12, 2)
+  splitMode       SplitMode
+
+  // SHARED_EXPENSE points at a XENON expense, BONUS at an other income (a CHECK in the migration keeps exactly one).
+  expense       Expense?     @relation(fields: [expenseId], references: [id])
+  expenseId     Int?
+  otherIncome   OtherIncome? @relation(fields: [otherIncomeId], references: [id])
+  otherIncomeId Int?
+
+  // Who agreed, when and how: required text, printed on the notice and on the pay line.
+  consentNote String
+  consentOn   DateTime @db.Date
+
+  createdBy   User     @relation("SalaryAdjustmentCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+
+  // Cancellation (ADMIN only, and only while the payroll month is still current or ahead).
+  cancelled     Boolean   @default(false)
+  cancelledBy   User?     @relation("SalaryAdjustmentCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  lines SalaryAdjustmentLine[]
+
+  @@index([applyYear, applyMonth])
+  @@index([expenseId])
+  @@index([otherIncomeId])
+}
+
+model SalaryAdjustmentLine {
+  id           Int              @id @default(autoincrement())
+  adjustment   SalaryAdjustment @relation(fields: [adjustmentId], references: [id])
+  adjustmentId Int
+  // Exactly one of the two (a CHECK in the migration): a teacher's pay line or a staff member's list line.
+  teacher   Teacher? @relation(fields: [teacherId], references: [id])
+  teacherId Int?
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+  staffId   Int?
+  // Above zero; the sign comes from the adjustment's kind.
+  amount    Decimal  @db.Decimal(12, 2)
+
+  @@unique([adjustmentId, teacherId])
+  @@unique([adjustmentId, staffId])
+  @@index([teacherId])
+  @@index([staffId])
 }
