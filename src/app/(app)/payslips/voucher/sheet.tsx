@@ -150,6 +150,28 @@ export function PayslipSheet({
               </tbody>
             </table>
           )}
+          {slip.adjustmentLines && (
+            <>
+              <p className="mt-3 font-semibold">Salary adjustments</p>
+              <table className="mt-1 w-full border-collapse">
+                <tbody>
+                  {slip.adjustmentLines.map((a) => (
+                    <tr key={a.adjustmentId} className="border-b border-neutral-300">
+                      <td className="py-1 pr-2">
+                        {a.title}
+                        <span className="block text-neutral-600">agreed {a.consentOn}: {a.consentNote}</span>
+                      </td>
+                      <td className="py-1 text-right tabular-nums">{a.sign}{a.amount}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold">
+                    <td className="py-1 pr-2">Net adjustments</td>
+                    <td className="py-1 text-right tabular-nums">{slip.adjustmentsNet}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
 
         <div className="w-72 shrink-0 space-y-1 text-sm">
@@ -158,10 +180,14 @@ export function PayslipSheet({
           <Row label="Institute share" value={slip.totalInstituteShare} />
           <Row label="Teacher share" value={slip.totalTeacherShare} />
           <Row label="Advances taken" value={`-${slip.advances}`} />
+          {slip.adjustmentLines?.map((a) => (
+            <Row key={a.adjustmentId} label={`Adjustment: ${a.title}`} value={`${a.sign}${a.amount}`} />
+          ))}
           <div className="flex justify-between border-t-2 border-black pt-1.5 text-lg font-bold">
             <span>Final salary</span>
             <span className="tabular-nums">{slip.finalSalary}</span>
           </div>
+          {slip.finalSalary.startsWith("-") && <p className="border border-black px-2 py-1 text-sm font-bold">Owes Xenon {slip.finalSalary.slice(1)}</p>}
         </div>
       </div>
 

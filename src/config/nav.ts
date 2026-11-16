@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Layers,
   Receipt,
+  Scale,
   ScanLine,
   School,
   Search,
@@ -220,6 +221,15 @@ export const NAV_ITEMS: NavItem[] = [
     // profit block, TEACHER sees only their own last-completed month.
     roles: ALL_ROLES,
     surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "salary-adjustments",
+    label: "Salary adjustments",
+    href: "/salary-adjustments",
+    icon: Scale,
+    // Share an expense with teachers or staff, or pay them a bonus. Pay data: ADMIN only, and every action checks the role itself.
+    roles: ADMIN_ONLY,
+    surfaces: ["desktop"],
   },
   {
     key: "settings",

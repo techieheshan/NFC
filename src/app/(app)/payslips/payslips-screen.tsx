@@ -38,6 +38,7 @@ export function PayslipsScreen({
               ]),
               ["TOTAL", "", "", s.totalCollected, s.totalInstituteShare, s.totalTeacherShare],
               ["Advances", "", "", "", "", `-${s.advances}`],
+              ...(s.adjustmentLines ?? []).map((a) => [`Adjustment: ${a.title}`, "", "", "", "", `${a.sign}${a.amount}`]),
               ["FINAL SALARY", "", "", "", "", s.finalSalary],
             ],
           },
@@ -56,6 +57,7 @@ export function PayslipsScreen({
               ["Smart-card income (kept in full)", i.smartCardIncome],
               ["Teacher advances (not in profit)", i.teacherAdvances],
               ["Xenon expenses", `-${i.xenonExpenses}`],
+              ...(i.adjustments ? [["Recovered from teachers and staff (salary adjustments)", i.adjustments.recovered], ["Bonuses paid (salary adjustments)", `-${i.adjustments.bonuses}`]] : []),
               ["INSTITUTE PROFIT", i.instituteProfit],
             ],
           });
@@ -172,10 +174,18 @@ export function PayslipsScreen({
                 <Row label="Institute share" value={`-${s.totalInstituteShare}`} muted />
                 <Row label="Teacher share" value={s.totalTeacherShare} />
                 <Row label="Advances taken" value={`-${s.advances}`} muted />
+                {s.adjustmentLines?.map((a) => (
+                  <Row key={a.adjustmentId} label={`Adjustment: ${a.title}`} value={`${a.sign}${a.amount}`} muted />
+                ))}
                 <div className="flex justify-between border-t pt-1.5 font-semibold">
                   <span>Final salary</span>
                   <span className="tabular-nums">{s.finalSalary}</span>
                 </div>
+                {s.finalSalary.startsWith("-") && (
+                  <p role="status" className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-sm font-medium text-red-900">
+                    Owes Xenon {s.finalSalary.slice(1)}
+                  </p>
+                )}
               </div>
             </div>
           ))}
@@ -194,6 +204,12 @@ export function PayslipsScreen({
           <Row label="Admission income" value={report.institute.admissionIncome} />
           <Row label="Smart-card income" value={report.institute.smartCardIncome} />
           <Row label="Xenon expenses" value={`-${report.institute.xenonExpenses}`} muted />
+          {report.institute.adjustments && (
+            <>
+              <Row label="Recovered from teachers and staff (salary adjustments)" value={report.institute.adjustments.recovered} />
+              <Row label="Bonuses paid (salary adjustments)" value={`-${report.institute.adjustments.bonuses}`} muted />
+            </>
+          )}
           <div className="flex justify-between border-t pt-2 text-base font-semibold">
             <span>Institute profit</span>
             <span className="tabular-nums">{report.institute.instituteProfit}</span>
