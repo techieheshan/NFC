@@ -136,6 +136,7 @@ export async function takeExtraPayment(input: unknown): Promise<TakeResult> {
       select: { id: true },
     });
     revalidatePath("/extra-payments");
+    revalidatePath("/extra-payments/receipts");
     revalidatePath("/daily-summary");
     const receipt = await loadExtraReceipt(created.id);
     return receipt ? { ok: true, receipt, duplicate: false } : { ok: false, error: "The bill was saved. Open Receipts to print it." };

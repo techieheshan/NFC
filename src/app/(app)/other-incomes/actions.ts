@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { codeFromLabel, parseCancelReason, parseIncomeInput, type IncomeMethodValue } from "@/lib/other-income";
 
 const PATH = "/other-incomes";
+const CATEGORIES_PATH = "/other-incomes/categories";
 
 /** Cancelling an income and managing its categories change the institute's money record: ADMIN only (AGENTS 29). */
 const requireAdmin = () => requireRole(["ADMIN"]);
@@ -211,6 +212,7 @@ export async function createCategory(_prev: ActionState, formData: FormData): Pr
   }
   await db.incomeCategory.create({ data: { code, label } });
   revalidatePath(PATH);
+  revalidatePath(CATEGORIES_PATH);
   return { ok: true };
 }
 
@@ -226,6 +228,7 @@ export async function renameCategory(_prev: ActionState, formData: FormData): Pr
   const done = await db.incomeCategory.updateMany({ where: { id }, data: { label } });
   if (done.count === 0) return fail(formData, "That category could not be found.");
   revalidatePath(PATH);
+  revalidatePath(CATEGORIES_PATH);
   return { ok: true };
 }
 
@@ -238,5 +241,6 @@ export async function setCategoryActive(_prev: ActionState, formData: FormData):
   const done = await db.incomeCategory.updateMany({ where: { id }, data: { active } });
   if (done.count === 0) return fail(formData, "That category could not be found.");
   revalidatePath(PATH);
+  revalidatePath(CATEGORIES_PATH);
   return { ok: true };
 }
