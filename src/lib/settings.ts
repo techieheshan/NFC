@@ -63,7 +63,7 @@ export async function getInstituteSharePresets(): Promise<number[]> {
  * hardcoded anywhere else. `kind` drives both the input and the server-side
  * validation, so a new key is one entry here rather than a new form.
  */
-export type SettingKind = "money" | "percent-list" | "toggle";
+export type SettingKind = "money" | "percent-list" | "toggle" | "integer";
 
 export type SettingSpec = {
   key: string;
@@ -116,6 +116,48 @@ export const SETTING_SPECS: SettingSpec[] = [
     help: "Speak short English confirmations at the counter, on top of the tones. Tones always play.",
     kind: "toggle",
     fallback: "on",
+  },
+  {
+    key: "quick_login_enabled",
+    label: "Staff quick login",
+    help: "Let a STAFF member sign in by tapping a staff card or scanning a staff QR on a terminal that has been signed in with a password once. Off by default; switch it on per site after the terminal checks.",
+    kind: "toggle",
+    fallback: "off",
+  },
+  {
+    key: "quick_login_max_in_a_row",
+    label: "Quick sign-ins in a row before a password",
+    help: "After this many quick sign-ins on one terminal the next person must type their password (which resets the count).",
+    kind: "integer",
+    fallback: "5",
+  },
+  {
+    key: "quick_login_session_hours",
+    label: "Quick sign-in lasts (hours)",
+    help: "A session started by a card or QR ends after this many hours; a password session is not affected.",
+    kind: "integer",
+    fallback: "12",
+  },
+  {
+    key: "quick_login_max_failed_taps",
+    label: "Refused taps before a terminal pauses",
+    help: "Unrecognised or refused cards in one minute on one terminal before it pauses quick login.",
+    kind: "integer",
+    fallback: "10",
+  },
+  {
+    key: "quick_login_lock_minutes",
+    label: "Terminal pause (minutes)",
+    help: "How long a terminal refuses quick login after too many refused taps.",
+    kind: "integer",
+    fallback: "5",
+  },
+  {
+    key: "quick_login_audit_days",
+    label: "Keep the quick-login audit for (days)",
+    help: "Older audit rows are deleted when an admin opens the staff card screen.",
+    kind: "integer",
+    fallback: "90",
   },
   {
     key: "roster_show_phone",

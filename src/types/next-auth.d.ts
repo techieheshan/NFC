@@ -18,6 +18,10 @@ declare module "next-auth" {
     /** Stamped into the token at sign-in so revocation can be detected later. */
     tokenVersion: number;
     mustChangePassword: boolean;
+    /** Set only by a staff card or QR sign-in (provider "quick"). Absent for a password sign-in. */
+    via?: "nfc" | "qr";
+    credentialId?: number;
+    terminalId?: number;
   }
 }
 
@@ -40,5 +44,12 @@ declare module "@auth/core/jwt" {
      */
     ver: number;
     mustChange: boolean;
+    /** How the session started. ABSENT on every token minted before quick login existed, which reads as "password". */
+    via?: "password" | "nfc" | "qr";
+    /** When a quick session started (ms), the clock for `quick_login_session_hours`. */
+    qAt?: number;
+    /** The staff card and the terminal a quick session came from: revoking either ends the session. */
+    cred?: number;
+    term?: number;
   }
 }

@@ -1,22 +1,26 @@
 import { AuthError, CredentialsSignin } from "next-auth";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth, signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { db } from "@/lib/db";
+import { registerTerminalOnPasswordLogin } from "@/lib/quick-login";
+import { firstHop, PASSWORD_NEEDED_TEXT, TERMINAL_COOKIE } from "@/lib/quick-login-rules";
+import { getToggle } from "@/lib/settings";
+
+import { QuickLoginPanel } from "./quick-panel";
 
 export const metadata = { title: "Sign in" };
 
 async function login(formData: FormData) {
   "use server";
 
+  const username = String(formData.get("username") ?? "");
   try {
-    await signIn("credentials", {
-      username: String(formData.get("username") ?? ""),
-      password: String(formData.get("password") ?? ""),
-      redirectTo: "/",
-    });
+    await signIn("credentials", { username, password: String(formData.get("password") ?? ""), redirect: false });
   } catch (error) {
     // A successful signIn throws NEXT_REDIRECT, which must be rethrown.
     if (error instanceof AuthError) {
@@ -30,6 +34,28 @@ async function login(formData: FormData) {
     }
     throw error;
   }
+
+  // A good PASSWORD sign-in makes this device a registered terminal for staff card sign-in (only while the feature is on) and resets the
+  // terminal's quick sign-in count. A failure here must never stop a person from signing in with a password they typed correctly.
+  try {
+    const user = await db.user.findUnique({ where: { username }, select: { id: true } });
+    if (user) {
+      const jar = await cookies();
+      const h = await headers();
+      const { newToken } = await registerTerminalOnPasswordLogin({
+        terminalToken: jar.get(TERMINAL_COOKIE)?.value ?? null,
+        userId: user.id,
+        ip: firstHop(h.get("x-forwarded-for")),
+        userAgent: h.get("user-agent"),
+      });
+      if (newToken) {
+        jar.set(TERMINAL_COOKIE, newToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 400 });
+      }
+    }
+  } catch (e) {
+    console.error("terminal registration failed", e instanceof Error ? e.message : e);
+  }
+  redirect("/");
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
@@ -45,6 +71,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const failed = "error" in params;
   const lockedUntil = typeof params.locked === "string" ? params.locked : null;
   const revoked = "revoked" in params;
+  // Staff card sign-in: the panel shows only while the feature is on AND this device is already a registered terminal (a password sign-in made it one).
+  const quickOn = await getToggle("quick_login_enabled");
+  const registered = quickOn && Boolean((await cookies()).get(TERMINAL_COOKIE)?.value);
+  const passwordNeeded = "pw" in params;
+  const prefill = typeof params.u === "string" ? params.u.slice(0, 64) : "";
   const passwordChanged = "changed" in params;
 
   return (
@@ -60,6 +91,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           </div>
         </div>
 
+        {registered && !passwordNeeded && <QuickLoginPanel />}
+        {quickOn && !registered && (
+          <p className="text-muted-foreground mb-4 text-center text-xs">Staff: sign in with your password once on this device to turn on card sign-in here.</p>
+        )}
+
         <form action={login} className="bg-card space-y-4 rounded-xl border p-6 shadow-sm">
           {lockedUntil ? (
             <p
@@ -74,6 +110,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               className="border-destructive bg-destructive-soft text-destructive rounded-md border px-3 py-2 text-sm"
             >
               Incorrect username or password.
+            </p>
+          ) : passwordNeeded ? (
+            <p role="status" className="bg-secondary text-secondary-foreground rounded-md px-3 py-2 text-sm">
+              {PASSWORD_NEEDED_TEXT}
             </p>
           ) : revoked ? (
             <p
@@ -97,6 +137,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               autoComplete="username"
               autoCapitalize="none"
               autoCorrect="off"
+              defaultValue={prefill}
               required
             />
           </div>
@@ -108,6 +149,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
               name="password"
               type="password"
               autoComplete="current-password"
+              autoFocus={passwordNeeded && prefill !== ""}
               required
             />
           </div>

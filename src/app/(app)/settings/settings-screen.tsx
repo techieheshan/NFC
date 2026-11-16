@@ -75,7 +75,7 @@ function ValueRow({ row }: { row: Row }) {
             id={`s-${row.key}`}
             name="value"
             defaultValue={shown}
-            inputMode={row.kind === "money" ? "decimal" : "text"}
+            inputMode={row.kind === "money" ? "decimal" : row.kind === "integer" ? "numeric" : "text"}
             autoComplete="off"
           />
           <p className="text-muted-foreground text-xs">{row.help}</p>
