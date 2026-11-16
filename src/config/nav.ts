@@ -13,6 +13,7 @@ import {
   School,
   Search,
   Settings,
+  ShoppingBag,
   ShieldCheck,
   Undo2,
   UserPlus,
@@ -198,6 +199,15 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/other-incomes",
     icon: Banknote,
     // Money in with no bill. Recording is ADMIN + STAFF; cancelling and the categories are ADMIN-only inside the actions.
+    roles: OPERATIONAL,
+    surfaces: ["desktop", "terminal"],
+  },
+  {
+    key: "extra-payments",
+    label: "Extra payments",
+    href: "/extra-payments",
+    icon: ShoppingBag,
+    // Things sold with a bill that are not class fees. ADMIN + STAFF sell and reprint; the price list and cancelling are ADMIN-only inside the actions.
     roles: OPERATIONAL,
     surfaces: ["desktop", "terminal"],
   },
